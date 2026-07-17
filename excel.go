@@ -9,31 +9,56 @@ import (
 // GenerateExcel creates a review Excel file with 2 sheets.
 // Sheet1 (复习): Chinese definitions + empty column for writing words, plus sentence exercises.
 // Sheet2 (答案): Same structure with answers filled in.
+//
+// Layout: two column-blocks side by side, separated by a narrow gap column.
+//
+//	| 序号 | 中文释义 | 日语（填写） | gap | 序号 | 中文释义 | 日语（填写） |
+//	|  1   | xxx      |              |     |  41  | xxx      |              |
+//	|  2   | xxx      |              |     |  42  | xxx      |              |
+//	| ...  |          |              |     | ...  |          |              |
+//
+// Sentences use the same two-column layout.
 func GenerateExcel(plan *ReviewPlan, outputPath string) error {
 	f := excelize.NewFile()
 	defer f.Close()
 
 	cfg := LangConfigs[plan.Language]
 
-	// Create a bold style for reuse
+	// Bold style for headers
 	boldStyle, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{Bold: true},
 	})
-
 	setBold := func(sheet, cell string) {
 		f.SetCellStyle(sheet, cell, cell, boldStyle)
 	}
+
+	// Column groups: left block = A,B,C; gap = D; right block = E,F,G
+	// colLeft = [序号, 中文, 日语], colRight = [序号, 中文, 日语]
+	type colBlock struct {
+		colNum  string // "A", "E"
+		colWord string // "C", "G"
+	}
+
+	// Split words into two halves
+	half := (len(plan.Words) + 1) / 2 // left gets extra if odd
+	leftWords := plan.Words[:half]
+	rightWords := plan.Words[half:]
+
+	// Split sentences into two halves
+	sHalf := (len(plan.Sentences) + 1) / 2
+	leftSentences := plan.Sentences[:sHalf]
+	rightSentences := plan.Sentences[sHalf:]
 
 	// === Sheet 1: 复习 (Review - fill in) ===
 	sheet1 := "复习"
 	f.SetSheetName(f.GetSheetName(0), sheet1)
 
-	// Title
+	// Title spanning both blocks
 	f.SetCellValue(sheet1, "A1", fmt.Sprintf("%s单词复习 %s", cfg.Name, plan.Date))
 	setBold(sheet1, "A1")
-	f.MergeCell(sheet1, "A1", "B1")
+	f.MergeCell(sheet1, "A1", "G1")
 
-	// Word section header
+	// Word section headers (row 3)
 	f.SetCellValue(sheet1, "A3", "序号")
 	f.SetCellValue(sheet1, "B3", "中文释义")
 	f.SetCellValue(sheet1, "C3", cfg.WordColumn+"（填写）")
@@ -41,38 +66,81 @@ func GenerateExcel(plan *ReviewPlan, outputPath string) error {
 	setBold(sheet1, "B3")
 	setBold(sheet1, "C3")
 
+	f.SetCellValue(sheet1, "E3", "序号")
+	f.SetCellValue(sheet1, "F3", "中文释义")
+	f.SetCellValue(sheet1, "G3", cfg.WordColumn+"（填写）")
+	setBold(sheet1, "E3")
+	setBold(sheet1, "F3")
+	setBold(sheet1, "G3")
+
 	// Word entries
-	for i, w := range plan.Words {
-		row := i + 4
-		f.SetCellValue(sheet1, fmt.Sprintf("A%d", row), w.Number)
-		f.SetCellValue(sheet1, fmt.Sprintf("B%d", row), w.Definition)
-		// Column C left empty for user to fill in
+	writeWordBlock := func(sheet string, words []PlanWord, startRow int, numCol, defCol, wordCol string, withAnswer bool) {
+		for i, w := range words {
+			row := startRow + i
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", numCol, row), w.Number)
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", defCol, row), w.Definition)
+			if withAnswer {
+				f.SetCellValue(sheet, fmt.Sprintf("%s%d", wordCol, row), w.Word)
+			}
+			// else: leave empty for user to fill in
+		}
 	}
+
+	wordStartRow := 4
+	writeWordBlock(sheet1, leftWords, wordStartRow, "A", "B", "C", false)
+	writeWordBlock(sheet1, rightWords, wordStartRow, "E", "F", "G", false)
 
 	// Sentence section
-	sentenceStartRow := len(plan.Words) + 6
+	sentenceStartRow := wordStartRow + half
+	if len(rightWords) > half {
+		sentenceStartRow = wordStartRow + len(rightWords)
+	}
+	// Add gap between word section and sentence section
+	sentenceStartRow = wordStartRow + max(len(leftWords), len(rightWords)) + 2
+
 	f.SetCellValue(sheet1, fmt.Sprintf("A%d", sentenceStartRow), "造句练习")
 	setBold(sheet1, fmt.Sprintf("A%d", sentenceStartRow))
-	f.MergeCell(sheet1, fmt.Sprintf("A%d", sentenceStartRow), fmt.Sprintf("C%d", sentenceStartRow))
+	f.MergeCell(sheet1, fmt.Sprintf("A%d", sentenceStartRow), fmt.Sprintf("G%d", sentenceStartRow))
 
-	f.SetCellValue(sheet1, fmt.Sprintf("A%d", sentenceStartRow+1), "序号")
-	f.SetCellValue(sheet1, fmt.Sprintf("B%d", sentenceStartRow+1), "中文释义")
-	f.SetCellValue(sheet1, fmt.Sprintf("C%d", sentenceStartRow+1), cfg.Name+"句子（填写）")
-	setBold(sheet1, fmt.Sprintf("A%d", sentenceStartRow+1))
-	setBold(sheet1, fmt.Sprintf("B%d", sentenceStartRow+1))
-	setBold(sheet1, fmt.Sprintf("C%d", sentenceStartRow+1))
+	// Sentence headers
+	sHeaderRow := sentenceStartRow + 1
+	f.SetCellValue(sheet1, fmt.Sprintf("A%d", sHeaderRow), "序号")
+	f.SetCellValue(sheet1, fmt.Sprintf("B%d", sHeaderRow), "中文")
+	f.SetCellValue(sheet1, fmt.Sprintf("C%d", sHeaderRow), cfg.Name+"句子（填写）")
+	setBold(sheet1, fmt.Sprintf("A%d", sHeaderRow))
+	setBold(sheet1, fmt.Sprintf("B%d", sHeaderRow))
+	setBold(sheet1, fmt.Sprintf("C%d", sHeaderRow))
 
-	for i, s := range plan.Sentences {
-		row := sentenceStartRow + 2 + i
-		f.SetCellValue(sheet1, fmt.Sprintf("A%d", row), s.Number)
-		f.SetCellValue(sheet1, fmt.Sprintf("B%d", row), s.Chinese)
-		// Column C left empty
+	f.SetCellValue(sheet1, fmt.Sprintf("E%d", sHeaderRow), "序号")
+	f.SetCellValue(sheet1, fmt.Sprintf("F%d", sHeaderRow), "中文")
+	f.SetCellValue(sheet1, fmt.Sprintf("G%d", sHeaderRow), cfg.Name+"句子（填写）")
+	setBold(sheet1, fmt.Sprintf("E%d", sHeaderRow))
+	setBold(sheet1, fmt.Sprintf("F%d", sHeaderRow))
+	setBold(sheet1, fmt.Sprintf("G%d", sHeaderRow))
+
+	writeSentenceBlock := func(sheet string, sentences []PlanSentence, startRow int, numCol, chiCol, ansCol string, withAnswer bool) {
+		for i, s := range sentences {
+			row := startRow + i
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", numCol, row), s.Number)
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", chiCol, row), s.Chinese)
+			if withAnswer {
+				f.SetCellValue(sheet, fmt.Sprintf("%s%d", ansCol, row), s.Answer)
+			}
+		}
 	}
 
-	// Set column widths
+	sStartRow := sHeaderRow + 1
+	writeSentenceBlock(sheet1, leftSentences, sStartRow, "A", "B", "C", false)
+	writeSentenceBlock(sheet1, rightSentences, sStartRow, "E", "F", "G", false)
+
+	// Column widths
 	f.SetColWidth(sheet1, "A", "A", 8)
-	f.SetColWidth(sheet1, "B", "B", 40)
-	f.SetColWidth(sheet1, "C", "C", 30)
+	f.SetColWidth(sheet1, "B", "B", 35)
+	f.SetColWidth(sheet1, "C", "C", 25)
+	f.SetColWidth(sheet1, "D", "D", 3)
+	f.SetColWidth(sheet1, "E", "E", 8)
+	f.SetColWidth(sheet1, "F", "F", 35)
+	f.SetColWidth(sheet1, "G", "G", 25)
 
 	// === Sheet 2: 答案 (Answers) ===
 	sheet2 := "答案"
@@ -81,9 +149,9 @@ func GenerateExcel(plan *ReviewPlan, outputPath string) error {
 	// Title
 	f.SetCellValue(sheet2, "A1", fmt.Sprintf("%s单词复习答案 %s", cfg.Name, plan.Date))
 	setBold(sheet2, "A1")
-	f.MergeCell(sheet2, "A1", "B1")
+	f.MergeCell(sheet2, "A1", "G1")
 
-	// Word section header
+	// Word section headers (row 3)
 	f.SetCellValue(sheet2, "A3", "序号")
 	f.SetCellValue(sheet2, "B3", "中文释义")
 	f.SetCellValue(sheet2, "C3", cfg.WordColumn)
@@ -91,38 +159,54 @@ func GenerateExcel(plan *ReviewPlan, outputPath string) error {
 	setBold(sheet2, "B3")
 	setBold(sheet2, "C3")
 
+	f.SetCellValue(sheet2, "E3", "序号")
+	f.SetCellValue(sheet2, "F3", "中文释义")
+	f.SetCellValue(sheet2, "G3", cfg.WordColumn)
+	setBold(sheet2, "E3")
+	setBold(sheet2, "F3")
+	setBold(sheet2, "G3")
+
 	// Word entries with answers
-	for i, w := range plan.Words {
-		row := i + 4
-		f.SetCellValue(sheet2, fmt.Sprintf("A%d", row), w.Number)
-		f.SetCellValue(sheet2, fmt.Sprintf("B%d", row), w.Definition)
-		f.SetCellValue(sheet2, fmt.Sprintf("C%d", row), w.Word)
-	}
+	writeWordBlock(sheet2, leftWords, wordStartRow, "A", "B", "C", true)
+	writeWordBlock(sheet2, rightWords, wordStartRow, "E", "F", "G", true)
 
 	// Sentence section
 	f.SetCellValue(sheet2, fmt.Sprintf("A%d", sentenceStartRow), "造句练习答案")
 	setBold(sheet2, fmt.Sprintf("A%d", sentenceStartRow))
-	f.MergeCell(sheet2, fmt.Sprintf("A%d", sentenceStartRow), fmt.Sprintf("C%d", sentenceStartRow))
+	f.MergeCell(sheet2, fmt.Sprintf("A%d", sentenceStartRow), fmt.Sprintf("G%d", sentenceStartRow))
 
-	f.SetCellValue(sheet2, fmt.Sprintf("A%d", sentenceStartRow+1), "序号")
-	f.SetCellValue(sheet2, fmt.Sprintf("B%d", sentenceStartRow+1), "中文释义")
-	f.SetCellValue(sheet2, fmt.Sprintf("C%d", sentenceStartRow+1), cfg.Name+"句子")
-	setBold(sheet2, fmt.Sprintf("A%d", sentenceStartRow+1))
-	setBold(sheet2, fmt.Sprintf("B%d", sentenceStartRow+1))
-	setBold(sheet2, fmt.Sprintf("C%d", sentenceStartRow+1))
+	f.SetCellValue(sheet2, fmt.Sprintf("A%d", sHeaderRow), "序号")
+	f.SetCellValue(sheet2, fmt.Sprintf("B%d", sHeaderRow), "中文")
+	f.SetCellValue(sheet2, fmt.Sprintf("C%d", sHeaderRow), cfg.Name+"句子")
+	setBold(sheet2, fmt.Sprintf("A%d", sHeaderRow))
+	setBold(sheet2, fmt.Sprintf("B%d", sHeaderRow))
+	setBold(sheet2, fmt.Sprintf("C%d", sHeaderRow))
 
-	for i, s := range plan.Sentences {
-		row := sentenceStartRow + 2 + i
-		f.SetCellValue(sheet2, fmt.Sprintf("A%d", row), s.Number)
-		f.SetCellValue(sheet2, fmt.Sprintf("B%d", row), s.Chinese)
-		f.SetCellValue(sheet2, fmt.Sprintf("C%d", row), s.Answer)
-	}
+	f.SetCellValue(sheet2, fmt.Sprintf("E%d", sHeaderRow), "序号")
+	f.SetCellValue(sheet2, fmt.Sprintf("F%d", sHeaderRow), "中文")
+	f.SetCellValue(sheet2, fmt.Sprintf("G%d", sHeaderRow), cfg.Name+"句子")
+	setBold(sheet2, fmt.Sprintf("E%d", sHeaderRow))
+	setBold(sheet2, fmt.Sprintf("F%d", sHeaderRow))
+	setBold(sheet2, fmt.Sprintf("G%d", sHeaderRow))
 
-	// Set column widths
+	writeSentenceBlock(sheet2, leftSentences, sStartRow, "A", "B", "C", true)
+	writeSentenceBlock(sheet2, rightSentences, sStartRow, "E", "F", "G", true)
+
+	// Column widths
 	f.SetColWidth(sheet2, "A", "A", 8)
-	f.SetColWidth(sheet2, "B", "B", 40)
-	f.SetColWidth(sheet2, "C", "C", 30)
+	f.SetColWidth(sheet2, "B", "B", 35)
+	f.SetColWidth(sheet2, "C", "C", 25)
+	f.SetColWidth(sheet2, "D", "D", 3)
+	f.SetColWidth(sheet2, "E", "E", 8)
+	f.SetColWidth(sheet2, "F", "F", 35)
+	f.SetColWidth(sheet2, "G", "G", 25)
 
-	// Save
 	return f.SaveAs(outputPath)
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
