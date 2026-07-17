@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 )
 
@@ -50,10 +51,11 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 		os.Exit(1)
 	}
 
-	// Find due words
+	// Find due words and assign review categories
 	var dueWords []Word
 	for _, w := range AllWords(arc.Groups) {
 		if IsDue(w, targetDate) {
+			w.Status = GetReviewCategory(w)
 			dueWords = append(dueWords, w)
 		}
 	}
@@ -69,6 +71,11 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 		return
 	}
 
+	// Sort by status priority: 钉子户 > 待巩固 > 待测试 > 基本掌握 > 抽查
+	sort.SliceStable(dueWords, func(i, j int) bool {
+		return StatusPriority(dueWords[i].Status) < StatusPriority(dueWords[j].Status)
+	})
+
 	// Build plan
 	dateStr := targetDate.Format("2006-01-02")
 	plan := &ReviewPlan{
@@ -82,6 +89,7 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 			Word:       w.Word,
 			Definition: w.Definition,
 			Group:      w.Group,
+			Status:     w.Status,
 		})
 	}
 

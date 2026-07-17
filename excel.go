@@ -12,11 +12,11 @@ import (
 //
 // Layout: two column-blocks side by side, separated by a narrow gap column.
 //
-//	| 序号 | 中文释义 | 日语（填写） | gap | 序号 | 中文释义 | 日语（填写） |
-//	|  1   | xxx      |              |     |  41  | xxx      |              |
-//	|  2   | xxx      |              |     |  42  | xxx      |              |
-//	| ...  |          |              |     | ...  |          |              |
+//	| 序号  | 中文释义 | 日语（填写） | gap | 序号  | 中文释义 | 日语（填写） |
+//	| 1🔴  | xxx      |              |     | 41🟢 | xxx      |              |
 //
+// The 序号 cell contains the number + status emoji.
+// Words are sorted by status priority (钉子户 first).
 // Sentences use the same two-column layout.
 func GenerateExcel(plan *ReviewPlan, outputPath string) error {
 	f := excelize.NewFile()
@@ -32,11 +32,10 @@ func GenerateExcel(plan *ReviewPlan, outputPath string) error {
 		f.SetCellStyle(sheet, cell, cell, boldStyle)
 	}
 
-	// Column groups: left block = A,B,C; gap = D; right block = E,F,G
-	// colLeft = [序号, 中文, 日语], colRight = [序号, 中文, 日语]
-	type colBlock struct {
-		colNum  string // "A", "E"
-		colWord string // "C", "G"
+	// Count words by status for the summary
+	statusCounts := map[string]int{}
+	for _, w := range plan.Words {
+		statusCounts[w.Status]++
 	}
 
 	// Split words into two halves
@@ -58,6 +57,26 @@ func GenerateExcel(plan *ReviewPlan, outputPath string) error {
 	setBold(sheet1, "A1")
 	f.MergeCell(sheet1, "A1", "G1")
 
+	// Status summary row (row 2)
+	summary := ""
+	if c := statusCounts["🔴钉子户"]; c > 0 {
+		summary += fmt.Sprintf("🔴钉子户%d ", c)
+	}
+	if c := statusCounts["🔴待巩固"]; c > 0 {
+		summary += fmt.Sprintf("🔴待巩固%d ", c)
+	}
+	if c := statusCounts["🔄待测试"]; c > 0 {
+		summary += fmt.Sprintf("🔄待测试%d ", c)
+	}
+	if c := statusCounts["🟡基本掌握"]; c > 0 {
+		summary += fmt.Sprintf("🟡基本掌握%d ", c)
+	}
+	if c := statusCounts["🟢抽查"]; c > 0 {
+		summary += fmt.Sprintf("🟢抽查%d ", c)
+	}
+	f.SetCellValue(sheet1, "A2", summary)
+	f.MergeCell(sheet1, "A2", "G2")
+
 	// Word section headers (row 3)
 	f.SetCellValue(sheet1, "A3", "序号")
 	f.SetCellValue(sheet1, "B3", "中文释义")
@@ -73,16 +92,23 @@ func GenerateExcel(plan *ReviewPlan, outputPath string) error {
 	setBold(sheet1, "F3")
 	setBold(sheet1, "G3")
 
-	// Word entries
+	// Word entries: 序号 cell shows "N🔴" format (number + status emoji)
 	writeWordBlock := func(sheet string, words []PlanWord, startRow int, numCol, defCol, wordCol string, withAnswer bool) {
 		for i, w := range words {
 			row := startRow + i
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", numCol, row), w.Number)
+			// Number + status emoji in the 序号 cell
+			var numLabel string
+			if w.Status != "" {
+				runes := []rune(w.Status)
+				numLabel = fmt.Sprintf("%d%s", w.Number, string(runes[0]))
+			} else {
+				numLabel = fmt.Sprintf("%d", w.Number)
+			}
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", numCol, row), numLabel)
 			f.SetCellValue(sheet, fmt.Sprintf("%s%d", defCol, row), w.Definition)
 			if withAnswer {
 				f.SetCellValue(sheet, fmt.Sprintf("%s%d", wordCol, row), w.Word)
 			}
-			// else: leave empty for user to fill in
 		}
 	}
 
@@ -91,12 +117,7 @@ func GenerateExcel(plan *ReviewPlan, outputPath string) error {
 	writeWordBlock(sheet1, rightWords, wordStartRow, "E", "F", "G", false)
 
 	// Sentence section
-	sentenceStartRow := wordStartRow + half
-	if len(rightWords) > half {
-		sentenceStartRow = wordStartRow + len(rightWords)
-	}
-	// Add gap between word section and sentence section
-	sentenceStartRow = wordStartRow + max(len(leftWords), len(rightWords)) + 2
+	sentenceStartRow := wordStartRow + max(len(leftWords), len(rightWords)) + 2
 
 	f.SetCellValue(sheet1, fmt.Sprintf("A%d", sentenceStartRow), "造句练习")
 	setBold(sheet1, fmt.Sprintf("A%d", sentenceStartRow))
@@ -134,11 +155,11 @@ func GenerateExcel(plan *ReviewPlan, outputPath string) error {
 	writeSentenceBlock(sheet1, rightSentences, sStartRow, "E", "F", "G", false)
 
 	// Column widths
-	f.SetColWidth(sheet1, "A", "A", 8)
+	f.SetColWidth(sheet1, "A", "A", 10)
 	f.SetColWidth(sheet1, "B", "B", 35)
 	f.SetColWidth(sheet1, "C", "C", 25)
 	f.SetColWidth(sheet1, "D", "D", 3)
-	f.SetColWidth(sheet1, "E", "E", 8)
+	f.SetColWidth(sheet1, "E", "E", 10)
 	f.SetColWidth(sheet1, "F", "F", 35)
 	f.SetColWidth(sheet1, "G", "G", 25)
 
@@ -150,6 +171,10 @@ func GenerateExcel(plan *ReviewPlan, outputPath string) error {
 	f.SetCellValue(sheet2, "A1", fmt.Sprintf("%s单词复习答案 %s", cfg.Name, plan.Date))
 	setBold(sheet2, "A1")
 	f.MergeCell(sheet2, "A1", "G1")
+
+	// Status summary row
+	f.SetCellValue(sheet2, "A2", summary)
+	f.MergeCell(sheet2, "A2", "G2")
 
 	// Word section headers (row 3)
 	f.SetCellValue(sheet2, "A3", "序号")
@@ -193,11 +218,11 @@ func GenerateExcel(plan *ReviewPlan, outputPath string) error {
 	writeSentenceBlock(sheet2, rightSentences, sStartRow, "E", "F", "G", true)
 
 	// Column widths
-	f.SetColWidth(sheet2, "A", "A", 8)
+	f.SetColWidth(sheet2, "A", "A", 10)
 	f.SetColWidth(sheet2, "B", "B", 35)
 	f.SetColWidth(sheet2, "C", "C", 25)
 	f.SetColWidth(sheet2, "D", "D", 3)
-	f.SetColWidth(sheet2, "E", "E", 8)
+	f.SetColWidth(sheet2, "E", "E", 10)
 	f.SetColWidth(sheet2, "F", "F", 35)
 	f.SetColWidth(sheet2, "G", "G", 25)
 
