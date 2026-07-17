@@ -224,8 +224,8 @@ func (s *Storage) DownloadPlan(ctx context.Context, planDate string) (*ReviewPla
 }
 
 // UploadExcel uploads an Excel file to COS.
-func (s *Storage) UploadExcel(ctx context.Context, date string, localPath string) error {
-	key := fmt.Sprintf("%s/plans/复习计划_%s.xlsx", s.cosPrefix(), date)
+func (s *Storage) UploadExcel(ctx context.Context, date string, major, minor int, localPath string) error {
+	key := fmt.Sprintf("%s/plans/review_%s_v%d.%d.xlsx", s.cosPrefix(), date, major, minor)
 	data, err := os.ReadFile(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to read excel file: %w", err)

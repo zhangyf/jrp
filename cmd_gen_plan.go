@@ -11,7 +11,7 @@ import (
 )
 
 func runGenPlan(fs *flag.FlagSet, lang string) {
-	outputPath := fs.String("output", "", "Output Excel file path (default: /tmp/review_<date>.xlsx)")
+	outputPath := fs.String("output", "", "Output Excel file path (default: outputs/review_<date>_vA.B.xlsx)")
 	sentencesFile := fs.String("sentences", "", "JSON file with sentence exercises [{\"chinese\":\"...\",\"answer\":\"...\"}]")
 	dateFlag := fs.String("date", "", "Target date for review plan (YYYY-MM-DD). Defaults to today.")
 	fs.Parse(cmdArgs)
@@ -38,10 +38,20 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 	ctx := context.Background()
 
 	// Download latest archive
-	data, _, err := storage.DownloadLatestArchive(ctx)
+	data, archiveFilename, err := storage.DownloadLatestArchive(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error downloading latest archive: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Parse version from archive filename (e.g. 日语学习进度档案_260717_v1.6.md → v1.6)
+	var arcMajor, arcMinor int
+	if d, maj, min, perr := ParseFilename(archiveFilename); perr == nil {
+		arcMajor, arcMinor = maj, min
+		_ = d
+	} else {
+		// Fallback: try to extract from changelog
+		arcMajor, arcMinor = 1, 0
 	}
 
 	// Parse archive
@@ -114,7 +124,7 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 
 	// Generate Excel
 	if *outputPath == "" {
-		*outputPath = fmt.Sprintf("/tmp/review_%s.xlsx", dateStr)
+		*outputPath = fmt.Sprintf("outputs/review_%s_v%d.%d.xlsx", dateStr, arcMajor, arcMinor)
 	}
 
 	// Ensure output directory exists
@@ -133,7 +143,7 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 	}
 
 	// Upload Excel to COS (backup)
-	if err := storage.UploadExcel(ctx, dateStr, *outputPath); err != nil {
+	if err := storage.UploadExcel(ctx, dateStr, arcMajor, arcMinor, *outputPath); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to upload Excel backup: %v\n", err)
 	}
 

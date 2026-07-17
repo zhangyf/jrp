@@ -28,7 +28,7 @@ Global flags:
 Examples:
   jrp --lang ja import < archive.md
   jrp --lang ja add-words --input words.json
-  jrp --lang ja gen-plan --output /tmp/review.xlsx
+  jrp --lang ja gen-plan --output outputs/review.xlsx
   jrp --lang ja record --input results.json
   jrp --lang ja update-def --input def.json
   jrp --lang ja stats --days 7
