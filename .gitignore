@@ -1,0 +1,18 @@
+# Binaries
+jrp
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+*.xlsx
+/tmp/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
