@@ -187,7 +187,7 @@ func CountNailHouseholds(groups []WordGroup) int {
 // GetReviewCategory returns a review-specific category for a word.
 // This is more granular than DetermineStatus, adding "钉子户" and "抽查" labels.
 //
-//	🔴钉子户   - ErrorCount >= 3 (repeatedly wrong, stubborn words)
+//	☠️钉子户   - ErrorCount >= 3 (repeatedly wrong, stubborn words)
 //	🔴待巩固   - errorRate >= 30% but ErrorCount < 3
 //	🔄待测试   - ReviewCount == 0 (never tested)
 //	🟡基本掌握 - reviewed but not yet mastered
@@ -203,7 +203,7 @@ func GetReviewCategory(w Word) string {
 	}
 
 	if w.ErrorCount >= 3 {
-		return "🔴钉子户"
+		return "☠️钉子户"
 	}
 
 	if errorRate >= 0.30 {
@@ -220,7 +220,7 @@ func GetReviewCategory(w Word) string {
 // StatusPriority returns a sort priority for review categories (lower = higher priority).
 func StatusPriority(status string) int {
 	switch status {
-	case "🔴钉子户":
+	case "☠️钉子户":
 		return 0
 	case "🔴待巩固":
 		return 1

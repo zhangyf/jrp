@@ -59,8 +59,8 @@ func GenerateExcel(plan *ReviewPlan, outputPath string) error {
 
 	// Status summary row (row 2)
 	summary := ""
-	if c := statusCounts["🔴钉子户"]; c > 0 {
-		summary += fmt.Sprintf("🔴钉子户%d ", c)
+	if c := statusCounts["☠️钉子户"]; c > 0 {
+		summary += fmt.Sprintf("☠️钉子户%d ", c)
 	}
 	if c := statusCounts["🔴待巩固"]; c > 0 {
 		summary += fmt.Sprintf("🔴待巩固%d ", c)

@@ -64,7 +64,7 @@ type PlanWord struct {
 	Word       string `json:"word"`
 	Definition string `json:"definition"`
 	Group      string `json:"group"`
-	Status     string `json:"status"` // review category: 🔴钉子户 / 🔴待巩固 / 🔄待测试 / 🟡基本掌握 / 🟢抽查
+	Status     string `json:"status"` // review category: ☠️钉子户 / 🔴待巩固 / 🔄待测试 / 🟡基本掌握 / 🟢抽查
 }
 
 // PlanSentence is a sentence exercise in a review plan.
