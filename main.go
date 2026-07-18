@@ -19,8 +19,10 @@ Commands:
   gen-plan     Generate today's review Excel plan
   record       Record review results and update archive
   update-def   Update a word's definition
-  stats        Show statistics for the last N days
-  save-lesson  Save a knowledge document to COS
+  stats           Show statistics for the last N days
+  save-lesson     Save a knowledge document to COS
+  list-knowledge  List all knowledge documents in COS
+  get-knowledge   Download a knowledge document from COS
 
 Global flags:
   --lang string   Language code: ja (Japanese), en (English), fr (French) (required)
@@ -33,6 +35,8 @@ Examples:
   jrp --lang ja update-def --input def.json
   jrp --lang ja stats --days 7
   jrp --lang ja save-lesson --file lesson.md --name 第9课知识点.md
+  jrp --lang ja list-knowledge
+  jrp --lang ja get-knowledge --name 第8课知识点.md
 `
 
 func main() {
@@ -96,6 +100,10 @@ func main() {
 		runStats(fs, lang)
 	case "save-lesson":
 		runSaveLesson(fs, lang)
+	case "list-knowledge":
+		runListKnowledge(fs, lang)
+	case "get-knowledge":
+		runGetKnowledge(fs, lang)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		fmt.Print(usage)

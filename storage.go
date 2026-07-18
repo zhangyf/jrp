@@ -239,6 +239,25 @@ func (s *Storage) UploadKnowledge(ctx context.Context, filename string, data []b
 	return s.store.PutObject(ctx, key, data)
 }
 
+// ListKnowledge lists all knowledge documents in COS, sorted by key ascending.
+func (s *Storage) ListKnowledge(ctx context.Context) ([]objstore.ObjectInfo, error) {
+	prefix := s.cosPrefix() + "/knowledge/"
+	objs, err := s.store.ListObjects(ctx, objstore.ListOptions{Prefix: prefix, Delimiter: ""})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(objs, func(i, j int) bool {
+		return objs[i].Key < objs[j].Key
+	})
+	return objs, nil
+}
+
+// DownloadKnowledge downloads a specific knowledge document by filename.
+func (s *Storage) DownloadKnowledge(ctx context.Context, name string) ([]byte, error) {
+	key := s.cosPrefix() + "/knowledge/" + name
+	return s.store.GetAll(ctx, key)
+}
+
 // ListHistoryArchives lists all historical archives in COS.
 func (s *Storage) ListHistoryArchives(ctx context.Context) ([]objstore.ObjectInfo, error) {
 	prefix := s.cosPrefix() + "/history/"
