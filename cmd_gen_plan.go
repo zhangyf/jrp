@@ -44,14 +44,16 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 		os.Exit(1)
 	}
 
-	// Parse version from archive filename (e.g. 日语学习进度档案_260717_v1.6.md → v1.6)
+	// Parse version and date from archive filename (e.g. 日语学习进度档案_260717_v1.6.md → v1.6)
 	var arcMajor, arcMinor int
+	var arcDate time.Time
 	if d, maj, min, perr := ParseFilename(archiveFilename); perr == nil {
 		arcMajor, arcMinor = maj, min
-		_ = d
+		arcDate = d
 	} else {
-		// Fallback: try to extract from changelog
+		// Fallback: assume v1.0 on target date
 		arcMajor, arcMinor = 1, 0
+		arcDate = targetDate
 	}
 
 	// Parse archive
@@ -59,6 +61,22 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing archive: %v\n", err)
 		os.Exit(1)
+	}
+
+	// If the latest archive is from a previous day (no archive exists for the
+	// target date yet), initialize today's v1.0 archive so that the review plan
+	// uses v1.0 instead of inheriting the previous day's version number. A
+	// subsequent `record` will then bump to v1.1 on the same day.
+	if !sameDay(arcDate, targetDate) {
+		arcMajor, arcMinor = 1, 0
+		AddChangelogEntry(arc, targetDate, arcMajor, arcMinor, "新日初始化（gen-plan）")
+		newContent := WriteArchive(arc)
+		newFilename := ArchiveFilename(lang, targetDate, arcMajor, arcMinor)
+		if err := storage.UploadArchive(ctx, newFilename, []byte(newContent)); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to initialize today's archive: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "Initialized new day archive: %s\n", newFilename)
+		}
 	}
 
 	// Find due words and assign review categories
