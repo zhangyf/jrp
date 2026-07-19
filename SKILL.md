@@ -317,8 +317,10 @@ All commands: `$JRP_BIN --lang <ja|en|fr> <command> [flags]`
 
 The Go binary needs `PATH` to include the Go SDK for toolchain auto-download:
 ```
-PATH=/Users/zhangyufeng/go-sdk/go/bin:$PATH
+PATH=$HOME/go-sdk/go/bin:$PATH
 ```
+
+Or set the `JRP_COS_SKILL_DIR` env var if the encrypted COS credentials are in a non-default location.
 
 Set this before running jrp commands if the binary was compiled with a newer Go toolchain.
 
@@ -326,7 +328,7 @@ Set this before running jrp commands if the binary was compiled with a newer Go 
 
 GitHub: https://github.com/zhangyf/jrp (private)
 
-Local source: `/Users/zhangyufeng/WorkBuddy/2026-07-17-18-53-28/jrp/`
+Local source: clone the repo to your preferred working directory (e.g., `~/jrp/`)
 
 Go module: `github.com/zhangyf/jrp`
 Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`

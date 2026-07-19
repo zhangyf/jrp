@@ -17,8 +17,18 @@ import (
 	"github.com/zhangyf/objstore"
 )
 
-// COS skill directory where .env.enc is stored
-const cosSkillDir = "/Users/zhangyufeng/.workbuddy/skills/tencentcloud-cos"
+// cosSkillDir returns the directory where the encrypted .env.enc is stored.
+// Resolution order: JRP_COS_SKILL_DIR env var → $HOME/.workbuddy/skills/tencentcloud-cos.
+func cosSkillDir() string {
+	if dir := os.Getenv("JRP_COS_SKILL_DIR"); dir != "" {
+		return dir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(".workbuddy", "skills", "tencentcloud-cos")
+	}
+	return filepath.Join(home, ".workbuddy", "skills", "tencentcloud-cos")
+}
 
 // Storage wraps an objstore.Store for archive operations.
 type Storage struct {
@@ -61,13 +71,14 @@ func loadCOSConfig() (objstore.Config, error) {
 	}
 
 	// Fall back to .env.enc
-	encPath := filepath.Join(cosSkillDir, ".env.enc")
+	skillDir := cosSkillDir()
+	encPath := filepath.Join(skillDir, ".env.enc")
 	encData, err := os.ReadFile(encPath)
 	if err != nil {
 		return objstore.Config{}, fmt.Errorf("no env vars set and cannot read .env.enc: %w", err)
 	}
 
-	plaintext, err := decryptEnvFile(encData, cosSkillDir)
+	plaintext, err := decryptEnvFile(encData, skillDir)
 	if err != nil {
 		return objstore.Config{}, fmt.Errorf("failed to decrypt .env.enc: %w", err)
 	}
