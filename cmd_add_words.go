@@ -70,7 +70,24 @@ func runAddWords(fs *flag.FlagSet, lang string) {
 		targetGroup = &arc.Groups[len(arc.Groups)-1]
 	}
 
-	// Add words (skip duplicates)
+	// Pre-dedupe within input list (defensive — keeps semantics explicit,
+	// not relying on FindWord seeing newly-appended entries). Keep first
+	// occurrence's definition when the same word appears more than once.
+	seen := make(map[string]bool, len(input.Words))
+	deduped := make([]struct {
+		Word       string `json:"word"`
+		Definition string `json:"definition"`
+	}, 0, len(input.Words))
+	for _, w := range input.Words {
+		if seen[w.Word] {
+			continue
+		}
+		seen[w.Word] = true
+		deduped = append(deduped, w)
+	}
+	input.Words = deduped
+
+	// Add words (skip duplicates already in archive)
 	added := 0
 	duplicates := 0
 	for _, w := range input.Words {
