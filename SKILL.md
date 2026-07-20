@@ -258,22 +258,89 @@ Knowledge base IDs:
 
 **Trigger**: User sends textbook photos for knowledge extraction.
 
-**Steps**:
-1. Read photos — extract lesson text, grammar points, example sentences
-2. Format as a knowledge document following the existing template:
+**⚠️ Core principle**: Do NOT copy-paste the textbook. The point is to **distill and reorganize** —
+the textbook already exists on the user's desk. Your summary should be the "study guide" version
+that makes patterns visible and traps avoidable.
+
+**🎯 Theme-first structure** (MUST follow, highest priority):
+
+Every lesson has ONE core theme. Identify it, state it upfront, and build the entire document around it.
+
+1. **Identify the core theme**: Read the lesson and ask "what is the ONE thing this lesson is really
+   teaching?" Not the title, not the topic — the skill. Examples:
+   - 第9课 → 形容词谓语句 · 现在/过去 × 肯定/否定 四种活用
+   - 第7课 → 动作的授受关系（あげる/もらう）
+   - 第8课 → で的三种用法（工具/地点/方式）
+
+2. **Theme as the backbone**: The theme should be stated in the document title line, and every
+   subsequent section (课文拆解、语法解释、应用对话、副词、反义词) should explicitly **reference back**
+   to the theme — showing how each piece of content serves or illustrates the core skill.
+
+3. **Don't follow the textbook's TOC**: The textbook orders content as 基本课文 → 语法解释 → 表达讲解 →
+   应用课文. That's for teaching. Your document is for **review**. Reorder content so the core skill
+   comes first, and auxiliary knowledge (感叹词、读音注释) comes later.
+
+4. **课文拆解 serves the theme**: Instead of listing 4 textbook sentences under a "基本课文" heading,
+   group them by which form of the core pattern they demonstrate (e.g., a table: 现在肯定 / 现在否定 /
+   过去肯定 / 过去否定, with the corresponding textbook sentence in each cell). This makes the
+   structure of the lesson visible in a single glance.
+
+**Style rules** (MUST follow):
+
+1. **Grammar → comparison tables, not paragraphs.** When a grammar point has multiple forms
+   (e.g. adjective conjugations, verb tenses), use a table with columns for form/rule/example.
+   Always highlight the rule (e.g. "い→く＋ない") rather than just listing examples.
+
+2. **Distinguish similar concepts.** If two things are easily confused (e.g. に vs で, あげる vs もらう,
+   熱い vs 暑い), put them side by side with clear contrast notes.
+
+3. **Mark error traps explicitly.** Use ⚠️ annotations for:
+   - Common mistakes from Chinese L1 interference (e.g. "形容词修饰名词不加の")
+   - Irregular forms (e.g. いい→よくない)
+   - Special usage constraints (e.g. "あまり/全然 必须搭配否定")
+   - Words that look like one category but are another (e.g. きれい is ナ形容詞 not イ形容詞)
+
+4. **Pair antonyms.** When a lesson introduces adjectives or directional words in pairs,
+   group them (e.g. 大きい↔小さい, 熱い↔冷たい, 高い↔低い/安い).
+
+5. **Give mnemonic rules, not just descriptions.** For patterns, distill to one-line formulas:
+   - "い→く做否定，い→かっ做过去" (adjective conjugation)
+   - "存在に、动作で" (に vs で)
+
+6. **Application dialogue → grammar breakdown, not transcript.** Don't just reproduce the dialogue.
+   Annotate which grammar points each exchange demonstrates and why.
+
+**Document structure** (theme-driven, NOT textbook-order):
 
 ```markdown
 # 标准日本语初级上册 第N课 知识点
 
-## 本课主题
-## 一、基本课文（4句，日文+中文翻译）
-## 二、语法解释（编号列出，每条带例句）
-## 三、表达及词语讲解要点
-## 四、应用课文（场景对话）
-## 五、易错助词重点（表格）
-复习造句重点
+> **本课核心：[一句话说明这一课到底在教什么]**
+
+## [核心技能的速查表]
+（本课最核心的规则/活用表，放在最前面。比如形容词四种活用、で的三种用法。
+这是整个文档的"索引"，后续所有内容都回指这个表。）
+
+## 核心技能 → 课文拆解
+（不是罗列课文句子，而是按核心技能的不同形态/用法分组，
+标注每句课文对应哪个形态，做成对照表。）
+
+## [核心技能的相关要点]
+（易错点、不规则变化、搭配限制——只讲直接服务核心技能的内容。）
+
+## [辅助知识点]
+（程度副词、特殊词汇用法、反义词组等，按主题分组，用表格呈现。）
+
+## 应用课文「标题」
+（语法拆解，不是抄对话。标注每句里核心技能的具体体现。）
+
+## 复习造句重点
+（基于本课核心技能，列出最需要练习的句型/考点。）
 ```
 
+**Steps**:
+1. Read photos — extract lesson text, grammar points, example sentences
+2. Reorganize following the style rules above — this is the key step
 3. Save to local file
 4. Run: `jrp --lang ja save-lesson --file /tmp/lesson.md --name 第N课知识点.md`
 5. Report: document saved to COS
