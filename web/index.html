@@ -26,26 +26,9 @@
     box-shadow:0 1px 3px rgba(0,0,0,.05);}
   .def{font-size:30px;font-weight:700;text-align:center;line-height:1.4;margin:6px 0 4px;}
   .grp{text-align:center;color:var(--sub);font-size:13px;margin-bottom:16px;}
-  .modes{display:flex;gap:8px;justify-content:center;margin-bottom:14px;}
-  .modes button{flex:0 0 auto;padding:6px 16px;border:1px solid var(--line);background:#fff;
-    border-radius:20px;cursor:pointer;font-size:14px;color:var(--sub);}
-  .modes button.on{background:var(--accent);color:#fff;border-color:var(--accent);}
   .answer{width:100%;font-size:26px;text-align:center;padding:12px;border:2px solid var(--line);
     border-radius:10px;outline:none;}
   .answer:focus{border-color:var(--accent);}
-  .hwwrap{display:none;}
-  .hwwrap.on{display:block;}
-  #hwcanvas{width:100%;max-width:300px;height:300px;display:block;margin:0 auto;
-    background:#fff;border:2px dashed var(--line);border-radius:12px;touch-action:none;}
-  .hwbtns{display:flex;gap:8px;justify-content:center;margin:10px 0;}
-  .hwbtns button{padding:8px 14px;border:1px solid var(--line);background:#fff;border-radius:8px;
-    cursor:pointer;font-size:14px;}
-  .cands{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;min-height:44px;margin-top:8px;}
-  .cands button{font-size:24px;width:48px;height:48px;border:1px solid var(--line);background:#fff;
-    border-radius:8px;cursor:pointer;}
-  .cands button:hover{border-color:var(--accent);}
-  .built{font-size:26px;text-align:center;min-height:40px;letter-spacing:2px;
-    padding:8px;border-bottom:2px solid var(--line);margin-bottom:8px;}
   .actions{display:flex;gap:10px;margin-top:16px;}
   .actions button{flex:1;padding:14px;border:none;border-radius:10px;font-size:16px;cursor:pointer;color:#fff;}
   .submit{background:var(--accent);} .skip{background:#9ca3af;}
@@ -59,6 +42,9 @@
   .done button{margin-top:18px;padding:12px 28px;border:none;background:var(--accent);color:#fff;
     border-radius:10px;font-size:16px;cursor:pointer;}
   .hint{font-size:12px;color:var(--sub);text-align:center;margin-top:8px;}
+  .imhint{text-align:center;margin-top:10px;font-size:13px;color:var(--sub);
+    background:#f0f5ff;padding:10px 12px;border-radius:8px;line-height:1.6;}
+  .imhint b{color:var(--accent);}
   .loading{text-align:center;padding:60px 0;color:var(--sub);}
 </style>
 </head>
@@ -74,21 +60,17 @@
   </div>
 </div>
 
-<script src="/kanji/kanji-canvas.min.js"></script>
-<script src="/kanji/ref-patterns.js"></script>
 <script>
 "use strict";
 
 const state = {
   lang: "ja",
   date: "",
-  all: [],        // full plan words
-  queue: [],      // working queue of indices into all[]
+  all: [],
+  queue: [],
   pos: 0,
-  results: {},    // number -> correct (first attempt only)
-  mode: "kb",     // "kb" | "hw"
+  results: {},
   strict: false,
-  built: "",      // handwriting assembled string
 };
 
 const STATUS_TAG = {
@@ -98,7 +80,7 @@ const STATUS_TAG = {
 };
 
 // ---- normalization + grading ----
-function toHira(s){ // katakana -> hiragana, for lenient compare
+function toHira(s){
   return s.replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0)-0x60));
 }
 function normalize(s){
@@ -108,11 +90,9 @@ function normalize(s){
     .replace(/[・･]/g,"")
     .trim();
 }
-// word field looks like "おろします(下ろします)" or "すし" or "とても/たいへん"
 function answerForms(word){
   const forms = new Set();
   const raw = word.trim();
-  // split slash alternatives
   raw.split("/").forEach(part=>{
     const m = part.match(/^(.+?)\((.+?)\)$/);
     if(m){ forms.add(m[1].trim()); forms.add(m[2].trim()); forms.add(part.trim()); }
@@ -125,10 +105,8 @@ function grade(input, word, strict){
   const nin = normalize(input);
   if(!nin) return false;
   if(strict){
-    // must match a full written form (kana or kanji), exact after normalize
     return forms.some(f => normalize(f) === nin);
   }
-  // lenient: compare after katakana->hiragana folding too
   const ninH = toHira(nin);
   return forms.some(f=>{
     const nf = normalize(f);
@@ -167,7 +145,6 @@ function renderCard(){
   const answered = Object.keys(state.results).length;
   const total = state.all.length;
   const pct = Math.round(answered/total*100);
-  state.built = "";
 
   document.getElementById("app").innerHTML = `
     <div class="meta">
@@ -179,25 +156,11 @@ function renderCard(){
     <div class="card">
       <div class="def">${escapeHtml(w.definition)}</div>
       <div class="grp">${escapeHtml(w.group)}</div>
-      <div class="modes">
-        <button id="mKb" class="${state.mode==='kb'?'on':''}">⌨️ 键盘</button>
-        <button id="mHw" class="${state.mode==='hw'?'on':''}">✍️ 手写</button>
-      </div>
 
-      <div id="kbWrap" style="${state.mode==='kb'?'':'display:none'}">
-        <input class="answer" id="ansInput" placeholder="用日语输入法作答" autocomplete="off">
-      </div>
+      <input class="answer" id="ansInput" placeholder="用日语输入法作答" autocomplete="off">
 
-      <div class="hwwrap ${state.mode==='hw'?'on':''}" id="hwWrap">
-        <div class="built" id="builtBox"></div>
-        <canvas id="hwcanvas" width="300" height="300"></canvas>
-        <div class="hwbtns">
-          <button id="hwRecog">识别</button>
-          <button id="hwUndo">删上一笔</button>
-          <button id="hwClear">清空</button>
-          <button id="hwBack">删末字</button>
-        </div>
-        <div class="cands" id="cands"></div>
+      <div class="imhint">
+        手写输入：将系统输入法切到 <b>日语 Microsoft IME</b>，右键托盘图标 → <b>IME Pad → Handwriting</b>，画的字会自动填入上方输入框
       </div>
 
       <div class="actions">
@@ -212,68 +175,20 @@ function renderCard(){
     </div>
   `;
 
-  document.getElementById("mKb").onclick = ()=>switchMode("kb");
-  document.getElementById("mHw").onclick = ()=>switchMode("hw");
   document.getElementById("btnSubmit").onclick = onSubmit;
   document.getElementById("btnSkip").onclick = onSkip;
   document.getElementById("strictBox").onchange = e=>{ state.strict = e.target.checked; };
 
-  if(state.mode==="kb"){
-    const inp = document.getElementById("ansInput");
-    inp.focus();
-    inp.onkeydown = e=>{ if(e.key==="Enter") onSubmit(); };
-  } else {
-    initHandwriting();
-  }
-}
-
-function switchMode(m){
-  state.mode = m;
-  renderCard();
-}
-
-let hwInited = false;
-function initHandwriting(){
-  KanjiCanvas.init("hwcanvas");
-  document.getElementById("builtBox").textContent = state.built;
-  document.getElementById("cands").innerHTML = "";
-  document.getElementById("hwRecog").onclick = ()=>{
-    const raw = KanjiCanvas.recognize("hwcanvas") || "";
-    const cands = raw.split(/\s+/).filter(Boolean).slice(0,12);
-    const box = document.getElementById("cands");
-    box.innerHTML = "";
-    cands.forEach(ch=>{
-      const b = document.createElement("button");
-      b.textContent = ch;
-      b.onclick = ()=>{
-        state.built += ch;
-        document.getElementById("builtBox").textContent = state.built;
-        KanjiCanvas.erase("hwcanvas");
-        box.innerHTML = "";
-      };
-      box.appendChild(b);
-    });
-  };
-  document.getElementById("hwUndo").onclick = ()=>KanjiCanvas.deleteLast("hwcanvas");
-  document.getElementById("hwClear").onclick = ()=>KanjiCanvas.erase("hwcanvas");
-  document.getElementById("hwBack").onclick = ()=>{
-    state.built = state.built.slice(0,-1);
-    document.getElementById("builtBox").textContent = state.built;
-  };
-}
-
-function currentAnswer(){
-  return state.mode==="kb"
-    ? document.getElementById("ansInput").value
-    : state.built;
+  const inp = document.getElementById("ansInput");
+  inp.focus();
+  inp.onkeydown = e=>{ if(e.key==="Enter") onSubmit(); };
 }
 
 function onSubmit(){
   const w = state.all[state.queue[state.pos]];
-  const ans = currentAnswer();
+  const ans = document.getElementById("ansInput").value;
   if(!ans.trim()){ flash("请先作答", false); return; }
   const ok = grade(ans, w.word, state.strict);
-  // record only first attempt for this number
   if(!(w.number in state.results)){
     state.results[w.number] = ok;
   }
@@ -285,7 +200,6 @@ function onSubmit(){
   } else {
     fb.className = "feedback bad";
     fb.textContent = "✗ 正确答案：" + w.word;
-    // requeue wrong card to the end for immediate re-practice
     state.queue.push(state.queue[state.pos]);
     setTimeout(nextCard, 1600);
   }
@@ -294,7 +208,7 @@ function onSubmit(){
 function onSkip(){
   const w = state.all[state.queue[state.pos]];
   if(!(w.number in state.results)) state.results[w.number] = false;
-  state.queue.push(state.queue[state.pos]); // see it again
+  state.queue.push(state.queue[state.pos]);
   nextCard();
 }
 
