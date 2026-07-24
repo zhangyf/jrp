@@ -79,46 +79,19 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 		}
 	}
 
-	// Find due words and assign review categories
-	var dueWords []Word
-	for _, w := range AllWords(arc.Groups) {
-		if IsDue(w, targetDate) {
-			w.Status = GetReviewCategory(w)
-			dueWords = append(dueWords, w)
-		}
-	}
+	// Find due words, assign categories, sort, and build the plan (reused by server)
+	dateStr := targetDate.Format("2006-01-02")
+	plan := BuildDuePlan(arc, lang, targetDate)
 
-	if len(dueWords) == 0 {
+	if len(plan.Words) == 0 {
 		outputResult(map[string]interface{}{
 			"success":   true,
 			"command":   "gen-plan",
-			"date":      targetDate.Format("2006-01-02"),
+			"date":      dateStr,
 			"due_count": 0,
 			"message":   "No words due for review on the target date",
 		})
 		return
-	}
-
-	// Sort by status priority: 钉子户 > 待巩固 > 待测试 > 基本掌握 > 抽查
-	sort.SliceStable(dueWords, func(i, j int) bool {
-		return StatusPriority(dueWords[i].Status) < StatusPriority(dueWords[j].Status)
-	})
-
-	// Build plan
-	dateStr := targetDate.Format("2006-01-02")
-	plan := &ReviewPlan{
-		Date:     dateStr,
-		Language: lang,
-	}
-
-	for i, w := range dueWords {
-		plan.Words = append(plan.Words, PlanWord{
-			Number:     i + 1,
-			Word:       w.Word,
-			Definition: w.Definition,
-			Group:      w.Group,
-			Status:     w.Status,
-		})
 	}
 
 	// Load sentence exercises from file (provided by AI)
@@ -169,8 +142,41 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 		"success":    true,
 		"command":    "gen-plan",
 		"date":       dateStr,
-		"due_count":  len(dueWords),
+		"due_count":  len(plan.Words),
 		"excel_path": *outputPath,
 		"plan_words": plan.Words,
 	})
+}
+
+// BuildDuePlan finds all words due on targetDate, assigns review categories,
+// sorts by status priority (钉子户 > 待巩固 > 待测试 > 基本掌握 > 抽查), and
+// returns a numbered ReviewPlan (without sentences/Excel). Reused by the CLI
+// and the HTTP server.
+func BuildDuePlan(arc *Archive, lang string, targetDate time.Time) *ReviewPlan {
+	var dueWords []Word
+	for _, w := range AllWords(arc.Groups) {
+		if IsDue(w, targetDate) {
+			w.Status = GetReviewCategory(w)
+			dueWords = append(dueWords, w)
+		}
+	}
+
+	sort.SliceStable(dueWords, func(i, j int) bool {
+		return StatusPriority(dueWords[i].Status) < StatusPriority(dueWords[j].Status)
+	})
+
+	plan := &ReviewPlan{
+		Date:     targetDate.Format("2006-01-02"),
+		Language: lang,
+	}
+	for i, w := range dueWords {
+		plan.Words = append(plan.Words, PlanWord{
+			Number:     i + 1,
+			Word:       w.Word,
+			Definition: w.Definition,
+			Group:      w.Group,
+			Status:     w.Status,
+		})
+	}
+	return plan
 }

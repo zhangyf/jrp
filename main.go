@@ -23,6 +23,7 @@ Commands:
   save-lesson     Save a knowledge document to COS
   list-knowledge  List all knowledge documents in COS
   get-knowledge   Download a knowledge document from COS
+  serve           Start the web review UI (keyboard + handwriting input)
 
 Global flags:
   --lang string   Language code: ja (Japanese), en (English), fr (French) (required)
@@ -104,6 +105,8 @@ func main() {
 		runListKnowledge(fs, lang)
 	case "get-knowledge":
 		runGetKnowledge(fs, lang)
+	case "serve":
+		runServe(fs, lang)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		fmt.Print(usage)

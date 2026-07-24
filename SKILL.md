@@ -413,3 +413,22 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 | `save-lesson` | `--file <path> --name <name>` | Save knowledge doc to COS |
 | `list-knowledge` | (none) | List all knowledge documents in COS |
 | `get-knowledge` | `--name <filename>` | Download a knowledge document from COS |
+| `serve` | `--addr <ip>` `--port <n>` | Start the web review UI (keyboard + handwriting input) |
+
+## Web Review UI (`serve`)
+
+`jrp --lang ja serve` starts a self-contained web app (embedded via go:embed, works offline)
+for **active flashcard-style review** — one word at a time, answer by keyboard IME or handwriting.
+
+- `GET /api/plan?date=YYYY-MM-DD` — returns today's due-word plan (auto-inits v1.0 archive if
+  the latest is from a previous day; uploads the plan JSON so `record` can resolve numbers)
+- `POST /api/record` — applies results (same logic as CLI `record`), bumps version, uploads archive
+- Frontend `web/index.html` + `web/kanji/` (KanjiCanvas, MIT). Handwriting recognizes
+  **kanji + hiragana + katakana** (kana patterns were generated from KanjiCanvas XML and appended
+  to `ref-patterns.js`). Recognition is per-character → user taps candidate → assembled into the word.
+- Grading: lenient (kana match is enough, ignores kanji/parens; katakana folded to hiragana) or
+  strict (kana+kanji must match). Wrong cards requeue for immediate re-practice. Only the **first
+  attempt** per word is recorded.
+
+Run: `jrp --lang ja serve --addr 0.0.0.0 --port 8080` to expose on a server; default `127.0.0.1:8080`.
+COS credentials load the same way as other commands (`.env.enc` or env vars).

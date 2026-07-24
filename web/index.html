@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>JRP 复习 · 日语</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#ffffff; --ink:#1f2329; --sub:#6b7280;
+    --line:#e5e7eb; --accent:#2563eb; --ok:#16a34a; --bad:#dc2626;
+    --nail:#b91c1c; --consol:#ea580c; --untest:#0891b2; --basic:#ca8a04; --spot:#16a34a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"Segoe UI","Microsoft YaHei","Hiragino Sans",sans-serif;}
+  .wrap{max-width:640px;margin:0 auto;padding:16px;}
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  h1{font-size:18px;margin:0;font-weight:700;}
+  .bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:10px 0;}
+  .bar>i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s;}
+  .meta{display:flex;gap:8px;font-size:12px;color:var(--sub);align-items:center;flex-wrap:wrap;}
+  .tag{padding:2px 8px;border-radius:10px;font-size:12px;color:#fff;}
+  .t-nail{background:var(--nail)} .t-consol{background:var(--consol)}
+  .t-untest{background:var(--untest)} .t-basic{background:var(--basic)} .t-spot{background:var(--spot)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px 20px;
+    box-shadow:0 1px 3px rgba(0,0,0,.05);}
+  .def{font-size:30px;font-weight:700;text-align:center;line-height:1.4;margin:6px 0 4px;}
+  .grp{text-align:center;color:var(--sub);font-size:13px;margin-bottom:16px;}
+  .modes{display:flex;gap:8px;justify-content:center;margin-bottom:14px;}
+  .modes button{flex:0 0 auto;padding:6px 16px;border:1px solid var(--line);background:#fff;
+    border-radius:20px;cursor:pointer;font-size:14px;color:var(--sub);}
+  .modes button.on{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .answer{width:100%;font-size:26px;text-align:center;padding:12px;border:2px solid var(--line);
+    border-radius:10px;outline:none;}
+  .answer:focus{border-color:var(--accent);}
+  .hwwrap{display:none;}
+  .hwwrap.on{display:block;}
+  #hwcanvas{width:100%;max-width:300px;height:300px;display:block;margin:0 auto;
+    background:#fff;border:2px dashed var(--line);border-radius:12px;touch-action:none;}
+  .hwbtns{display:flex;gap:8px;justify-content:center;margin:10px 0;}
+  .hwbtns button{padding:8px 14px;border:1px solid var(--line);background:#fff;border-radius:8px;
+    cursor:pointer;font-size:14px;}
+  .cands{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;min-height:44px;margin-top:8px;}
+  .cands button{font-size:24px;width:48px;height:48px;border:1px solid var(--line);background:#fff;
+    border-radius:8px;cursor:pointer;}
+  .cands button:hover{border-color:var(--accent);}
+  .built{font-size:26px;text-align:center;min-height:40px;letter-spacing:2px;
+    padding:8px;border-bottom:2px solid var(--line);margin-bottom:8px;}
+  .actions{display:flex;gap:10px;margin-top:16px;}
+  .actions button{flex:1;padding:14px;border:none;border-radius:10px;font-size:16px;cursor:pointer;color:#fff;}
+  .submit{background:var(--accent);} .skip{background:#9ca3af;}
+  .feedback{text-align:center;font-size:18px;margin-top:14px;min-height:28px;font-weight:600;}
+  .feedback.ok{color:var(--ok);} .feedback.bad{color:var(--bad);}
+  .opts{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--sub);}
+  .opts input{transform:scale(1.1);}
+  .done{text-align:center;padding:30px 10px;}
+  .done h2{font-size:24px;margin:0 0 12px;}
+  .stat{font-size:16px;color:var(--sub);margin:6px 0;}
+  .done button{margin-top:18px;padding:12px 28px;border:none;background:var(--accent);color:#fff;
+    border-radius:10px;font-size:16px;cursor:pointer;}
+  .hint{font-size:12px;color:var(--sub);text-align:center;margin-top:8px;}
+  .loading{text-align:center;padding:60px 0;color:var(--sub);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🫧 JRP 复习</h1>
+    <label class="opts"><input type="checkbox" id="nailsOnly"> 只练钉子户</label>
+  </header>
+
+  <div id="app">
+    <div class="loading" id="loading">加载今日词表…</div>
+  </div>
+</div>
+
+<script src="/kanji/kanji-canvas.min.js"></script>
+<script src="/kanji/ref-patterns.js"></script>
+<script>
+"use strict";
+
+const state = {
+  lang: "ja",
+  date: "",
+  all: [],        // full plan words
+  queue: [],      // working queue of indices into all[]
+  pos: 0,
+  results: {},    // number -> correct (first attempt only)
+  mode: "kb",     // "kb" | "hw"
+  strict: false,
+  built: "",      // handwriting assembled string
+};
+
+const STATUS_TAG = {
+  "☠️钉子户":["t-nail","钉子户"], "🔴待巩固":["t-consol","待巩固"],
+  "🔄待测试":["t-untest","待测试"], "🟡基本掌握":["t-basic","基本掌握"],
+  "🟢抽查":["t-spot","抽查"],
+};
+
+// ---- normalization + grading ----
+function toHira(s){ // katakana -> hiragana, for lenient compare
+  return s.replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0)-0x60));
+}
+function normalize(s){
+  return (s||"")
+    .replace(/\s+/g,"")
+    .replace(/[（）()]/g,"")
+    .replace(/[・･]/g,"")
+    .trim();
+}
+// word field looks like "おろします(下ろします)" or "すし" or "とても/たいへん"
+function answerForms(word){
+  const forms = new Set();
+  const raw = word.trim();
+  // split slash alternatives
+  raw.split("/").forEach(part=>{
+    const m = part.match(/^(.+?)\((.+?)\)$/);
+    if(m){ forms.add(m[1].trim()); forms.add(m[2].trim()); forms.add(part.trim()); }
+    else { forms.add(part.trim()); }
+  });
+  return [...forms];
+}
+function grade(input, word, strict){
+  const forms = answerForms(word);
+  const nin = normalize(input);
+  if(!nin) return false;
+  if(strict){
+    // must match a full written form (kana or kanji), exact after normalize
+    return forms.some(f => normalize(f) === nin);
+  }
+  // lenient: compare after katakana->hiragana folding too
+  const ninH = toHira(nin);
+  return forms.some(f=>{
+    const nf = normalize(f);
+    return nf === nin || toHira(nf) === ninH;
+  });
+}
+
+// ---- data load ----
+async function loadPlan(){
+  const nailsOnly = document.getElementById("nailsOnly").checked;
+  const res = await fetch("/api/plan");
+  const data = await res.json();
+  if(!data.success){ showError(data.error||"加载失败"); return; }
+  state.date = data.date;
+  state.all = data.words || [];
+  if(nailsOnly){
+    state.all = state.all.filter(w => w.status === "☠️钉子户");
+  }
+  if(state.all.length === 0){ showError("今天没有到期的词。"); return; }
+  state.queue = state.all.map((_,i)=>i);
+  state.pos = 0;
+  state.results = {};
+  renderCard();
+}
+
+function showError(msg){
+  document.getElementById("app").innerHTML =
+    `<div class="card"><div class="def">😴</div><div class="grp">${msg}</div></div>`;
+}
+
+// ---- rendering ----
+function renderCard(){
+  if(state.pos >= state.queue.length){ renderDone(); return; }
+  const w = state.all[state.queue[state.pos]];
+  const [cls,label] = STATUS_TAG[w.status] || ["t-basic",w.status];
+  const answered = Object.keys(state.results).length;
+  const total = state.all.length;
+  const pct = Math.round(answered/total*100);
+  state.built = "";
+
+  document.getElementById("app").innerHTML = `
+    <div class="meta">
+      <span>${state.date}</span>
+      <span>进度 ${answered}/${total}</span>
+      <span class="tag ${cls}">${label}</span>
+    </div>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    <div class="card">
+      <div class="def">${escapeHtml(w.definition)}</div>
+      <div class="grp">${escapeHtml(w.group)}</div>
+      <div class="modes">
+        <button id="mKb" class="${state.mode==='kb'?'on':''}">⌨️ 键盘</button>
+        <button id="mHw" class="${state.mode==='hw'?'on':''}">✍️ 手写</button>
+      </div>
+
+      <div id="kbWrap" style="${state.mode==='kb'?'':'display:none'}">
+        <input class="answer" id="ansInput" placeholder="用日语输入法作答" autocomplete="off">
+      </div>
+
+      <div class="hwwrap ${state.mode==='hw'?'on':''}" id="hwWrap">
+        <div class="built" id="builtBox"></div>
+        <canvas id="hwcanvas" width="300" height="300"></canvas>
+        <div class="hwbtns">
+          <button id="hwRecog">识别</button>
+          <button id="hwUndo">删上一笔</button>
+          <button id="hwClear">清空</button>
+          <button id="hwBack">删末字</button>
+        </div>
+        <div class="cands" id="cands"></div>
+      </div>
+
+      <div class="actions">
+        <button class="submit" id="btnSubmit">提交</button>
+        <button class="skip" id="btnSkip">跳过</button>
+      </div>
+      <div class="feedback" id="fb"></div>
+      <div class="opts" style="justify-content:center;margin-top:10px">
+        <label><input type="checkbox" id="strictBox" ${state.strict?'checked':''}> 严格模式（假名+汉字都要对）</label>
+      </div>
+      <div class="hint">宽松模式下，假名写对即算对（忽略汉字/括号）。</div>
+    </div>
+  `;
+
+  document.getElementById("mKb").onclick = ()=>switchMode("kb");
+  document.getElementById("mHw").onclick = ()=>switchMode("hw");
+  document.getElementById("btnSubmit").onclick = onSubmit;
+  document.getElementById("btnSkip").onclick = onSkip;
+  document.getElementById("strictBox").onchange = e=>{ state.strict = e.target.checked; };
+
+  if(state.mode==="kb"){
+    const inp = document.getElementById("ansInput");
+    inp.focus();
+    inp.onkeydown = e=>{ if(e.key==="Enter") onSubmit(); };
+  } else {
+    initHandwriting();
+  }
+}
+
+function switchMode(m){
+  state.mode = m;
+  renderCard();
+}
+
+let hwInited = false;
+function initHandwriting(){
+  KanjiCanvas.init("hwcanvas");
+  document.getElementById("builtBox").textContent = state.built;
+  document.getElementById("cands").innerHTML = "";
+  document.getElementById("hwRecog").onclick = ()=>{
+    const raw = KanjiCanvas.recognize("hwcanvas") || "";
+    const cands = raw.split(/\s+/).filter(Boolean).slice(0,12);
+    const box = document.getElementById("cands");
+    box.innerHTML = "";
+    cands.forEach(ch=>{
+      const b = document.createElement("button");
+      b.textContent = ch;
+      b.onclick = ()=>{
+        state.built += ch;
+        document.getElementById("builtBox").textContent = state.built;
+        KanjiCanvas.erase("hwcanvas");
+        box.innerHTML = "";
+      };
+      box.appendChild(b);
+    });
+  };
+  document.getElementById("hwUndo").onclick = ()=>KanjiCanvas.deleteLast("hwcanvas");
+  document.getElementById("hwClear").onclick = ()=>KanjiCanvas.erase("hwcanvas");
+  document.getElementById("hwBack").onclick = ()=>{
+    state.built = state.built.slice(0,-1);
+    document.getElementById("builtBox").textContent = state.built;
+  };
+}
+
+function currentAnswer(){
+  return state.mode==="kb"
+    ? document.getElementById("ansInput").value
+    : state.built;
+}
+
+function onSubmit(){
+  const w = state.all[state.queue[state.pos]];
+  const ans = currentAnswer();
+  if(!ans.trim()){ flash("请先作答", false); return; }
+  const ok = grade(ans, w.word, state.strict);
+  // record only first attempt for this number
+  if(!(w.number in state.results)){
+    state.results[w.number] = ok;
+  }
+  const fb = document.getElementById("fb");
+  if(ok){
+    fb.className = "feedback ok";
+    fb.textContent = "✓ 正确  " + w.word;
+    setTimeout(nextCard, 700);
+  } else {
+    fb.className = "feedback bad";
+    fb.textContent = "✗ 正确答案：" + w.word;
+    // requeue wrong card to the end for immediate re-practice
+    state.queue.push(state.queue[state.pos]);
+    setTimeout(nextCard, 1600);
+  }
+}
+
+function onSkip(){
+  const w = state.all[state.queue[state.pos]];
+  if(!(w.number in state.results)) state.results[w.number] = false;
+  state.queue.push(state.queue[state.pos]); // see it again
+  nextCard();
+}
+
+function nextCard(){
+  state.pos++;
+  renderCard();
+}
+
+function flash(msg, ok){
+  const fb = document.getElementById("fb");
+  fb.className = "feedback " + (ok?"ok":"bad");
+  fb.textContent = msg;
+}
+
+function renderDone(){
+  const nums = Object.keys(state.results);
+  const correct = nums.filter(n=>state.results[n]).length;
+  const total = nums.length;
+  const pct = total? Math.round(correct/total*100):0;
+  document.getElementById("app").innerHTML = `
+    <div class="card done">
+      <h2>今日复习完成 🫧</h2>
+      <div class="stat">正确 <b style="color:var(--ok)">${correct}</b> / ${total}（${pct}%）</div>
+      <div class="stat" id="recStat">结果按每词首次作答记录</div>
+      <button id="btnRecord">回写档案到 COS</button>
+      <div class="feedback" id="recFb"></div>
+    </div>
+  `;
+  document.getElementById("btnRecord").onclick = submitRecord;
+}
+
+async function submitRecord(){
+  const btn = document.getElementById("btnRecord");
+  btn.disabled = true; btn.textContent = "回写中…";
+  const word_results = Object.keys(state.results).map(n=>({
+    number: parseInt(n,10), correct: state.results[n]
+  }));
+  const body = { plan_date: state.date, language: state.lang,
+                 word_results, sentence_results: [] };
+  try{
+    const res = await fetch("/api/record",{
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    const fb = document.getElementById("recFb");
+    if(data.success){
+      fb.className="feedback ok";
+      fb.textContent = `已回写：正确${data.correct} 错误${data.wrong}，档案 ${data.version}`;
+      btn.textContent = "已完成";
+    } else {
+      fb.className="feedback bad";
+      fb.textContent = "回写失败：" + (data.error||"未知错误");
+      btn.disabled=false; btn.textContent="重试回写";
+    }
+  }catch(e){
+    document.getElementById("recFb").textContent = "网络错误：" + e.message;
+    btn.disabled=false; btn.textContent="重试回写";
+  }
+}
+
+function escapeHtml(s){
+  return (s||"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+document.getElementById("nailsOnly").onchange = loadPlan;
+loadPlan();
+</script>
+</body>
+</html>

@@ -36,27 +36,49 @@ func runRecord(fs *flag.FlagSet, lang string) {
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
+	result, err := ApplyRecord(context.Background(), storage, lang, input)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
+	outputResult(result)
+}
+
+// RecordResultSummary is the outcome of applying review results to the archive.
+type RecordResultSummary struct {
+	Success     bool   `json:"success"`
+	Command     string `json:"command"`
+	PlanDate    string `json:"plan_date"`
+	Correct     int    `json:"correct"`
+	Wrong       int    `json:"wrong"`
+	NotFound    int    `json:"not_found"`
+	OldFilename string `json:"old_filename"`
+	NewFilename string `json:"new_filename"`
+	Version     string `json:"version"`
+	TotalWords  int    `json:"total_words"`
+}
+
+// ApplyRecord downloads the plan + latest archive, applies word/sentence
+// results, bumps the version, and uploads the updated archive to COS. It is a
+// pure function reused by both the CLI (runRecord) and the HTTP server.
+func ApplyRecord(ctx context.Context, storage *Storage, lang string, input RecordInput) (*RecordResultSummary, error) {
 	// Download the review plan
 	plan, err := storage.DownloadPlan(ctx, input.PlanDate)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error downloading plan for date %s: %v\n", input.PlanDate, err)
-		os.Exit(1)
+		return nil, fmt.Errorf("downloading plan for date %s: %w", input.PlanDate, err)
 	}
 
 	// Download latest archive
 	data, oldFilename, err := storage.DownloadLatestArchive(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error downloading latest archive: %v\n", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("downloading latest archive: %w", err)
 	}
 
 	// Parse archive
 	arc, err := ParseArchive(string(data), lang)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing archive: %v\n", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("parsing archive: %w", err)
 	}
 
 	// Build number → word mapping from plan
@@ -109,20 +131,19 @@ func runRecord(fs *flag.FlagSet, lang string) {
 	newFilename := ArchiveFilename(lang, today, newMajor, newMinor)
 
 	if err := storage.UploadArchive(ctx, newFilename, []byte(newContent)); err != nil {
-		fmt.Fprintf(os.Stderr, "Error uploading archive: %v\n", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("uploading archive: %w", err)
 	}
 
-	outputResult(map[string]interface{}{
-		"success":      true,
-		"command":      "record",
-		"plan_date":    input.PlanDate,
-		"correct":      correctCount,
-		"wrong":        wrongCount,
-		"not_found":    notFound,
-		"old_filename": oldFilename,
-		"new_filename": newFilename,
-		"version":      fmt.Sprintf("v%d.%d", newMajor, newMinor),
-		"total_words":  CountAllWords(arc.Groups),
-	})
+	return &RecordResultSummary{
+		Success:     true,
+		Command:     "record",
+		PlanDate:    input.PlanDate,
+		Correct:     correctCount,
+		Wrong:       wrongCount,
+		NotFound:    notFound,
+		OldFilename: oldFilename,
+		NewFilename: newFilename,
+		Version:     fmt.Sprintf("v%d.%d", newMajor, newMinor),
+		TotalWords:  CountAllWords(arc.Groups),
+	}, nil
 }
