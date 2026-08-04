@@ -5,6 +5,41 @@ import (
 	"time"
 )
 
+// Hard-word ("钉子户") detection thresholds.
+//
+// A word is "hard" when its accuracy rate is low — NOT when its absolute error
+// count is high. Absolute error counts grow monotonically with review count, so
+// a well-known word reviewed 28 times with 3 errors (89% accuracy) would be
+// misclassified as hard, while a genuinely unknown word wrong 6 out of 6 times
+// (0% accuracy) would be missed.
+const (
+	DefaultHardMinAccuracy = 0.60 // accuracy below this → hard word
+	DefaultHardMinReviews  = 3    // minimum reviews required (guards small samples)
+)
+
+// Accuracy returns a word's accuracy rate (0.0–1.0). The second return value is
+// false when the word has never been reviewed, in which case accuracy is
+// meaningless and callers must not treat 0 as "always wrong".
+func Accuracy(w Word) (float64, bool) {
+	if w.ReviewCount <= 0 {
+		return 0, false
+	}
+	return 1 - float64(w.ErrorCount)/float64(w.ReviewCount), true
+}
+
+// IsHardWord reports whether a word qualifies as a 钉子户 under the
+// accuracy-based rule: accuracy below minAcc AND at least minRev reviews.
+//
+// The minRev guard prevents a brand-new word answered wrong once (1/1 = 0%
+// accuracy) from being flagged as a stubborn word on its first miss.
+func IsHardWord(w Word, minAcc float64, minRev int) bool {
+	acc, ok := Accuracy(w)
+	if !ok || w.ReviewCount < minRev {
+		return false
+	}
+	return acc < minAcc
+}
+
 // GetInterval returns the Ebbinghaus review interval in days.
 // For words without errors, it's based on total review count.
 // For words with errors, it's based on consecutive correct count.
@@ -170,6 +205,11 @@ func TotalErrors(groups []WordGroup) int {
 }
 
 // CountNailHouseholds counts words with >= 5 errors or error rate < 50%.
+//
+// NOTE: This is an INDEPENDENT metric used only for the changelog's钉子户
+// column, and it deliberately keeps its original error-count-based formula so
+// that historical version rows stay comparable. Do NOT "fix" it to match
+// IsHardWord — the review-category rule (accuracy-based) is a separate concern.
 func CountNailHouseholds(groups []WordGroup) int {
 	count := 0
 	for _, w := range AllWords(groups) {
@@ -187,8 +227,8 @@ func CountNailHouseholds(groups []WordGroup) int {
 // GetReviewCategory returns a review-specific category for a word.
 // This is more granular than DetermineStatus, adding "钉子户" and "抽查" labels.
 //
-//	☠️钉子户   - ErrorCount >= 3 (repeatedly wrong, stubborn words)
-//	🔴待巩固   - errorRate >= 30% but ErrorCount < 3
+//	☠️钉子户   - accuracy < 60% with >= 3 reviews (genuinely not sticking)
+//	🔴待巩固   - errorRate >= 30% but not a hard word
 //	🔄待测试   - ReviewCount == 0 (never tested)
 //	🟡基本掌握 - reviewed but not yet mastered
 //	🟢抽查     - ReviewCount >= 5, errorRate < 15% (mastered, spot check)
@@ -202,7 +242,7 @@ func GetReviewCategory(w Word) string {
 		errorRate = float64(w.ErrorCount) / float64(w.ReviewCount)
 	}
 
-	if w.ErrorCount >= 3 {
+	if IsHardWord(w, DefaultHardMinAccuracy, DefaultHardMinReviews) {
 		return "☠️钉子户"
 	}
 
