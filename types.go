@@ -59,12 +59,24 @@ type Archive struct {
 }
 
 // PlanWord is a word entry in a review plan.
+//
+// ErrorCount/ReviewCount/Accuracy are only populated for hard-word plans
+// (export-hard); they are omitted from daily review plans so that existing
+// consumers (web UI, record) see byte-identical JSON.
+//
+// Accuracy is a POINTER on purpose: a genuine 0% accuracy (wrong every single
+// time) is the most important case in a hard-word list, and a plain float64 with
+// omitempty would silently drop it. ErrorCount stays a plain int because a hard
+// word always has at least one error, but ReviewCount/Accuracy must survive.
 type PlanWord struct {
-	Number     int    `json:"number"`
-	Word       string `json:"word"`
-	Definition string `json:"definition"`
-	Group      string `json:"group"`
-	Status     string `json:"status"` // review category: ☠️钉子户 / 🔴待巩固 / 🔄待测试 / 🟡基本掌握 / 🟢抽查
+	Number      int      `json:"number"`
+	Word        string   `json:"word"`
+	Definition  string   `json:"definition"`
+	Group       string   `json:"group"`
+	Status      string   `json:"status"` // review category: ☠️钉子户 / 🔴待巩固 / 🔄待测试 / 🟡基本掌握 / 🟢抽查
+	ErrorCount  int      `json:"error_count,omitempty"`
+	ReviewCount int      `json:"review_count,omitempty"`
+	Accuracy    *float64 `json:"accuracy,omitempty"`
 }
 
 // PlanSentence is a sentence exercise in a review plan.
@@ -75,11 +87,18 @@ type PlanSentence struct {
 }
 
 // ReviewPlan is the JSON saved alongside each Excel for record tracking.
+//
+// Kind distinguishes plan types: "" (or absent) = daily review plan,
+// "hard" = hard-word deep-dive plan produced by export-hard. The two are stored
+// under different COS keys so they never overwrite each other.
 type ReviewPlan struct {
-	Date      string         `json:"date"`
-	Language  string         `json:"language"`
-	Words     []PlanWord     `json:"words"`
-	Sentences []PlanSentence `json:"sentences"`
+	Date        string         `json:"date"`
+	Language    string         `json:"language"`
+	Words       []PlanWord     `json:"words"`
+	Sentences   []PlanSentence `json:"sentences"`
+	Kind        string         `json:"kind,omitempty"`
+	MinAccuracy float64        `json:"min_accuracy,omitempty"`
+	MinReviews  int            `json:"min_reviews,omitempty"`
 }
 
 // RecordResult is one word's review result.
@@ -89,11 +108,16 @@ type RecordResult struct {
 }
 
 // RecordInput is the JSON input for the record command.
+//
+// Hard selects which plan to resolve word numbers against: false (default) reads
+// the daily plan, true reads the hard-word plan from export-hard. Existing
+// clients (web UI) omit the field and keep the original behaviour.
 type RecordInput struct {
 	PlanDate        string         `json:"plan_date"`
 	Language        string         `json:"language"`
 	WordResults     []RecordResult `json:"word_results"`
 	SentenceResults []RecordResult `json:"sentence_results"`
+	Hard            bool           `json:"hard,omitempty"`
 }
 
 // AddWordsInput is the JSON input for the add-words command.

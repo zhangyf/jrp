@@ -10,6 +10,7 @@ import (
 
 func runRecord(fs *flag.FlagSet, lang string) {
 	inputFile := fs.String("input", "", "JSON file with review results (default: stdin)")
+	hardFlag := fs.Bool("hard", false, "Resolve word numbers against the hard-word plan (from export-hard) instead of the daily plan")
 	fs.Parse(cmdArgs)
 
 	// Read input
@@ -24,6 +25,11 @@ func runRecord(fs *flag.FlagSet, lang string) {
 			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
 			os.Exit(1)
 		}
+	}
+
+	// The CLI flag wins when set; otherwise the JSON field applies.
+	if *hardFlag {
+		input.Hard = true
 	}
 
 	if input.Language == "" {
@@ -57,16 +63,27 @@ type RecordResultSummary struct {
 	NewFilename string `json:"new_filename"`
 	Version     string `json:"version"`
 	TotalWords  int    `json:"total_words"`
+	Hard        bool   `json:"hard,omitempty"`
 }
 
 // ApplyRecord downloads the plan + latest archive, applies word/sentence
 // results, bumps the version, and uploads the updated archive to COS. It is a
 // pure function reused by both the CLI (runRecord) and the HTTP server.
+//
+// input.Hard selects the plan source. The signature is intentionally unchanged
+// so that the HTTP handler in cmd_serve.go keeps working untouched: clients that
+// omit "hard" get the daily-plan behaviour exactly as before.
 func ApplyRecord(ctx context.Context, storage *Storage, lang string, input RecordInput) (*RecordResultSummary, error) {
-	// Download the review plan
-	plan, err := storage.DownloadPlan(ctx, input.PlanDate)
+	// Download the review plan (daily or hard-word)
+	var plan *ReviewPlan
+	var err error
+	if input.Hard {
+		plan, err = storage.DownloadHardPlan(ctx, input.PlanDate)
+	} else {
+		plan, err = storage.DownloadPlan(ctx, input.PlanDate)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("downloading plan for date %s: %w", input.PlanDate, err)
+		return nil, fmt.Errorf("downloading plan for date %s (hard=%v): %w", input.PlanDate, input.Hard, err)
 	}
 
 	// Download latest archive
@@ -121,6 +138,9 @@ func ApplyRecord(ctx context.Context, storage *Storage, lang string, input Recor
 
 	// Add changelog entry
 	description := fmt.Sprintf("复习结果：%d词写对，%d词写错", correctCount, wrongCount)
+	if input.Hard {
+		description = "钉子户专项" + description
+	}
 	if notFound > 0 {
 		description += fmt.Sprintf("（%d词未找到）", notFound)
 	}
@@ -145,5 +165,6 @@ func ApplyRecord(ctx context.Context, storage *Storage, lang string, input Recor
 		NewFilename: newFilename,
 		Version:     fmt.Sprintf("v%d.%d", newMajor, newMinor),
 		TotalWords:  CountAllWords(arc.Groups),
+		Hard:        input.Hard,
 	}, nil
 }

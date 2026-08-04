@@ -24,7 +24,7 @@ all archive operations (parse, update, version, upload to COS).
 ## Binary
 
 ```
-~/.workbuddy/skills/jrp/bin/jrp
+~/.workbuddy/skills/jrp/jrp.exe
 ```
 
 ## COS Credentials
@@ -40,7 +40,8 @@ language-review/
 ├── ja/
 │   ├── archives/    # Current archive files (日语学习进度档案_YYMMDD_vA.B.md)
 │   ├── history/     # Historical archive snapshots
-│   ├── plans/       # Review plan JSONs + Excel backups
+│   ├── plans/       # plan_<date>.json + review_<date>_vA.B.xlsx (daily)
+│   │                # hard_<date>.json + hard_words_<date>_vA.B.xlsx (export-hard)
 │   └── knowledge/   # Lesson knowledge documents
 ├── en/
 │   └── ... (same structure)
@@ -85,11 +86,28 @@ The Excel review plan uses 5 categories with priority sorting:
 
 | Category | Condition | Priority |
 |---|---|---|
-| ☠️钉子户 | ErrorCount >= 3 | 0 (highest) |
-| 🔴待巩固 | errorRate >= 30%, ErrorCount < 3 | 1 |
+| ☠️钉子户 | **accuracy < 60% AND reviewCount >= 3** | 0(highest) |
+| 🔴待巩固 | errorRate >= 30%, not a hard word | 1 |
 | 🔄待测试 | reviewCount == 0 | 2 |
 | 🟡基本掌握 | reviewed but not mastered | 3 |
 | 🟢抽查 | reviewCount >= 5, errorRate < 15% | 4 (lowest) |
+
+### ⚠️ Hard words are defined by ACCURACY, not absolute error count
+
+`钉子户` used to mean `ErrorCount >= 3`. That was wrong: absolute error counts grow
+monotonically with review count, so the rule conflated "often wrong" with "reviewed a lot".
+
+Measured on a 669-word archive, the old rule flagged 220 words, of which 27 had80–90%
+accuracy — e.g. `こんにちは` (28 reviews, 3 errors, 89%) was flagged while `しょっぱい`
+(6 reviews, 6 errors, **0%**) was also flagged at the same severity, and words like
+`おんせん` (5 reviews, 2 errors, 60%) were missed entirely. The accuracy rule yields 96 words.
+
+The `minReviews >= 3` guard prevents a brand-new word answered wrong once (1/1 = 0%)
+from being flagged on its first miss.
+
+Note: `CountNailHouseholds` in `ebbinghaus.go` keeps a separate, error-count-based
+formula on purpose — it feeds the changelog's 钉子户 column, and changing it would make
+historical version rows incomparable.
 
 Words are sorted by priority and grouped into separate sections in the Excel.
 Each section has a title row (e.g., "☠️钉子户 54词") and column headers with gray background (D9D9D9).
@@ -226,9 +244,39 @@ Knowledge base IDs:
 ```
 
 4. Run: `jrp --lang ja record --input /tmp/results.json`
+   - Add `--hard` when the numbers come from an **export-hard** Excel (see workflow 5),
+     otherwise the numbers will be resolved against the wrong plan
 5. Report: how many correct/wrong, updated stats, new version
 
-### 5. Update Word Definition
+### 5. Export All Hard Words (钉子户专项)
+
+**Trigger**: User asks for the hard-word list / 钉子户清单 / "把所有钉子户导出来".
+
+**⚠️ Do NOT hand-parse the archive markdown to build this list.** Use the command —
+it applies the canonical accuracy rule and produces the standard Excel layout.
+
+**Key difference from `gen-plan`**: `gen-plan` filters by `IsDue()` and only surfaces
+words **due today**. `export-hard` is a **full census** of every hard word in the archive
+regardless of due date.
+
+**Steps**:
+1. Run: `jrp --lang ja export-hard`
+   - `--min-accuracy` (default 0.60) — accuracy below this counts as a hard word
+   - `--min-reviews` (default 3) — small-sample guard
+   - `--date` only affects the output filename; the command is read-only and never
+     initializes a new-day archive or bumps the version
+2. Output: `outputs/hard_words_<date>_vA.B.xlsx`, 2 sheets (`✏️练习版` / `✅答案版`),
+   grouped into three severity sections by accuracy:
+   - 🔥重度钉子户（正确率<30%）
+   - ⚠️中度钉子户（正确率30~45%）
+   - 💤轻度钉子户（正确率45~60%）
+   Sorted by accuracy ascending, continuous numbering across sections.
+3. Present the Excel to the user with present_files (already in workspace `outputs/`)
+4. Report the counts from the JSON: `hard_count` / `severe_count` / `moderate_count` / `mild_count`
+5. To record results from this Excel, use `record --hard` — the plan lives at a separate
+   COS key (`plans/hard_<date>.json`) so it never clobbers the daily plan
+
+### 6. Update Word Definition
 
 **Trigger**: User asks to update a word's Chinese definition.
 
@@ -246,7 +294,7 @@ Knowledge base IDs:
 2. Run: `jrp --lang ja update-def --input /tmp/def.json`
 3. Report: old definition → new definition, new version
 
-### 6. Show Statistics
+### 7. Show Statistics
 
 **Trigger**: User asks for stats, learning progress, 最近7天 etc.
 
@@ -254,7 +302,7 @@ Knowledge base IDs:
 1. Run: `jrp --lang ja stats --days 7`
 2. Present the JSON output as a readable summary (table or chart)
 
-### 7. Save Lesson Knowledge Document
+### 8. Save Lesson Knowledge Document
 
 **Trigger**: User sends textbook photos for knowledge extraction.
 
@@ -357,6 +405,33 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
 8. **All commands output JSON to stdout** — parse the JSON for results
 9. **Output files must go to workspace `outputs/` directory** — not `/tmp/`. Copy the final xlsx to `outputs/` before present_files, otherwise the mini-program notification won't fire.
 10. **Excel output naming**: `review_yyyy-mm-dd_vA.B.xlsx` — gen-plan auto-initializes today's v1.0 archive if none exists for the target date; otherwise version is parsed from the current archive filename
+11. **钉子户 is an accuracy threshold, not an error count** — use `export-hard` (or `IsHardWord`) rather than filtering on `ErrorCount >= N` by hand. Never reimplement this rule in an ad-hoc script.
+12. **Run the CLI from the workspace root** so that the default relative `outputs/` path lands in the workspace.
+13. **⚠️ NEVER test write-commands against the user's real archive.** `DownloadLatestArchive`
+    picks the archive with the newest **COS lastModified** — *not* the highest filename version.
+    A stray test archive therefore hijacks every subsequent `add-words` / `record`, which can
+    produce a new archive whose version number is *lower* than the real one and silently
+    overwrite it. For experiments use read-only commands (`export-hard`, `stats`,
+    `list-knowledge`) with `--output` pointed at a temp path, or switch to an empty language
+    (`--lang en`).
+14. **Before `add-words` / `record`, confirm which archive will be picked up** — check the
+    `old_filename` field in the JSON output and verify it is the expected latest version. If it
+    names an unexpected file, stop and clean up the stray archive first.
+
+## Windows Environment Notes
+
+- **Build with PowerShell, not Git Bash.** `go build -o <path-under-home>` run from Git Bash
+  exits 0 but silently writes nothing (sandbox path redirection). Use:
+  ```powershell
+  $env:PATH = "$env:USERPROFILE\go-sdk\go\bin;$env:PATH"
+  cd C:\Users\efrainzhang\jrp-src
+  go build -o C:\Users\efrainzhang\.workbuddy\skills\jrp\jrp.exe .
+  ```
+- **`rm` may fail under the home directory**: the safe-delete layer mangles Git Bash paths
+  (`/c/Users/...` → `\c\Users\...`). Fall back to PowerShell
+  `[System.IO.File]::Delete($absolutePath)`.
+- **After editing `jrp-src\SKILL.md`, copy it to `.workbuddy\skills\jrp\SKILL.md`** — the two
+  must stay in sync.
 
 ## Language Codes
 
@@ -369,7 +444,7 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
 ## Binary Path
 
 ```
-JRP_BIN=~/.workbuddy/skills/jrp/bin/jrp
+JRP_BIN=~/.workbuddy/skills/jrp/jrp.exe
 ```
 
 All commands: `$JRP_BIN --lang <ja|en|fr> <command> [flags]`
@@ -407,7 +482,8 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 | `import` | (stdin) | Import archive markdown from stdin to COS |
 | `add-words` | `--input <json>` | Add new words to archive |
 | `gen-plan` | `--date <YYYY-MM-DD>` `--sentences <json>` `--output <path>` | Generate review Excel (auto-initializes today's v1.0 archive if none exists) |
-| `record` | `--input <json>` | Record review results |
+| `export-hard` | `--min-accuracy <0-1>` `--min-reviews <N>` `--date <YYYY-MM-DD>` `--output <path>` | Export ALL hard words (钉子户) to Excel. Read-only: never bumps the archive version |
+| `record` | `--input <json>` `--hard` | Record review results (`--hard` resolves numbers against the export-hard plan) |
 | `update-def` | `--input <json>` | Update word definition |
 | `stats` | `--days <N>` | Show statistics for last N days |
 | `save-lesson` | `--file <path> --name <name>` | Save knowledge doc to COS |

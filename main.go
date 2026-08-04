@@ -17,6 +17,7 @@ Commands:
   import       Import archive content from stdin to COS (initial migration)
   add-words    Add new words to the archive
   gen-plan     Generate today's review Excel plan
+  export-hard  Export ALL hard words (钉子户) to a standalone Excel
   record       Record review results and update archive
   update-def   Update a word's definition
   stats           Show statistics for the last N days
@@ -32,7 +33,10 @@ Examples:
   jrp --lang ja import < archive.md
   jrp --lang ja add-words --input words.json
   jrp --lang ja gen-plan --output outputs/review.xlsx
+  jrp --lang ja export-hard
+  jrp --lang ja export-hard --min-accuracy 0.5 --min-reviews 3
   jrp --lang ja record --input results.json
+  jrp --lang ja record --input results.json --hard
   jrp --lang ja update-def --input def.json
   jrp --lang ja stats --days 7
   jrp --lang ja save-lesson --file lesson.md --name 第9课知识点.md
@@ -93,6 +97,8 @@ func main() {
 		runAddWords(fs, lang)
 	case "gen-plan":
 		runGenPlan(fs, lang)
+	case "export-hard":
+		runExportHard(fs, lang)
 	case "record":
 		runRecord(fs, lang)
 	case "update-def":
