@@ -247,6 +247,9 @@ Knowledge base IDs:
    - Add `--hard` when the numbers come from an **export-hard** Excel (see workflow 5),
      otherwise the numbers will be resolved against the wrong plan
 5. Report: how many correct/wrong, updated stats, new version
+6. **⚠️ To show the user which words they got wrong, read the original Excel from `outputs/`**
+   (e.g. `review_2026-08-06_v1.0.xlsx`). Do NOT re-run `gen-plan` — after `record` changes the
+   archive, `gen-plan` produces different numbering and **overwrites** the COS plan JSON.
 
 ### 5. Export All Hard Words (钉子户专项)
 
@@ -417,6 +420,13 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
 14. **Before `add-words` / `record`, confirm which archive will be picked up** — check the
     `old_filename` field in the JSON output and verify it is the expected latest version. If it
     names an unexpected file, stop and clean up the stray archive first.
+15. **⚠️ After `record`, NEVER re-run `gen-plan` to look up word mappings.** `record` changes
+    word error counts in the archive, which causes `gen-plan` to produce **different numbering**
+    than the original plan the user reviewed against. When the user asks "what words were at
+    numbers 23, 42, 66...", read the **original Excel** (workspace `outputs/`) or the
+    **original plan JSON** that was stored *before* `record` ran. Re-running `gen-plan` also
+    **overwrites** the COS plan JSON, destroying the only canonical record of the user's actual
+    review plan.
 
 ## Windows Environment Notes
 
