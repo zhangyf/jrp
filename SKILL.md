@@ -297,7 +297,35 @@ regardless of due date.
 2. Run: `jrp --lang ja update-def --input /tmp/def.json`
 3. Report: old definition → new definition, new version
 
-### 7. Show Statistics
+### 7. Normalize Word Forms (词形规范化)
+
+**Canonical word form: `かな(漢字)` — reading outside the parens, kanji inside.**
+E.g. `おんがく(音楽)`, `すくない(少ない)`. Never the reverse (`音楽(おんがく)`).
+
+**Trigger**: User reports word-form inconsistency, or after a bulk kanji-annotation import.
+
+**⚠️ Do NOT write a script to rewrite the archive.** Use this command — it backs up
+to `history/` before touching anything and aborts if the word count changes.
+
+**Steps**:
+1. **Always dry-run first**: `jrp --lang ja normalize-words --dry-run`
+   - Read-only. Reports `change_count` and every `{old, new}` pair.
+   - Review the list — verify no already-correct entry is being flipped and that
+     compound forms (e.g. `万里の長城`, `少し/一寸`) look right.
+2. Execute: `jrp --lang ja normalize-words`
+   - Uploads the current archive to `history/<name>_backup_<timestamp>.md` **first**;
+     aborts without touching the live archive if the backup fails.
+   - Bumps the version (major bump when20+ entries change).
+   - Hard-aborts before upload if the total word count differs from the original.
+3. Verify idempotency: re-run `--dry-run`; `change_count` must be 0.
+4. Re-export any affected Excel (`export-hard`, `gen-plan`) so the user sees the new forms.
+
+**Swap rule** (`NormalizeWordForm`): only swaps when the orientation is
+*unambiguously* reversed — outer segment contains kanji AND inner segment is pure kana.
+Entries with no parens, no kanji, or already correct are left untouched, which makes
+the command safely idempotent.
+
+### 8. Show Statistics
 
 **⚠️ stats is the sole authoritative data source — NEVER parse the archive markdown
 manually to build statistics or reports.** The command already downloads, parses, and
@@ -332,7 +360,7 @@ analyzes every archive; all statistical data must come from its JSON output.
 - Do NOT combine `stats` output with ad-hoc archive parsing. If `stats` output
   is missing a field you need, add it to `buildStatsDetail` in `cmd_stats.go`.
 
-### 8. Save Lesson Knowledge Document
+### 9. Save Lesson Knowledge Document
 
 **Trigger**: User sends textbook photos for knowledge extraction.
 
@@ -459,6 +487,15 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
     analyzes every archive internally and includes `detail{}` (per-lesson distribution,
     accuracy buckets, hard-word counts, top-reviewed words). If a needed stat is missing,
     add it to `buildStatsDetail()` in `cmd_stats.go` — do not work around it with scripts.
+17. **Canonical word form is `かな(漢字)`** — reading outside the parentheses, kanji inside
+    (e.g. `おんがく(音楽)`, not `音楽(おんがく)`). When importing words via `add-words`, write
+    them in this form. To fix existing entries use `normalize-words --dry-run` then
+    `normalize-words` — never a hand-rolled script (a reversed script is exactly what
+    created the 42broken entries on 2026-08-05).
+18. **⚠️ Any bulk archive rewrite MUST back up to `history/` before uploading and MUST
+    verify the word count is unchanged.** `normalize-words` does both. If you ever need a
+    new bulk-edit command, copy that pattern: upload backup → mutate → assert count →
+    upload. Never mutate-then-backup.
 
 ## Windows Environment Notes
 
@@ -527,6 +564,7 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 | `export-hard` | `--min-accuracy <0-1>` `--min-reviews <N>` `--date <YYYY-MM-DD>` `--output <path>` | Export ALL hard words (钉子户) to Excel. Read-only: never bumps the archive version |
 | `record` | `--input <json>` `--hard` | Record review results (`--hard` resolves numbers against the export-hard plan) |
 | `update-def` | `--input <json>` | Update word definition |
+| `normalize-words` | `--dry-run` | Normalize word forms to `かな(漢字)`. Backs up to `history/` first; aborts if word count changes. **Always dry-run first** |
 | `stats` | `--days <N>` | Show statistics for last N days |
 | `save-lesson` | `--file <path> --name <name>` | Save knowledge doc to COS |
 | `list-knowledge` | (none) | List all knowledge documents in COS |

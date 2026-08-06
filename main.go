@@ -103,6 +103,8 @@ func main() {
 		runRecord(fs, lang)
 	case "update-def":
 		runUpdateDef(fs, lang)
+	case "normalize-words":
+		runNormalizeWords(fs, lang)
 	case "stats":
 		runStats(fs, lang)
 	case "save-lesson":
