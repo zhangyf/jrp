@@ -299,11 +299,38 @@ regardless of due date.
 
 ### 7. Show Statistics
 
-**Trigger**: User asks for stats, learning progress, 最近7天 etc.
+**⚠️ stats is the sole authoritative data source — NEVER parse the archive markdown
+manually to build statistics or reports.** The command already downloads, parses, and
+analyzes every archive; all statistical data must come from its JSON output.
+
+**Trigger**: User asks for stats, learning progress, 详细数据, 统计 etc.
 
 **Steps**:
-1. Run: `jrp --lang ja stats --days 7`
-2. Present the JSON output as a readable summary (table or chart)
+1. Run: `jrp --lang ja stats --days <N>` (default 7; use 365 for all-time)
+2. Parse the JSON output — it contains **everything**:
+   - `snapshots[]` — daily breakdown (date, version, total, mastered, basic,
+     needsConsol, untested, errors) ← for trend charts
+   - `changes{}` — first→last deltas with `+N/-N` annotations ← for summary tables
+   - `detail{}` — per-lesson distribution, accuracy buckets, hard-word breakdown,
+     top-reviewed words ← for "what do I need to work on?"
+
+   The `detail` section comes from the latest archive and includes:
+   - `by_lesson[]` — word count per group/lesson
+   - `accuracy_distribution{}` — word counts in 5 accuracy buckets (0-30%, 30-60%,
+     60-80%, 80-90%, 90-100%)
+   - `hard_words{}` — severe/moderate/mild/total counts (canonical
+     `IsHardWord` rule)
+   - `top_reviewed[]` — top 10 words by review count, each with accuracy
+3. Present a readable summary: overview table (total/mastered/errors deltas),
+   accuracy distribution (bar chart or list), per-lesson breakdown, top-reviewed
+   words.
+
+**What NOT to do**:
+- Do NOT write Python/Node scripts to download and parse archive markdown files.
+- Do NOT call `export-hard` to supplement stats — `stats --days` already includes
+  hard-word counts in `detail.hard_words`.
+- Do NOT combine `stats` output with ad-hoc archive parsing. If `stats` output
+  is missing a field you need, add it to `buildStatsDetail` in `cmd_stats.go`.
 
 ### 8. Save Lesson Knowledge Document
 
@@ -427,6 +454,11 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
     **original plan JSON** that was stored *before* `record` ran. Re-running `gen-plan` also
     **overwrites** the COS plan JSON, destroying the only canonical record of the user's actual
     review plan.
+16. **⚠️ `stats` is the ONLY stats source.** Do NOT write Python/Node scripts to download and
+    parse archive markdown for statistical data. The `stats` command already downloads and
+    analyzes every archive internally and includes `detail{}` (per-lesson distribution,
+    accuracy buckets, hard-word counts, top-reviewed words). If a needed stat is missing,
+    add it to `buildStatsDetail()` in `cmd_stats.go` — do not work around it with scripts.
 
 ## Windows Environment Notes
 

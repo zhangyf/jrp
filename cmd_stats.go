@@ -77,8 +77,10 @@ func runStats(fs *flag.FlagSet, lang string) {
 		return entries[i].date.Before(entries[j].date)
 	})
 
-	// Download and parse each archive, extract stats
+	// Download and parse each archive, extract stats.
+	// Also capture the last successfully parsed archive for detail breakdown.
 	var snapshots []StatsSnapshot
+	var lastArchive *Archive
 	for _, e := range entries {
 		data, err := storage.store.GetAll(ctx, e.key)
 		if err != nil {
@@ -89,6 +91,7 @@ func runStats(fs *flag.FlagSet, lang string) {
 		if err != nil {
 			continue
 		}
+		lastArchive = arc
 
 		allWords := AllWords(arc.Groups)
 		mastered, basic, needsConsol, untested := CountByStatus(allWords)
@@ -106,6 +109,12 @@ func runStats(fs *flag.FlagSet, lang string) {
 			Untested:    untested,
 			Errors:      TotalErrors(arc.Groups),
 		})
+	}
+
+	// Build detail from the last successfully parsed archive (reuse, no second download)
+	var detail *StatsDetail
+	if lastArchive != nil {
+		detail = buildStatsDetail(lastArchive.Groups)
 	}
 
 	// Calculate changes
@@ -129,6 +138,7 @@ func runStats(fs *flag.FlagSet, lang string) {
 		"days":      *days,
 		"snapshots": snapshots,
 		"changes":   changes,
+		"detail":    detail,
 	})
 }
 
@@ -139,4 +149,91 @@ func lastIndexOf(s, substr string) int {
 		}
 	}
 	return -1
+}
+
+// buildStatsDetail extracts per-lesson distribution, accuracy buckets, hard-word
+// counts, and top-reviewed words from the latest archive's parsed word groups.
+func buildStatsDetail(groups []WordGroup) *StatsDetail {
+	words := AllWords(groups)
+
+	// Per-lesson distribution
+	lessonMap := make(map[string]int)
+	for _, w := range words {
+		lessonMap[w.Group]++
+	}
+	byLesson := make([]LessonCount, 0, len(lessonMap))
+	for lesson, count := range lessonMap {
+		byLesson = append(byLesson, LessonCount{Lesson: lesson, Count: count})
+	}
+	sort.Slice(byLesson, func(i, j int) bool {
+		return byLesson[i].Lesson < byLesson[j].Lesson
+	})
+
+	// Accuracy distribution (only reviewed words)
+	accDist := map[string]int{
+		"0-30%": 0, "30-60%": 0, "60-80%": 0, "80-90%": 0, "90-100%": 0,
+	}
+	for _, w := range words {
+		acc, ok := Accuracy(w)
+		if !ok {
+			continue
+		}
+		switch {
+		case acc < 0.3:
+			accDist["0-30%"]++
+		case acc < 0.6:
+			accDist["30-60%"]++
+		case acc < 0.8:
+			accDist["60-80%"]++
+		case acc < 0.9:
+			accDist["80-90%"]++
+		default:
+			accDist["90-100%"]++
+		}
+	}
+
+	// Hard word counts by severity (using canonical IsHardWord with defaults)
+	var hw HardWordCounts
+	for _, w := range words {
+		if !IsHardWord(w, DefaultHardMinAccuracy, DefaultHardMinReviews) {
+			continue
+		}
+		hw.Total++
+		acc, _ := Accuracy(w)
+		switch {
+		case acc < 0.3:
+			hw.Severe++
+		case acc < 0.45:
+			hw.Moderate++
+		default:
+			hw.Mild++
+		}
+	}
+
+	// Top 10 most-reviewed words
+	sort.Slice(words, func(i, j int) bool {
+		return words[i].ReviewCount > words[j].ReviewCount
+	})
+	topN := 10
+	if len(words) < topN {
+		topN = len(words)
+	}
+	topReviewed := make([]TopReviewedWord, 0, topN)
+	for i := 0; i < topN; i++ {
+		w := words[i]
+		acc, _ := Accuracy(w)
+		topReviewed = append(topReviewed, TopReviewedWord{
+			Word:     w.Word,
+			Reviews:  w.ReviewCount,
+			Errors:   w.ErrorCount,
+			Accuracy: acc,
+		})
+	}
+
+	return &StatsDetail{
+		ByLesson:             byLesson,
+		AccuracyDistribution: accDist,
+		HardWords:            hw,
+		TopReviewed:          topReviewed,
+	}
 }

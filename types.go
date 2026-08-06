@@ -155,3 +155,32 @@ type StatsSnapshot struct {
 	Untested    int    `json:"untested"`
 	Errors      int    `json:"errors"`
 }
+
+// StatsDetail is extracted from the latest archive and provides per-lesson
+// breakdown, accuracy distribution, and hard-word counts so callers never
+// need to parse the archive markdown manually.
+type StatsDetail struct {
+	ByLesson             []LessonCount   `json:"by_lesson"`
+	AccuracyDistribution map[string]int  `json:"accuracy_distribution"`
+	HardWords            HardWordCounts  `json:"hard_words"`
+	TopReviewed          []TopReviewedWord `json:"top_reviewed"`
+}
+
+type LessonCount struct {
+	Lesson string `json:"lesson"`
+	Count  int    `json:"count"`
+}
+
+type HardWordCounts struct {
+	Severe   int `json:"severe"`
+	Moderate int `json:"moderate"`
+	Mild     int `json:"mild"`
+	Total    int `json:"total"`
+}
+
+type TopReviewedWord struct {
+	Word       string  `json:"word"`
+	Reviews    int     `json:"reviews"`
+	Errors     int     `json:"errors"`
+	Accuracy   float64 `json:"accuracy"`
+}
