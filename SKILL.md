@@ -194,11 +194,31 @@ Knowledge base IDs:
    - `jrp --lang ja list-knowledge` to see available lessons
    - `jrp --lang ja get-knowledge --name <filename>` to fetch a lesson's content
    - (Fallback: IMA MCP tools if a lesson is not yet in COS)
-4. Generate 10+ sentence exercises:
-   - Each sentence uses grammar points from learned lessons
-   - Each sentence's Chinese translation is provided for the user to translate
-   - The target language answer is the reference
-   - Cover variety: different grammar patterns, different lesson topics
+4. **⚠️ Sentence Grammar Constraint**: Sentences MUST use ONLY grammar points the user has
+   already learned. The authority for "what has been learned" is the COS knowledge documents.
+
+   a. **Read ALL knowledge docs**: Fetch every document returned by `list-knowledge` via
+      `get-knowledge`. This establishes the exact grammar scope. The docs are the single
+      source of truth — if a grammar pattern is not in them, the user hasn't learned it.
+
+   b. **Known traps** (grammar the AI often overuses but is NOT yet learned):
+      - て形 (verb て, い-adj くて, な-adj で) → ~Lesson 14-16
+      - た形 (plain past) → ~Lesson 19
+      - から (because/cause) → Lesson 11
+      - ～にくい/～やすい (difficult/easy to) → N4
+      - Plain/casual form (～だ ending) → Lesson 20+
+      - Relative clauses (verb-modifying nouns, e.g. 「昨日買った本」) → Lesson 25+
+
+      When you need to connect two sentences, use そして / でも / が instead of て形.
+
+   c. **Generate 10+ sentences**:
+      - Uses ONLY grammar points and sentence patterns found in the knowledge docs
+      - Chinese prompt for the user to translate, Japanese answer as reference
+      - Cover variety of lessons and grammar patterns learned so far
+      - For 好き/嫌い, stick to the basic `～が好き/嫌いです` pattern (not contrastive は)
+
+   d. **Self-check before saving**: Verify every sentence against the knowledge docs.
+      If any sentence uses grammar not in those docs, rewrite it.
 5. Save sentences to a JSON file:
 
 ```json
@@ -496,6 +516,12 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
     verify the word count is unchanged.** `normalize-words` does both. If you ever need a
     new bulk-edit command, copy that pattern: upload backup → mutate → assert count →
     upload. Never mutate-then-backup.
+19. **⚠️ Sentence grammar MUST stay within learned scope.** Before writing any sentence for
+    `gen-plan`, read ALL COS knowledge documents and extract the learned grammar points.
+    Sentences that use unlearned grammar (て形, た形, から, ～にくい, plain form, etc.) are
+    BANNED. The knowledge docs are the single source of truth for what the user has learned.
+    This rule directly addresses the 2026-08-07 incident where 3 of 15 sentences used て形
+    (unlearned) and 1 used contrastive は beyond the basic pattern.
 
 ## Windows Environment Notes
 
