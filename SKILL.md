@@ -215,7 +215,7 @@ Knowledge base IDs:
       - Uses ONLY grammar points and sentence patterns found in the knowledge docs
       - Chinese prompt for the user to translate, Japanese answer as reference
       - Cover variety of lessons and grammar patterns learned so far
-      - For 好き/嫌い, stick to the basic `～が好き/嫌いです` pattern (not contrastive は)
+      - 对比的は已在第5课学过，可用于 `Aは～が、Bは～` 之类的对比句式
 
    d. **Self-check before saving**: Verify every sentence against the knowledge docs.
       If any sentence uses grammar not in those docs, rewrite it.
@@ -521,7 +521,8 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
     Sentences that use unlearned grammar (て形, た形, から, ～にくい, plain form, etc.) are
     BANNED. The knowledge docs are the single source of truth for what the user has learned.
     This rule directly addresses the 2026-08-07 incident where 3 of 15 sentences used て形
-    (unlearned) and 1 used contrastive は beyond the basic pattern.
+    (unlearned) and 1 used ～にくい (unlearned). Contrastive は is NOT a trap — it was taught
+    in Lesson 5.
 
 ## Windows Environment Notes
 
