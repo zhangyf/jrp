@@ -345,7 +345,29 @@ to `history/` before touching anything and aborts if the word count changes.
 Entries with no parens, no kanji, or already correct are left untouched, which makes
 the command safely idempotent.
 
-### 8. Show Statistics
+### 8. Deduplicate Words (去重)
+
+**Trigger**: User reports untested words that never get reviewed; or discovers duplicate entries.
+
+**⚠️ Do NOT manually delete lines from the archive.** Use this command — it backs up
+to `history/` first and aborts if the word count doesn't match expectations.
+
+**Steps**:
+1. **Always dry-run first**: `jrp --lang ja dedupe --dry-run`
+   - Read-only. Reports every duplicate group, which entry is kept (highest reviewCount), and which are removed.
+2. Execute: `jrp --lang ja dedupe`
+   - Uploads the current archive to `history/<name>_backup_<timestamp>.md` **first**.
+   - For each duplicate group, keeps the entry with the highest reviewCount (tie-break: fewer errors).
+   - Removes duplicate entries; if a group becomes empty, the entire group is dropped.
+   - Hard-aborts before upload if the final word count ≠ (original − removals).
+   - Minor version bump to the archive.
+3. Verify the archive is clean: re-run `--dry-run`; `dup_groups` must be 0.
+
+**Common cause**: `add-words` imports new words that already exist under a different group
+with a different word form (e.g. `晴れ(はれ)` vs `はれ(晴れ)` before normalize). After
+normalizing forms, these become exact duplicates with different reviewCounts.
+
+### 9. Show Statistics
 
 **⚠️ stats is the sole authoritative data source — NEVER parse the archive markdown
 manually to build statistics or reports.** The command already downloads, parses, and
@@ -380,7 +402,7 @@ analyzes every archive; all statistical data must come from its JSON output.
 - Do NOT combine `stats` output with ad-hoc archive parsing. If `stats` output
   is missing a field you need, add it to `buildStatsDetail` in `cmd_stats.go`.
 
-### 9. Save Lesson Knowledge Document
+### 10. Save Lesson Knowledge Document
 
 **Trigger**: User sends textbook photos for knowledge extraction.
 
@@ -523,6 +545,12 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
     This rule directly addresses the 2026-08-07 incident where 3 of 15 sentences used て形
     (unlearned) and 1 used ～にくい (unlearned). Contrastive は is NOT a trap — it was taught
     in Lesson 5.
+20. **⚠️ Duplicate word entries MUST be cleaned with `dedupe`, never by hand.** Duplicate
+    entries (same word text in different groups) are caused by `add-words` importing words
+    whose form differs from the existing entry (e.g. `晴れ(はれ)` vs `はれ(晴れ)` before
+    normalize). After `normalize-words` unifies the forms, run `dedupe --dry-run` to
+    check, then `dedupe` to clean. Never delete lines manually — that corrupts the
+    word count and `dedupe` already handles backup + assertion.
 
 ## Windows Environment Notes
 
@@ -592,6 +620,7 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 | `record` | `--input <json>` `--hard` | Record review results (`--hard` resolves numbers against the export-hard plan) |
 | `update-def` | `--input <json>` | Update word definition |
 | `normalize-words` | `--dry-run` | Normalize word forms to `かな(漢字)`. Backs up to `history/` first; aborts if word count changes. **Always dry-run first** |
+| `dedupe` | `--dry-run` | Remove duplicate word entries from archive. Keeps the one with highest reviewCount. Backs up to `history/` first. **Always dry-run first** |
 | `stats` | `--days <N>` | Show statistics for last N days |
 | `save-lesson` | `--file <path> --name <name>` | Save knowledge doc to COS |
 | `list-knowledge` | (none) | List all knowledge documents in COS |

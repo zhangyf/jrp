@@ -21,6 +21,7 @@ Commands:
   record       Record review results and update archive
   update-def   Update a word's definition
   stats           Show statistics for the last N days
+  dedupe          Remove duplicate word entries from the archive
   save-lesson     Save a knowledge document to COS
   list-knowledge  List all knowledge documents in COS
   get-knowledge   Download a knowledge document from COS
@@ -105,6 +106,8 @@ func main() {
 		runUpdateDef(fs, lang)
 	case "normalize-words":
 		runNormalizeWords(fs, lang)
+	case "dedupe":
+		runDedupe(fs, lang)
 	case "stats":
 		runStats(fs, lang)
 	case "save-lesson":
