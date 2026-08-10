@@ -186,11 +186,12 @@ Knowledge base IDs:
 **Trigger**: User asks for today's review, 复习计划, or daily Excel.
 
 **Steps**:
-1. Run: `jrp --lang ja gen-plan` (defaults to today) or `jrp --lang ja gen-plan --date 2026-07-18` (for a specific date)
+1. Run: `jrp --lang ja gen-plan --date YYYY-MM-DD` (no `--sentences` flag yet)
    - If due_count is 0, inform the user — no review needed for that date
    - If no archive exists for the target date, gen-plan auto-initializes today's v1.0 archive (with a changelog entry "新日初始化（gen-plan）") before generating the plan, so the Excel uses v1.0 instead of inheriting the previous day's version
-2. Read the due words from the JSON output
-3. Read knowledge points from COS for grammar points from recent lessons:
+   - **This call is read-only for data extraction.** The Excel it generates will be overwritten by Step 5. Do NOT present the Excel from this call.
+2. Read the due words from the JSON output (`plan_words` field)
+3. Read knowledge points from COS for grammar points from recently learned lessons:
    - `jrp --lang ja list-knowledge` to see available lessons
    - `jrp --lang ja get-knowledge --name <filename>` to fetch a lesson's content
    - (Fallback: IMA MCP tools if a lesson is not yet in COS)
@@ -216,10 +217,16 @@ Knowledge base IDs:
       - Chinese prompt for the user to translate, Japanese answer as reference
       - Cover variety of lessons and grammar patterns learned so far
       - 对比的は已在第5课学过，可用于 `Aは～が、Bは～` 之类的对比句式
+      - **⚠️ Generate sentences from scratch every time.** NEVER reuse or reference
+        sentences from previous days' plans, COS plan JSONs, or any other source.
+        Old sentences reflect the user's proficiency at that time and often cover
+        lessons ahead of current progress (leading to L10+ vocabulary/grammar leaks).
 
    d. **Self-check before saving**: Verify every sentence against the knowledge docs.
-      If any sentence uses grammar not in those docs, rewrite it.
-5. Save sentences to a JSON file:
+      If any sentence uses grammar not in those docs, rewrite it. If any sentence
+      uses vocabulary (nouns, verbs, adjectives) from lessons beyond what's in the
+      knowledge docs, replace it with vocabulary from the learned lessons.
+5. Save sentences to a fresh JSON file (always create a new file, never append to an old one):
 
 ```json
 [
@@ -229,8 +236,9 @@ Knowledge base IDs:
 ```
 
 6. Run: `jrp --lang ja gen-plan --date YYYY-MM-DD --sentences /tmp/sentences.json`
+   - This is the FINAL call that produces the deliverable Excel with both words and sentences
    - Default output: `outputs/review_YYYY-MM-DD_vA.B.xlsx` (version auto-parsed from archive)
-   - **Always copy the final xlsx to the workspace `outputs/` directory** before present_files
+   - **This is the only Excel you present to the user** — the Excel from Step 1 (no sentences) was a data-extraction artifact and MUST NOT be presented
 7. Present the Excel file to the user using present_files (path must be in workspace `outputs/`)
 
 **Excel structure**:
@@ -551,6 +559,14 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
     normalize). After `normalize-words` unifies the forms, run `dedupe --dry-run` to
     check, then `dedupe` to clean. Never delete lines manually — that corrupts the
     word count and `dedupe` already handles backup + assertion.
+21. **⚠️ Sentences MUST be generated from scratch every day.** NEVER reuse, reference, or
+    carry forward sentences from previous days' plans. The user's proficiency evolves,
+    and old sentences may contain vocabulary/grammar from lessons the user hasn't reached
+    yet (e.g. L10+ content when the user is on L8). The COS `plans/plan_<date>.json` files
+    are stripped of sentences before upload (Go code does this), so checking old plans
+    for sentence content is both unnecessary and misleading. When generating sentences for
+    `gen-plan`, use ONLY: (a) the due-word list from Step 2, (b) knowledge docs from Step 3,
+    and (c) nothing else.
 
 ## Windows Environment Notes
 

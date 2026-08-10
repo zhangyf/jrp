@@ -94,7 +94,11 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 		return
 	}
 
-	// Load sentence exercises from file (provided by AI)
+	// Load sentence exercises from file (provided by AI).
+	// Defensive nil-guard: BuildDuePlan always returns a fresh ReviewPlan with
+	// nil Sentences, but explicit clearing prevents any future code path from
+	// accidentally carrying over stale sentences from a previous invocation.
+	plan.Sentences = nil
 	if *sentencesFile != "" {
 		var sentences []struct {
 			Chinese string `json:"chinese"`
@@ -127,6 +131,12 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 		fmt.Fprintf(os.Stderr, "Error generating Excel: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Sentences are only needed locally for the Excel file; the COS plan JSON
+	// is consumed by `record` to map word numbers → text and does not need
+	// sentences. Stripping them prevents cross-contamination when `serve`
+	// regenerates and uploads the same plan key.
+	plan.Sentences = nil
 
 	// Upload plan JSON to COS
 	if err := storage.UploadPlan(ctx, plan); err != nil {
