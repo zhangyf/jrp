@@ -92,7 +92,8 @@ func newExcelWriter() *excelWriter {
 	}
 }
 
-// setColWidths applies the 6-column widths for a sheet.
+// setColWidths applies column widths. Exercise sheets use 8 columns (with
+// auto-check formula columns D + H); answer sheets use 6 columns.
 func (w *excelWriter) setColWidths(sheet string, isExer bool) {
 	bw, cw := w.layout.ansBWidth, w.layout.ansCWidth
 	if isExer {
@@ -101,9 +102,17 @@ func (w *excelWriter) setColWidths(sheet string, isExer bool) {
 	w.f.SetColWidth(sheet, "A", "A", 5)
 	w.f.SetColWidth(sheet, "B", "B", bw)
 	w.f.SetColWidth(sheet, "C", "C", cw)
-	w.f.SetColWidth(sheet, "D", "D", 5)
-	w.f.SetColWidth(sheet, "E", "E", 17)
-	w.f.SetColWidth(sheet, "F", "F", 22.5)
+	if isExer {
+		w.f.SetColWidth(sheet, "D", "D", 6)
+		w.f.SetColWidth(sheet, "E", "E", 5)
+		w.f.SetColWidth(sheet, "F", "F", 17)
+		w.f.SetColWidth(sheet, "G", "G", cw)
+		w.f.SetColWidth(sheet, "H", "H", 6)
+	} else {
+		w.f.SetColWidth(sheet, "D", "D", 5)
+		w.f.SetColWidth(sheet, "E", "E", 17)
+		w.f.SetColWidth(sheet, "F", "F", 22.5)
+	}
 }
 
 // rowHeight returns the row height to apply (0 = leave default).
@@ -118,9 +127,17 @@ func (w *excelWriter) rowHeight(isExer bool) float64 {
 // renderWordSections writes one section per non-empty category, in the given
 // order, using a two-column layout. Returns the next free row.
 //
-// Layout (6 columns):
+// Exercise sheet (8 columns):
+//
+//	| A序号 | B中文 | C日语 | D比对 | E序号 | F中文 | G日语 | H比对 |
+//
+// Answer sheet (6 columns):
 //
 //	| A序号 | B中文 | C日语 | D序号 | E中文 | F日语 |
+//
+// When isExer=true, columns D and H contain auto-check formulas that compare
+// the user's handwritten answer (C/G) with the answer sheet after stripping
+// parenthetical kanji (e.g. "ちがいます(違います)" → "ちがいます").
 func (w *excelWriter) renderWordSections(sheet string, isExer, withAnswer bool,
 	order []string, byCat map[string][]PlanWord, startRow int) int {
 
@@ -133,11 +150,15 @@ func (w *excelWriter) renderWordSections(sheet string, isExer, withAnswer bool,
 			continue
 		}
 
-		// Section title row (merged A:F)
+		// Section title row (merged A:H for exercise, A:F for answer)
 		titleCell := fmt.Sprintf("A%d", currentRow)
 		w.f.SetCellValue(sheet, titleCell, fmt.Sprintf("%s %d词", cat, len(words)))
 		w.f.SetCellStyle(sheet, titleCell, titleCell, w.st.sectionHeader)
-		w.f.MergeCell(sheet, titleCell, fmt.Sprintf("F%d", currentRow))
+		titleEndCol := "F"
+		if isExer {
+			titleEndCol = "H"
+		}
+		w.f.MergeCell(sheet, titleCell, fmt.Sprintf("%s%d", titleEndCol, currentRow))
 		if rowHt > 0 {
 			w.f.SetRowHeight(sheet, currentRow, rowHt)
 		}
@@ -148,10 +169,20 @@ func (w *excelWriter) renderWordSections(sheet string, isExer, withAnswer bool,
 		w.f.SetCellValue(sheet, fmt.Sprintf("A%d", hdr), "序号")
 		w.f.SetCellValue(sheet, fmt.Sprintf("B%d", hdr), "中文")
 		w.f.SetCellValue(sheet, fmt.Sprintf("C%d", hdr), "日语")
-		w.f.SetCellValue(sheet, fmt.Sprintf("D%d", hdr), "序号")
-		w.f.SetCellValue(sheet, fmt.Sprintf("E%d", hdr), "中文")
-		w.f.SetCellValue(sheet, fmt.Sprintf("F%d", hdr), "日语")
-		for _, col := range []string{"A", "B", "C", "D", "E", "F"} {
+		var hdrCols []string
+		if isExer {
+			// Exercise: right block shifts D→E, E→F, F→G; D+H are formula columns (no header)
+			w.f.SetCellValue(sheet, fmt.Sprintf("E%d", hdr), "序号")
+			w.f.SetCellValue(sheet, fmt.Sprintf("F%d", hdr), "中文")
+			w.f.SetCellValue(sheet, fmt.Sprintf("G%d", hdr), "日语")
+			hdrCols = []string{"A", "B", "C", "E", "F", "G"}
+		} else {
+			w.f.SetCellValue(sheet, fmt.Sprintf("D%d", hdr), "序号")
+			w.f.SetCellValue(sheet, fmt.Sprintf("E%d", hdr), "中文")
+			w.f.SetCellValue(sheet, fmt.Sprintf("F%d", hdr), "日语")
+			hdrCols = []string{"A", "B", "C", "D", "E", "F"}
+		}
+		for _, col := range hdrCols {
 			cellRef := fmt.Sprintf("%s%d", col, hdr)
 			w.f.SetCellStyle(sheet, cellRef, cellRef, w.st.header)
 		}
@@ -183,17 +214,31 @@ func (w *excelWriter) renderWordSections(sheet string, isExer, withAnswer bool,
 					w.f.SetCellStyle(sheet, fmt.Sprintf("C%d", row), fmt.Sprintf("C%d", row), w.st.data)
 				}
 			}
-			// Right block
+			// Right block — exercise sheet uses E/F/G; answer sheet uses D/E/F
+			rSeqCol, rDefCol, rWordCol := "D", "E", "F"
+			if isExer {
+				rSeqCol, rDefCol, rWordCol = "E", "F", "G"
+			}
 			if i < len(rightWords) {
 				pw := rightWords[i]
-				w.f.SetCellValue(sheet, fmt.Sprintf("D%d", row), pw.Number)
-				w.f.SetCellValue(sheet, fmt.Sprintf("E%d", row), pw.Definition)
-				w.f.SetCellStyle(sheet, fmt.Sprintf("D%d", row), fmt.Sprintf("D%d", row), w.st.numCell)
-				w.f.SetCellStyle(sheet, fmt.Sprintf("E%d", row), fmt.Sprintf("E%d", row), w.st.data)
+				w.f.SetCellValue(sheet, fmt.Sprintf("%s%d", rSeqCol, row), pw.Number)
+				w.f.SetCellValue(sheet, fmt.Sprintf("%s%d", rDefCol, row), pw.Definition)
+				w.f.SetCellStyle(sheet, fmt.Sprintf("%s%d", rSeqCol, row), fmt.Sprintf("%s%d", rSeqCol, row), w.st.numCell)
+				w.f.SetCellStyle(sheet, fmt.Sprintf("%s%d", rDefCol, row), fmt.Sprintf("%s%d", rDefCol, row), w.st.data)
 				if withAnswer {
-					w.f.SetCellValue(sheet, fmt.Sprintf("F%d", row), pw.Word)
-					w.f.SetCellStyle(sheet, fmt.Sprintf("F%d", row), fmt.Sprintf("F%d", row), w.st.data)
+					w.f.SetCellValue(sheet, fmt.Sprintf("%s%d", rWordCol, row), pw.Word)
+					w.f.SetCellStyle(sheet, fmt.Sprintf("%s%d", rWordCol, row), fmt.Sprintf("%s%d", rWordCol, row), w.st.data)
 				}
+			}
+			// Auto-check formulas (exercise sheet only)
+			if isExer {
+				dCell := fmt.Sprintf("D%d", row)
+				dFormula := fmt.Sprintf(`IF(C%d=(_wpsfn.REGEXP(✅答案版!C%d,"[（(][^）)]*[）)]",2,"")),1,0)`, row, row)
+				w.f.SetCellFormula(sheet, dCell, dFormula)
+
+				hCell := fmt.Sprintf("H%d", row)
+				hFormula := fmt.Sprintf(`IF(G%d=(_wpsfn.REGEXP(✅答案版!F%d,"[（(][^）)]*[）)]",2,"")),1,0)`, row, row)
+				w.f.SetCellFormula(sheet, hCell, hFormula)
 			}
 		}
 		currentRow = dataStart + maxRows
