@@ -114,12 +114,16 @@ Each section has a title row (e.g., "☠️钉子户 54词") and column headers 
 序号 cells contain plain numbers (no emoji); status is conveyed by the section title.
 Continuous numbering across all sections.
 
-### Excel Layout (matches IMA version)
+### Excel Layout
 
 - **Sheet names**: `✏️练习版` (practice) / `✅答案版` (answers)
-- **6 columns, no gap**: A(序号,5) B(中文,17) C(日语,20.5) D(序号,5) E(中文,17) F(日语,22.5)
-- **Per-category sections**: Each non-empty category gets its own section with title + header + word rows
-- **Word rows**: Two-column layout (left A/B/C, right D/E/F), 序号 has gray bg + center align
+- **练习版 8 columns**: A(序号,5) B(中文,17) C(日语,20.5) **D(比对,6)** E(序号,5) F(中文,17) G(日语,20.5) **H(比对,6)**
+- **答案版 6 columns**: A(序号,5) B(中文,17) C(日语,20.5) D(序号,5) E(中文,17) F(日语,22.5)
+- **Auto-check formulas (练习版 only)**: D and H columns contain `_wpsfn.REGEXP` formulas that compare the user's handwritten answer (C/G) with the answer sheet after stripping parenthetical kanji (e.g. `ちがいます(違います)` → `ちがいます`). WPS auto-evaluates these; match returns 1, mismatch returns 0.
+  - D column: `=IF(Cn=(_wpsfn.REGEXP(✅答案版!Cn,"[（(][^）)]*[）)]",2,"")),1,0)`
+  - H column: `=IF(Gn=(_wpsfn.REGEXP(✅答案版!Fn,"[（(][^）)]*[）)]",2,"")),1,0)`
+- **Per-category sections**: Each non-empty category gets its own section with title + header + word rows. Section title rows merge A:H (练习版) or A:F (答案版).
+- **Word rows**: Two-column layout (left A/B/C, right E/F/G for 练习版; left A/B/C, right D/E/F for 答案版), 序号 has gray bg + center align
 - **Sentences**: `📝 造句 共N句` header, S1/S2 numbering, B:C merged for Chinese, D:F merged for answer
 
 ## Knowledge Documents (COS)
@@ -244,7 +248,9 @@ Knowledge base IDs:
 **Excel structure**:
 - Sheet names: `✏️练习版` / `✅答案版`
 - Words grouped by status section: ☠️钉子户 → 🔴待巩固 → 🟡基本掌握 → 🟢抽查 → 🔄待测试
-- 6-column layout: 序号 | 中文释义 | 目标语言 | 序号 | 中文释义 | 目标语言
+- 练习版: 8-column layout: 序号 | 中文 | 日语 | 比对 | 序号 | 中文 | 日语 | 比对
+- 答案版: 6-column layout: 序号 | 中文 | 日语 | 序号 | 中文 | 日语
+- 比对列(D/H)含自动比对公式，WPS 打开后自动显示匹配结果
 - Gray header rows (D9D9D9), centered bold
 - Sentence exercises: `📝 造句 共N句` title, S1-SN numbering, B:C merged Chinese, D:F merged target language
 - Output naming: `review_yyyy-mm-dd_vA.B.xlsx` (version from current archive)
