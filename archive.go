@@ -62,10 +62,10 @@ func ParseArchive(content string, lang string) (*Archive, error) {
 			}
 			// Parse changelog row
 			if strings.HasPrefix(trimmed, "|") {
-				entry := parseChangelogRow(trimmed)
-				if entry.Date != "" && entry.Date != "—" {
-					arc.Changelog = append(arc.Changelog, entry)
-				}
+			entry := parseChangelogRow(trimmed)
+			if entry.Date != "" && entry.Date != "—" && entry.Date != "日期" {
+				arc.Changelog = append(arc.Changelog, entry)
+			}
 				continue
 			}
 			// Non-table, non-empty line → exit changelog
@@ -269,7 +269,12 @@ func WriteArchive(arc *Archive) string {
 	b.WriteString("|2次|4天|\n")
 	b.WriteString("|3次|7天|\n")
 	b.WriteString("|4次|10天|\n")
-	b.WriteString("|5次以上|15天|\n\n\n")
+	b.WriteString("|5次|15天|\n")
+	b.WriteString("|6次|30天|\n")
+	b.WriteString("|7次|60天|\n")
+	b.WriteString("|8次|90天|\n")
+	b.WriteString("|9次|120天|\n")
+	b.WriteString("|10次以上|180天|\n\n\n")
 
 	// Overall progress
 	allWords := AllWords(arc.Groups)
