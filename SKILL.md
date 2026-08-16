@@ -69,7 +69,12 @@ language-review/
 | 2 | 4 days |
 | 3 | 7 days |
 | 4 | 10 days |
-| 5+ | 15 days |
+| 5 | 15 days |
+| 6 | 30 days |
+| 7 | 60 days |
+| 8 | 90 days |
+| 9 | 120 days |
+| 10+ | 180 days |
 
 Words with errors use consecutiveCorrect count for interval; words without errors use reviewCount.
 
@@ -216,7 +221,7 @@ Knowledge base IDs:
 
       When you need to connect two sentences, use そして / でも / が instead of て形.
 
-   c. **Generate 10+ sentences**:
+   c. **Generate 20 sentences**:
       - Uses ONLY grammar points and sentence patterns found in the knowledge docs
       - Chinese prompt for the user to translate, Japanese answer as reference
       - Cover variety of lessons and grammar patterns learned so far

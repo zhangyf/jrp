@@ -55,8 +55,18 @@ func GetInterval(reviewOrConsec int) int {
 		return 7
 	case reviewOrConsec == 4:
 		return 10
-	default:
+	case reviewOrConsec == 5:
 		return 15
+	case reviewOrConsec == 6:
+		return 30
+	case reviewOrConsec == 7:
+		return 60
+	case reviewOrConsec == 8:
+		return 90
+	case reviewOrConsec == 9:
+		return 120
+	default:
+		return 180
 	}
 }
 
