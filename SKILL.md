@@ -336,6 +336,33 @@ regardless of due date.
 2. Run: `jrp --lang ja update-def --input /tmp/def.json`
 3. Report: old definition → new definition, new version
 
+### 6b. Update Word Form (词形修正)
+
+**Trigger**: User points out a typo in a word's target-language form (the 日语单词 column),
+e.g. a stray long-vowel mark in the kanji annotation (`さんぽします(散歩ー)` should be
+`さんぽします(散歩します)`). `update-def` only changes the definition column, so it
+cannot fix the word form itself — use this command instead.
+
+**Steps**:
+1. Locate the exact current form (download the latest archive and grep, or read the
+   original Excel) — the match is exact, so every character must line up.
+2. Create JSON:
+
+```json
+{
+  "language": "ja",
+  "word": "さんぽします(散歩ー)",
+  "new_word": "さんぽします(散歩します)"
+}
+```
+
+3. Run: `jrp --lang ja update-word --input /tmp/word.json`
+4. Report: old form → new form, new version
+
+**Guard**: aborts if `new_word` already exists elsewhere in the archive (would create a
+duplicate). Word count is unchanged; no `history/` backup is taken (single-entry edit,
+mirrors `update-def`).
+
 ### 7. Normalize Word Forms (词形规范化)
 
 **Canonical word form: `かな(漢字)` — reading outside the parens, kanji inside.**
@@ -646,6 +673,7 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 | `export-hard` | `--min-accuracy <0-1>` `--min-reviews <N>` `--date <YYYY-MM-DD>` `--output <path>` | Export ALL hard words (钉子户) to Excel. Read-only: never bumps the archive version |
 | `record` | `--input <json>` `--hard` | Record review results (`--hard` resolves numbers against the export-hard plan) |
 | `update-def` | `--input <json>` | Update word definition |
+| `update-word` | `--input <json>` | Update a word's target-language form (fix a typo like a stray long-vowel mark) |
 | `normalize-words` | `--dry-run` | Normalize word forms to `かな(漢字)`. Backs up to `history/` first; aborts if word count changes. **Always dry-run first** |
 | `dedupe` | `--dry-run` | Remove duplicate word entries from archive. Keeps the one with highest reviewCount. Backs up to `history/` first. **Always dry-run first** |
 | `stats` | `--days <N>` | Show statistics for last N days |

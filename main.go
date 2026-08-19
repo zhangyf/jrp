@@ -20,6 +20,7 @@ Commands:
   export-hard  Export ALL hard words (钉子户) to a standalone Excel
   record       Record review results and update archive
   update-def   Update a word's definition
+  update-word  Update a word's target-language form (fix typos)
   stats           Show statistics for the last N days
   dedupe          Remove duplicate word entries from the archive
   save-lesson     Save a knowledge document to COS
@@ -39,6 +40,7 @@ Examples:
   jrp --lang ja record --input results.json
   jrp --lang ja record --input results.json --hard
   jrp --lang ja update-def --input def.json
+  jrp --lang ja update-word --input word.json
   jrp --lang ja stats --days 7
   jrp --lang ja save-lesson --file lesson.md --name 第9课知识点.md
   jrp --lang ja list-knowledge
@@ -104,6 +106,8 @@ func main() {
 		runRecord(fs, lang)
 	case "update-def":
 		runUpdateDef(fs, lang)
+	case "update-word":
+		runUpdateWord(fs, lang)
 	case "normalize-words":
 		runNormalizeWords(fs, lang)
 	case "dedupe":

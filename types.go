@@ -137,6 +137,13 @@ type UpdateDefInput struct {
 	Definition string `json:"definition"`
 }
 
+// UpdateWordInput is the JSON input for the update-word command.
+type UpdateWordInput struct {
+	Language string `json:"language"`
+	Word     string `json:"word"`     // current form to locate (exact match)
+	NewWord  string `json:"new_word"` // replacement form
+}
+
 // StatsOutput is the result of the stats command.
 type StatsOutput struct {
 	Language     string            `json:"language"`
