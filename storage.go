@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"crypto/sha256"
 	"fmt"
 	"os"
@@ -98,24 +99,64 @@ func loadCOSConfig() (objstore.Config, error) {
 	}, nil
 }
 
+// deriveEnvKey derives the AES-256 key from machine identity, matching the
+// Node.js side (cos_node.mjs): SHA-256(hostname + ":" + username + ":" + skillDir).
+//
+// username MUST match os.userInfo().username semantics, NOT user.Current().Username:
+//   - Windows: os.userInfo().username is the bare username (e.g. "efrainzhang"),
+//     while user.Current().Username prefixes "HOSTNAME\\". Use the USERNAME env
+//     var to match. This mismatch was the root cause of "decryption failed".
+//   - Unix: fall back to user.Current().Username (same as os.userInfo()).
+func deriveEnvKey(skillDir string) []byte {
+	hostname, _ := os.Hostname()
+	username := os.Getenv("USERNAME")
+	if username == "" {
+		if u, err := user.Current(); err == nil {
+			username = u.Username
+		}
+	}
+	seed := fmt.Sprintf("%s:%s:%s", hostname, username, skillDir)
+	key := sha256.Sum256([]byte(seed))
+	return key[:]
+}
+
+// encryptEnvFile encrypts plaintext into the same format as cos_node.mjs:
+// iv(12) + authTag(16) + ciphertext. Cross-compatible with the Node decryptor.
+func encryptEnvFile(plaintext string, skillDir string) ([]byte, error) {
+	key := deriveEnvKey(skillDir)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cipher: %w", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCM: %w", err)
+	}
+	iv := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(iv); err != nil {
+		return nil, fmt.Errorf("failed to generate IV: %w", err)
+	}
+	// gcm.Seal returns ciphertext || authTag; reorder to iv || authTag || ciphertext.
+	sealed := gcm.Seal(nil, iv, []byte(plaintext), nil)
+	tagLen := gcm.Overhead()
+	ciphertext := sealed[:len(sealed)-tagLen]
+	authTag := sealed[len(sealed)-tagLen:]
+
+	out := make([]byte, 0, len(iv)+tagLen+len(ciphertext))
+	out = append(out, iv...)
+	out = append(out, authTag...)
+	out = append(out, ciphertext...)
+	return out, nil
+}
+
 // decryptEnvFile decrypts the .env.enc file using the same algorithm as cos_node.mjs.
-// Key derivation: SHA-256(hostname + ":" + username + ":" + skillDir)
 // Format: iv(12) + authTag(16) + ciphertext
 func decryptEnvFile(encData []byte, skillDir string) (string, error) {
 	if len(encData) < 28 {
 		return "", fmt.Errorf("encrypted data too short")
 	}
 
-	// Derive key
-	hostname, _ := os.Hostname()
-	currentUser, err := user.Current()
-	if err != nil {
-		return "", fmt.Errorf("cannot get current user: %w", err)
-	}
-	username := currentUser.Username
-
-	seed := fmt.Sprintf("%s:%s:%s", hostname, username, skillDir)
-	key := sha256.Sum256([]byte(seed))
+	key := deriveEnvKey(skillDir)
 
 	// Extract IV, authTag, ciphertext
 	iv := encData[:12]
@@ -123,7 +164,7 @@ func decryptEnvFile(encData []byte, skillDir string) (string, error) {
 	ciphertext := encData[28:]
 
 	// Decrypt
-	block, err := aes.NewCipher(key[:])
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", fmt.Errorf("failed to create cipher: %w", err)
 	}

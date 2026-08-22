@@ -26,6 +26,7 @@ Commands:
   save-lesson     Save a knowledge document to COS
   list-knowledge  List all knowledge documents in COS
   get-knowledge   Download a knowledge document from COS
+  encrypt-env     Encrypt the plaintext .env into .env.enc (AES-256-GCM)
   serve           Start the web review UI (keyboard + handwriting input)
 
 Global flags:
@@ -74,20 +75,23 @@ func main() {
 		}
 	}
 
-	if lang == "" {
-		fmt.Fprintln(os.Stderr, "Error: --lang is required")
-		fmt.Print(usage)
-		os.Exit(1)
-	}
-
-	if _, ok := LangConfigs[lang]; !ok {
-		fmt.Fprintf(os.Stderr, "Error: unsupported language '%s'. Supported: ja, en, fr\n", lang)
-		os.Exit(1)
-	}
-
 	if cmd == "" {
 		fmt.Print(usage)
 		os.Exit(1)
+	}
+
+	// encrypt-env only touches local files and does not need a language.
+	if cmd != "encrypt-env" {
+		if lang == "" {
+			fmt.Fprintln(os.Stderr, "Error: --lang is required")
+			fmt.Print(usage)
+			os.Exit(1)
+		}
+
+		if _, ok := LangConfigs[lang]; !ok {
+			fmt.Fprintf(os.Stderr, "Error: unsupported language '%s'. Supported: ja, en, fr\n", lang)
+			os.Exit(1)
+		}
 	}
 
 	// Re-parse cmdArgs as flags for the specific command
@@ -120,6 +124,8 @@ func main() {
 		runListKnowledge(fs, lang)
 	case "get-knowledge":
 		runGetKnowledge(fs, lang)
+	case "encrypt-env":
+		runEncryptEnv(fs, lang)
 	case "serve":
 		runServe(fs, lang)
 	default:

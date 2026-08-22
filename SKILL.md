@@ -264,10 +264,17 @@ Knowledge base IDs:
 
 **Trigger**: User reports review results (e.g., "1,3,5写错了，其他对").
 
+**⚠️ 铁律（2026-08-22 事故后确立）**：`record` 只更新 JSON 里出现的序号，未出现的词**完全不处理**。
+老师只报错词 = **当天到期词里其余全部写对**。绝不能只提交错词——否则写对的词 ReviewCount 不 +1，
+正确率永久冻结、钉子户上不了岸。每次 record 必须把当天 plan 的**全部到期词**都写进 `word_results`：
+错词 `correct:false`，其余 `correct:true`。唯一例外：老师明确说"某部分没写/没来得及写"时，按 `word.status` 排除那部分。
+
 **Steps**:
-1. Parse user input: identify which word numbers were correct/wrong
-2. Support batch recording — user may report multiple batches per day
-3. Create JSON:
+1. 等老师当天反馈**收尾**（报完所有错词，通常以"XX部分全对"或"XX部分没写"收尾）再一次性 record，
+   不要每报一批就匆忙提交。老师分多批报错词 → 先累积全部错词序号，收尾时一起提交。
+2. 下载当天 plan JSON 拿全量到期词：`cos_node.mjs download --key "language-review/ja/plans/plan_<date>.json"`。
+   ⚠️ 不要 re-run `gen-plan` 来拿词表——它改档案后编号会变、还会覆盖 COS 上的 plan。
+3. Create JSON——`word_results` 覆盖全量到期词：
 
 ```json
 {
@@ -285,7 +292,10 @@ Knowledge base IDs:
 4. Run: `jrp --lang ja record --input /tmp/results.json`
    - Add `--hard` when the numbers come from an **export-hard** Excel (see workflow 5),
      otherwise the numbers will be resolved against the wrong plan
-5. Report: how many correct/wrong, updated stats, new version
+5. Report to 老师 with a fixed template so each version is traceable at a glance:
+   `到期N词 / 实写M词 / 写对X / 写错Y / 未写Z`，加上 updated 钉子户数、new version。
+   这五个数必须与 changelog 描述、`word_results` 严格一致——N = 当天 plan 到期词总数，
+   M = 实际写了的词数（word_results 长度），Y = 错词数，Z = N − M（老师明确说没写的部分）。
 6. **⚠️ To show the user which words they got wrong, read the original Excel from `outputs/`**
    (e.g. `review_2026-08-06_v1.0.xlsx`). Do NOT re-run `gen-plan` — after `record` changes the
    archive, `gen-plan` produces different numbering and **overwrites** the COS plan JSON.
@@ -605,6 +615,15 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
     for sentence content is both unnecessary and misleading. When generating sentences for
     `gen-plan`, use ONLY: (a) the due-word list from Step 2, (b) knowledge docs from Step 3,
     and (c) nothing else.
+22. **⚠️ 每个版本必须在 changelog 描述里写清"当天到底发生了什么"。** The changelog's
+    `描述` column is the ONLY timeline that can reconstruct history. Every operation that
+    bumps a version (`record` / `add-words` / `update-def` / `update-word` /
+    `normalize-words` / `dedupe`) must leave a description that **independently answers**:
+    这个版本相对上一版改了哪些词、复习结果是多少（到期N词 / 实写M词 / 写对X / 写错Y /
+    未写Z）、改了哪个词形或释义、导入/删除了多少词。绝不能只写"复习结果：0词写对 N词写错"
+    这种只反映「提交了什么」、不反映「当天实况」的描述。2026-08-22 事故的根因正是
+    `record` 只提交错词 → changelog 统计列（已掌握/待巩固/错误数/钉子户）持续失真 →
+    正确率冻结 + 8/6 一天无法追溯。记录必须在**操作当下**写清，事后补回必然残缺。
 
 ## Windows Environment Notes
 
@@ -680,6 +699,7 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 | `save-lesson` | `--file <path> --name <name>` | Save knowledge doc to COS |
 | `list-knowledge` | (none) | List all knowledge documents in COS |
 | `get-knowledge` | `--name <filename>` | Download a knowledge document from COS |
+| `encrypt-env` | (none) | Encrypt the plaintext `.env` into `.env.enc` (AES-256-GCM, keyed to machine/user/skillDir). Backs up the old `.env.enc` first. Does NOT need `--lang` | 
 | `serve` | `--addr <ip>` `--port <n>` | Start the web review UI (keyboard + handwriting input) |
 
 ## Web Review UI (`serve`)
