@@ -106,6 +106,18 @@ func ApplyRecord(ctx context.Context, storage *Storage, lang string, input Recor
 
 	// Apply results
 	today := time.Now()
+	// reviewDate is the date the review actually belongs to (from the plan),
+	// NOT the execution/backfill day. The old code passed `today` straight into
+	// RecordCorrect/RecordWrong, which stamped every word's LastReview with the
+	// backfill day (e.g. 08/22) instead of the real review day. Versioning,
+	// changelog and filename still use `today` so a same-day backfill keeps
+	// bumping the minor version on the execution day.
+	reviewDate := today
+	if input.PlanDate != "" {
+		if d, err := time.Parse("2006-01-02", input.PlanDate); err == nil {
+			reviewDate = d
+		}
+	}
 	correctCount := 0
 	wrongCount := 0
 	notFound := 0
@@ -124,10 +136,10 @@ func ApplyRecord(ctx context.Context, storage *Storage, lang string, input Recor
 		}
 
 		if r.Correct {
-			RecordCorrect(w, today)
+			RecordCorrect(w, reviewDate)
 			correctCount++
 		} else {
-			RecordWrong(w, today)
+			RecordWrong(w, reviewDate)
 			wrongCount++
 		}
 	}
