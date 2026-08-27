@@ -18,7 +18,7 @@ read_when:
 ## Overview
 
 A Go CLI tool that manages vocabulary learning archives using the Ebbinghaus forgetting curve.
-The AI handles photo recognition, text parsing, and sentence generation; the Go binary handles
+The AI handles photo recognition, text parsing, and textbook-sentence selection; the Go binary handles
 all archive operations (parse, update, version, upload to COS).
 
 ## Binary
@@ -221,26 +221,29 @@ Knowledge base IDs:
 
       When you need to connect two sentences, use そして / でも / が instead of て形.
 
-   c. **Generate 20 sentences**:
-      - Uses ONLY grammar points and sentence patterns found in the knowledge docs
-      - Chinese prompt for the user to translate, Japanese answer as reference
-      - Cover variety of lessons and grammar patterns learned so far
-      - 对比的は已在第5课学过，可用于 `Aは～が、Bは～` 之类的对比句式
-      - **⚠️ Generate sentences from scratch every time.** NEVER reuse or reference
-        sentences from previous days' plans, COS plan JSONs, or any other source.
-        Old sentences reflect the user's proficiency at that time and often cover
-        lessons ahead of current progress (leading to L10+ vocabulary/grammar leaks).
+   c. **Select 10 textbook-original sentences (课文原文)**:
+      - Sentences MUST be verbatim lines from the textbook, taken directly from the
+        knowledge docs' 基本课文 / 应用课文 / 语法例句 tables — NEVER AI-composed.
+      - Chinese prompt = the doc's own Chinese translation of that line; Japanese
+        answer = the verbatim original.
+      - Cover a variety of recently learned lessons, prioritizing the last 2-3 lessons'
+        core patterns (e.g. 第12课比较句 / 第10课二类形容词 / 第9课一类形容词).
+      - **⚠️ NEVER invent your own sentences.** Every sentence must trace to a
+        textbook original in the knowledge docs. This replaced the old "generate from
+        scratch" rule at the user's request (2026-08-27): textbook lines are guaranteed
+        correct and within learned scope, so the old leak risk disappears.
 
-   d. **Self-check before saving**: Verify every sentence against the knowledge docs.
-      If any sentence uses grammar not in those docs, rewrite it. If any sentence
-      uses vocabulary (nouns, verbs, adjectives) from lessons beyond what's in the
-      knowledge docs, replace it with vocabulary from the learned lessons.
+   d. **Self-check before saving**: Verify each of the 10 sentences is a verbatim
+      textbook original (copy-pasted from a knowledge doc's 基本课文/应用课文/语法例句
+      table, not paraphrased) and that its Chinese prompt matches the doc's translation.
+      If a sentence is your own invention or a paraphrase, discard it and pick a real
+      textbook line instead.
 5. Save sentences to a fresh JSON file (always create a new file, never append to an old one):
 
 ```json
 [
-  {"chinese": "今天天气很好", "answer": "今日はいい天気ですね"},
-  {"chinese": "我喜欢吃寿司", "answer": "私はすしが好きです"}
+  {"chinese": "小李比森先生年轻", "answer": "李さんは森さんより若いです"},
+  {"chinese": "日本料理中寿司最好吃", "answer": "日本料理の中で寿司がいちばんおいしいです"}
 ]
 ```
 
@@ -607,12 +610,12 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
     normalize). After `normalize-words` unifies the forms, run `dedupe --dry-run` to
     check, then `dedupe` to clean. Never delete lines manually — that corrupts the
     word count and `dedupe` already handles backup + assertion.
-21. **⚠️ Sentences MUST be generated from scratch every day.** NEVER reuse, reference, or
-    carry forward sentences from previous days' plans. The user's proficiency evolves,
-    and old sentences may contain vocabulary/grammar from lessons the user hasn't reached
-    yet (e.g. L10+ content when the user is on L8). The COS `plans/plan_<date>.json` files
-    are stripped of sentences before upload (Go code does this), so checking old plans
-    for sentence content is both unnecessary and misleading. When generating sentences for
+21. **⚠️ 造句必须是课本原文 (verbatim textbook lines).** NEVER compose your own sentences.
+    Select 10 lines verbatim from the knowledge docs' 基本课文 / 应用课文 / 语法例句 tables;
+    the Chinese prompt is the doc's own translation. This replaced the old "generate from
+    scratch" rule at the user's explicit request (2026-08-27). Rationale: textbook lines are
+    guaranteed correct and inside learned scope, so the old risk of AI-invented sentences
+    leaking unlearned grammar/vocabulary disappears entirely. When selecting sentences for
     `gen-plan`, use ONLY: (a) the due-word list from Step 2, (b) knowledge docs from Step 3,
     and (c) nothing else.
 22. **⚠️ 每个版本必须在 changelog 描述里写清"当天到底发生了什么"。** The changelog's
