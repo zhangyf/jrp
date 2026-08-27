@@ -224,6 +224,12 @@ Knowledge base IDs:
    c. **Select 10 textbook-original sentences (课文原文)**:
       - Sentences MUST be verbatim lines from the textbook, taken directly from the
         knowledge docs' 基本课文 / 应用课文 / 语法例句 tables — NEVER AI-composed.
+      - **Pick priority order**:
+        1. **FIRST** look in the consolidated textbook doc `课本原文汇编_第N单元（应用课文）.md`
+           (full dialogues from 应用课文 + 单元末场景对话 + 阅读文) — this is the
+           richest and most authentic source.
+        2. **Then** fall back to each lesson's knowledge doc 基本课文 tables.
+        3. **Lastly** fall back to 语法例句 tables within learned-scope lessons.
       - Chinese prompt = the doc's own Chinese translation of that line; Japanese
         answer = the verbatim original.
       - Cover a variety of recently learned lessons, prioritizing the last 2-3 lessons'
@@ -232,6 +238,9 @@ Knowledge base IDs:
         textbook original in the knowledge docs. This replaced the old "generate from
         scratch" rule at the user's request (2026-08-27): textbook lines are guaranteed
         correct and within learned scope, so the old leak risk disappears.
+      - **⚠️ Hard scope guard**: Only pick sentences from lessons the user has learned
+        (currently 第1-12课). If a consolidated-原文 doc has a placeholder
+        "（待补 — 用户未提供...）", SKIP that section entirely.
 
    d. **Self-check before saving**: Verify each of the 10 sentences is a verbatim
       textbook original (copy-pasted from a knowledge doc's 基本课文/应用课文/语法例句
@@ -615,9 +624,12 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
     the Chinese prompt is the doc's own translation. This replaced the old "generate from
     scratch" rule at the user's explicit request (2026-08-27). Rationale: textbook lines are
     guaranteed correct and inside learned scope, so the old risk of AI-invented sentences
-    leaking unlearned grammar/vocabulary disappears entirely. When selecting sentences for
-    `gen-plan`, use ONLY: (a) the due-word list from Step 2, (b) knowledge docs from Step 3,
-    and (c) nothing else.
+    leaking unlearned grammar/vocabulary disappears entirely.
+    **Selection priority**: (1) `课本原文汇编_第N单元（应用课文）.md` if present — it has
+    the richest完整对话 sentences; (2) each lesson's `标准日本语初级上册_第N课知识点.md`
+    基本课文 tables; (3) 语法例句 tables. Skip any "（待补 — 用户未提供...）" placeholder
+    sections. When selecting sentences for `gen-plan`, use ONLY: (a) the due-word list from
+    Step 2, (b) knowledge docs from Step 3, and (c) nothing else.
 22. **⚠️ 每个版本必须在 changelog 描述里写清"当天到底发生了什么"。** The changelog's
     `描述` column is the ONLY timeline that can reconstruct history. Every operation that
     bumps a version (`record` / `add-words` / `update-def` / `update-word` /
