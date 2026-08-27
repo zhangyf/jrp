@@ -228,8 +228,11 @@ Knowledge base IDs:
         1. **FIRST** look in the consolidated textbook doc `课本原文汇编_第N单元（应用课文）.md`
            (full dialogues from 应用课文 + 单元末场景对话 + 阅读文) — this is the
            richest and most authentic source.
-        2. **Then** fall back to each lesson's knowledge doc 基本课文 tables.
-        3. **Lastly** fall back to 语法例句 tables within learned-scope lessons.
+        2. **Then** look in `课本原文汇编_第N单元（基本课文）.md` if it exists for the
+           target unit — has the 4-sentence 基本课文 + 4-group short dialogue for each
+           lesson (clear, declarative lines work well as writing prompts).
+        3. **Then** fall back to each lesson's knowledge doc 基本课文 tables.
+        4. **Lastly** fall back to 语法例句 tables within learned-scope lessons.
       - Chinese prompt = the doc's own Chinese translation of that line; Japanese
         answer = the verbatim original.
       - Cover a variety of recently learned lessons, prioritizing the last 2-3 lessons'
@@ -626,10 +629,12 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
     guaranteed correct and inside learned scope, so the old risk of AI-invented sentences
     leaking unlearned grammar/vocabulary disappears entirely.
     **Selection priority**: (1) `课本原文汇编_第N单元（应用课文）.md` if present — it has
-    the richest完整对话 sentences; (2) each lesson's `标准日本语初级上册_第N课知识点.md`
-    基本课文 tables; (3) 语法例句 tables. Skip any "（待补 — 用户未提供...）" placeholder
-    sections. When selecting sentences for `gen-plan`, use ONLY: (a) the due-word list from
-    Step 2, (b) knowledge docs from Step 3, and (c) nothing else.
+    the richest完整对话 sentences; (2) `课本原文汇编_第N单元（基本课文）.md` if present
+    (4 句基本课文 + 4 组短对话 for each lesson); (3) each lesson's
+    `标准日本语初级上册_第N课知识点.md` 基本课文 tables; (4) 语法例句 tables. Skip any
+    "（待补 — 用户未提供...）" placeholder sections. When selecting sentences for
+    `gen-plan`, use ONLY: (a) the due-word list from Step 2, (b) knowledge docs from
+    Step 3, and (c) nothing else.
 22. **⚠️ 每个版本必须在 changelog 描述里写清"当天到底发生了什么"。** The changelog's
     `描述` column is the ONLY timeline that can reconstruct history. Every operation that
     bumps a version (`record` / `add-words` / `update-def` / `update-word` /
