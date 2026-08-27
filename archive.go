@@ -286,9 +286,9 @@ func WriteArchive(arc *Archive) string {
 	b.WriteString("## 📊 总体进度\n\n")
 	b.WriteString("|||\n|---|---|\n")
 	b.WriteString(fmt.Sprintf("|总单词数|%d|\n", totalWords))
-	b.WriteString(fmt.Sprintf("|🟢 已掌握（正确率≥85%，≥5次）|%d|\n", mastered))
-	b.WriteString(fmt.Sprintf("|🟡 基本掌握（正确率≥70%，≥2次）|%d|\n", basic))
-	b.WriteString(fmt.Sprintf("|🔴 待巩固（正确率<70%或次）|%d|\n", needsConsol))
+	b.WriteString(fmt.Sprintf("|🟢 已掌握（正确率≥85%%，≥5次）|%d|\n", mastered))
+	b.WriteString(fmt.Sprintf("|🟡 基本掌握（正确率≥70%%，≥2次）|%d|\n", basic))
+	b.WriteString(fmt.Sprintf("|🔴 待巩固（正确率<70%%或次）|%d|\n", needsConsol))
 	if untested > 0 {
 		b.WriteString(fmt.Sprintf("|🔄 待测试|%d|\n", untested))
 	}
