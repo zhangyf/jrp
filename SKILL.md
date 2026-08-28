@@ -221,7 +221,7 @@ Knowledge base IDs:
 
       When you need to connect two sentences, use そして / でも / が instead of て形.
 
-   c. **Select 10 textbook-original sentences (课文原文)**:
+   c. **Select 20 textbook-original sentences (课文原文)**:
       - Sentences MUST be verbatim lines from the textbook, taken directly from the
         knowledge docs' 基本课文 / 应用课文 / 语法例句 tables — NEVER AI-composed.
       - **Pick priority order**:
@@ -245,7 +245,7 @@ Knowledge base IDs:
         (currently 第1-12课). If a consolidated-原文 doc has a placeholder
         "（待补 — 用户未提供...）", SKIP that section entirely.
 
-   d. **Self-check before saving**: Verify each of the 10 sentences is a verbatim
+   d. **Self-check before saving**: Verify each of the 20 sentences is a verbatim
       textbook original (copy-pasted from a knowledge doc's 基本课文/应用课文/语法例句
       table, not paraphrased) and that its Chinese prompt matches the doc's translation.
       If a sentence is your own invention or a paraphrase, discard it and pick a real
@@ -623,7 +623,7 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
     check, then `dedupe` to clean. Never delete lines manually — that corrupts the
     word count and `dedupe` already handles backup + assertion.
 21. **⚠️ 造句必须是课本原文 (verbatim textbook lines).** NEVER compose your own sentences.
-    Select 10 lines verbatim from the knowledge docs' 基本课文 / 应用课文 / 语法例句 tables;
+    Select 20 lines verbatim from the knowledge docs' 基本课文 / 应用课文 / 语法例句 tables;
     the Chinese prompt is the doc's own translation. This replaced the old "generate from
     scratch" rule at the user's explicit request (2026-08-27). Rationale: textbook lines are
     guaranteed correct and inside learned scope, so the old risk of AI-invented sentences
