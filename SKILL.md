@@ -235,8 +235,14 @@ Knowledge base IDs:
         4. **Lastly** fall back to 语法例句 tables within learned-scope lessons.
       - Chinese prompt = the doc's own Chinese translation of that line; Japanese
         answer = the verbatim original.
-      - Cover a variety of recently learned lessons, prioritizing the last 2-3 lessons'
-        core patterns (e.g. 第12课比较句 / 第10课二类形容词 / 第9课一类形容词).
+      - **Cover ALL learned lessons (第1-12课), NOT just the last 2-3.** Balance the 20
+        sentences across the full learned scope. Prioritize by (a) lessons where today's
+        due words cluster, (b) lessons where 钉子户 are densest — notably 第7课生活动词
+        (おろします/はらいます/ぬぎます/あけます/しめます/つけます/けします/きます/はきます)
+        and 第9课一类形容词 (からい/あまい/つめたい/にがい/しょっぱい/すっぱい…) — and
+        (c) the most recent 1-2 lessons. Do NOT let the last lesson (e.g. 第12课比较句)
+        crowd out earlier lessons every day; 第1-6课 basic patterns (～は～です / 存在句
+        あります・います / で工具 / 交通工具 / て形 / 频率副词) MUST rotate in regularly.
       - **⚠️ NEVER invent your own sentences.** Every sentence must trace to a
         textbook original in the knowledge docs. This replaced the old "generate from
         scratch" rule at the user's request (2026-08-27): textbook lines are guaranteed
