@@ -23,9 +23,8 @@ all archive operations (parse, update, version, upload to COS).
 
 ## Binary
 
-```
-~/.workbuddy/skills/jrp/jrp.exe
-```
+- Windows: `~/.workbuddy/skills/jrp/jrp.exe`
+- macOS:   `~/.workbuddy/skills/jrp/bin/jrp`
 
 ## COS Credentials
 
@@ -675,6 +674,32 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
 - **After editing `jrp-src\SKILL.md`, copy it to `.workbuddy\skills\jrp\SKILL.md`** — the two
   must stay in sync.
 
+## macOS Environment Notes
+
+- **Homebrew 不可用**：本机 brew 的 go 依赖 portable-ruby 且已损坏（ruby 版本冲突），
+  `brew install go` 会失败。改用 go.dev 官方预编译 tarball（Apple Silicon 用 darwin-arm64）：
+  ```bash
+  curl -o /tmp/go.tar.gz https://go.dev/dl/go1.27.1.darwin-arm64.tar.gz
+  mkdir -p ~/.workbuddy/binaries && tar -xzf /tmp/go.tar.gz -C ~/.workbuddy/binaries/
+  ```
+  Go 二进制位于 `~/.workbuddy/binaries/go/bin/go`。
+- **GOPROXY 用国内镜像**：`proxy.golang.org` 被墙（502/超时），依赖下载改用
+  `GOPROXY=https://goproxy.cn,direct`。
+- **编译命令**：
+  ```bash
+  export PATH="$HOME/.workbuddy/binaries/go/bin:$PATH"
+  export GOPROXY="https://goproxy.cn,direct"
+  cd ~/jrp
+  go build -o ~/.workbuddy/skills/jrp/bin/jrp .
+  ```
+- **git clone 可能只生成半个 `.git` 就断**（走 `http://127.0.0.1:7897` 代理时），但
+  `git fetch --depth 1` 正常。首次获取源码的可靠方式：codeload tarball
+  （`https://codeload.github.com/zhangyf/jrp/tar.gz/refs/heads/main`），或 `git init` +
+  `git remote add origin https://github.com/zhangyf/jrp.git` + `git fetch --depth 1 origin main`
+  + `git reset --hard origin/main`。
+- **After editing `~/jrp/SKILL.md`, copy it to `~/.workbuddy/skills/jrp/SKILL.md`** — the two
+  must stay in sync（与 Windows 同理）。
+
 ## Language Codes
 
 | Code | Language | Archive Prefix | IMA Knowledge Base |
@@ -685,8 +710,11 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
 
 ## Binary Path
 
-```
+```bash
+# Windows
 JRP_BIN=~/.workbuddy/skills/jrp/jrp.exe
+# macOS
+JRP_BIN=~/.workbuddy/skills/jrp/bin/jrp
 ```
 
 All commands: `$JRP_BIN --lang <ja|en|fr> <command> [flags]`
@@ -701,7 +729,10 @@ All commands: `$JRP_BIN --lang <ja|en|fr> <command> [flags]`
 
 The Go binary needs `PATH` to include the Go SDK for toolchain auto-download:
 ```
+# Windows
 PATH=$HOME/go-sdk/go/bin:$PATH
+# macOS
+PATH=$HOME/.workbuddy/binaries/go/bin:$PATH
 ```
 
 Or set the `JRP_COS_SKILL_DIR` env var if the encrypted COS credentials are in a non-default location.
@@ -710,7 +741,7 @@ Set this before running jrp commands if the binary was compiled with a newer Go 
 
 ## Source Code
 
-GitHub: https://github.com/zhangyf/jrp (private)
+GitHub: https://github.com/zhangyf/jrp (public)
 
 Local source: clone the repo to your preferred working directory (e.g., `~/jrp/`)
 
