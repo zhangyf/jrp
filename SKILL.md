@@ -310,6 +310,15 @@ Knowledge base IDs:
 }
 ```
 
+**⚠️ `sentence_results` 目前是死字段（2026-09-02 发现）**：`ApplyRecord` 完全不读它，
+造句对错**不会**写入档案、不影响任何词的 ReviewCount/正确率，也不进 changelog。
+所以**绝不能对老师说"报句号我给你补记"** —— 那是承诺了 CLI 不具备的能力。
+老师反馈造句错误时的正确做法：
+1. 明确告知句子结果当前不落库，只做口头讲解 + 语法纠正；
+2. 若错句暴露了**某个具体单词**忘了（例：2026-09-02 第5/6句卡在 `にんき(人気)`），
+   而该词**不在当天 plan 里**（因此 `record` 无法按 number 定位），就在回复里点名
+   该词并说明它的当前状态（如刚摘帽），提醒它实际未牢固；不要伪造 record。
+
 4. Run: `jrp --lang ja record --input /tmp/results.json`
    - Add `--hard` when the numbers come from an **export-hard** Excel (see workflow 5),
      otherwise the numbers will be resolved against the wrong plan
