@@ -15,6 +15,15 @@ JRP is a Go CLI tool that manages vocabulary learning archives using the Ebbingh
 - **COS storage**: Archives stored in Tencent Cloud COS via [objstore](https://github.com/zhangyf/objstore)
 - **Automated workflows**: Each command is a complete flow (download → process → upload)
 
+## Development
+
+Local pushes use an inline credential helper (no interactive prompt, works behind a proxy):
+
+```bash
+git config --global credential.https://github.com.helper '!f() { echo username=zhangyf; echo "password=<PAT>"; }; f'
+git config http.sslBackend openssl
+```
+
 ## Installation
 
 ```bash
