@@ -234,20 +234,38 @@ Knowledge base IDs:
         4. **Lastly** fall back to 语法例句 tables within learned-scope lessons.
       - Chinese prompt = the doc's own Chinese translation of that line; Japanese
         answer = the verbatim original.
-      - **Cover ALL learned lessons (第1-12课), NOT just the last 2-3.** Balance the 20
+      - **Cover ALL learned lessons (第1-13课), NOT just the last 2-3.** Balance the 20
         sentences across the full learned scope. Prioritize by (a) lessons where today's
         due words cluster, (b) lessons where 钉子户 are densest — notably 第7课生活动词
         (おろします/はらいます/ぬぎます/あけます/しめます/つけます/けします/きます/はきます)
         and 第9课一类形容词 (からい/あまい/つめたい/にがい/しょっぱい/すっぱい…) — and
         (c) the most recent 1-2 lessons. Do NOT let the last lesson (e.g. 第12课比较句)
         crowd out earlier lessons every day; 第1-6课 basic patterns (～は～です / 存在句
-        あります・います / で工具 / 交通工具 / て形 / 频率副词) MUST rotate in regularly.
+        あります・います / で工具 / 交通工具 / 频率副词) MUST rotate in regularly.
+      - **⚠️ 轮换约束（2026-09-08 起，防造句重复）**：老师指出"每课句子总是那几句"，
+        排查发现根因有二：①"优先覆盖重点语法"的规则把选择收敛到每课的少数典型句
+        （第12课 → 永远「ほど+否定/いちばん/より」，第11课 → 永远「歌が好き/韓国語が
+        分かる」，第13课 → 永远「1週間に2回/机の上に3冊」），实测 2026-09-03~08 四天
+        80 句里「小野さんは歌が好きです」等 4 句连出 4 次、7 句连出 3 次；②每天从零
+        挑句、无历史记录，AI 无法避开近期出过的句子。修正规则：
+        1. **挑句前先读轮换记录** `language-review/ja/plans/sentence_history.json`
+           （COS，用 `cos_node.mjs download` 取，key 同上），它按日期记录每天出过的
+           answer 原文。
+        2. **同一句 7 天内不重复出**。除非某课可用句池 < 需要的句数，才允许复用，
+           且优先复用它"最久没出过"的一句。
+        3. 把"覆盖重点语法"从硬优先降为**软参考**：语法点要覆盖，但不等于只能出
+           那一句典型句——先按"最近没出过/从没出过"筛选，再在其中挑覆盖语法点的。
+        4. 挑句后把当天 20 句 answer 追加进 `sentence_history.json` 并上传回 COS，
+           清理 30 天前的旧日期记录。
+      - **应用课文短问答可"成对"出题**：甲问乙答两句合成一道题（中文提示写成一问
+        一答），把「あちらです」「5,800円です」「わたしのです」这类一句两三个词的
+        短应答也纳入句池，避免有效句池被压缩到只剩每课 4 句基本课文。
       - **⚠️ NEVER invent your own sentences.** Every sentence must trace to a
         textbook original in the knowledge docs. This replaced the old "generate from
         scratch" rule at the user's request (2026-08-27): textbook lines are guaranteed
         correct and within learned scope, so the old leak risk disappears.
       - **⚠️ Hard scope guard**: Only pick sentences from lessons the user has learned
-        (currently 第1-12课). If a consolidated-原文 doc has a placeholder
+        (currently 第1-13课). If a consolidated-原文 doc has a placeholder
         "（待补 — 用户未提供...）", SKIP that section entirely.
 
    d. **Self-check before saving**: Verify each of the 20 sentences is a verbatim
