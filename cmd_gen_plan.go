@@ -117,6 +117,22 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 		}
 	}
 
+	// 句子轮换是一个版本事件：带 --sentences 重新生成时，若当天档案已存在
+	// （无论新日初始化还是同日已有版本），bump 小版本并写 changelog，使复习
+	// 文件版本号能反映句子更新，避免新文件覆盖旧的 vX.Y。
+	if *sentencesFile != "" {
+		arcMinor++
+		AddChangelogEntry(arc, targetDate, arcMajor, arcMinor,
+			fmt.Sprintf("重新生成复习文件（句子轮换，共%d句）", len(plan.Sentences)))
+		newContent := WriteArchive(arc)
+		newFilename := ArchiveFilename(lang, targetDate, arcMajor, arcMinor)
+		if err := storage.UploadArchive(ctx, newFilename, []byte(newContent)); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to bump archive version for sentence rotation: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "Bumped archive version for sentence rotation: %s\n", newFilename)
+		}
+	}
+
 	// Generate Excel
 	if *outputPath == "" {
 		*outputPath = fmt.Sprintf("outputs/review_%s_v%d.%d.xlsx", dateStr, arcMajor, arcMinor)

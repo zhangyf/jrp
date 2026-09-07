@@ -56,6 +56,7 @@ language-review/
 
 - Each new day: A=1, B=0
 - Each update same day: B+1 (v1.0 → v1.1 → v1.2...)
+- **句子轮换也算 update**：`gen-plan --sentences` 重新生成复习文件时，若当天档案已存在，会自动 bump 小版本（B+1）并写 changelog「重新生成复习文件（句子轮换）」——复习文件的句子变了，版本号必须跟着变，否则新文件会静默覆盖旧版 vX.Y，旧版本无法追溯（2026-09-08 老师指出）。
 - Major bump (A+1, B reset to 0): format change, 20+ word import, or user request
 - Next day: new file, A resets to 1, B resets to 0
 
@@ -285,6 +286,7 @@ Knowledge base IDs:
 6. Run: `jrp --lang ja gen-plan --date YYYY-MM-DD --sentences /tmp/sentences.json`
    - This is the FINAL call that produces the deliverable Excel with both words and sentences
    - Default output: `outputs/review_YYYY-MM-DD_vA.B.xlsx` (version auto-parsed from archive)
+   - **带 `--sentences` 会 bump 档案小版本**（句子轮换是版本事件）：当天档案已存在时，本次调用会把档案从 vX.Y bump 到 vX.(Y+1) 并写 changelog，Excel 版本号随之变化，避免新文件覆盖旧版。Step 1（无 `--sentences`）不 bump。
    - **This is the only Excel you present to the user** — the Excel from Step 1 (no sentences) was a data-extraction artifact and MUST NOT be presented
 7. Present the Excel file to the user using present_files (path must be in workspace `outputs/`)
 
