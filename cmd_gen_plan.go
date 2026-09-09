@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -117,19 +118,36 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 		}
 	}
 
-	// 句子轮换是一个版本事件：带 --sentences 重新生成时，若当天档案已存在
-	// （无论新日初始化还是同日已有版本），bump 小版本并写 changelog，使复习
-	// 文件版本号能反映句子更新，避免新文件覆盖旧的 vX.Y。
+	// 句子轮换是一个版本事件，但只应在「当天已经出过带句子的复习文件」之后
+	// 再次带 --sentences 生成时才 bump。判断依据：当天 changelog 里是否已有
+	// 一条含「句子」标记的记录。
+	//
+	// 新的一天第一次带 --sentences 时，当天档案还是「新日初始化」的 v1.0，不该
+	// bump（否则每天第一个复习文件会错误地从 v1.1 起步）。此时用当前版本号并
+	// 写一条含「句子」标记的 changelog，供同一天第二次带句子时识别 bump。
 	if *sentencesFile != "" {
-		arcMinor++
-		AddChangelogEntry(arc, targetDate, arcMajor, arcMinor,
-			fmt.Sprintf("重新生成复习文件（句子轮换，共%d句）", len(plan.Sentences)))
+		dayStr := targetDate.Format("060102")
+		rotated := false
+		for _, e := range arc.Changelog {
+			if e.Date == dayStr && strings.Contains(e.Description, "句子") {
+				rotated = true
+				break
+			}
+		}
+
+		desc := fmt.Sprintf("生成复习文件（含句子%d句）", len(plan.Sentences))
+		if rotated {
+			arcMinor++
+			desc = fmt.Sprintf("重新生成复习文件（句子轮换，共%d句）", len(plan.Sentences))
+		}
+
+		AddChangelogEntry(arc, targetDate, arcMajor, arcMinor, desc)
 		newContent := WriteArchive(arc)
 		newFilename := ArchiveFilename(lang, targetDate, arcMajor, arcMinor)
 		if err := storage.UploadArchive(ctx, newFilename, []byte(newContent)); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to bump archive version for sentence rotation: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Warning: failed to record sentence generation: %v\n", err)
 		} else {
-			fmt.Fprintf(os.Stderr, "Bumped archive version for sentence rotation: %s\n", newFilename)
+			fmt.Fprintf(os.Stderr, "Recorded sentence generation: %s\n", newFilename)
 		}
 	}
 
