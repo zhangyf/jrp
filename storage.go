@@ -255,12 +255,19 @@ func (s *Storage) UploadHistory(ctx context.Context, filename string, data []byt
 }
 
 // planJSONKey builds the COS key for a plan JSON.
-// kind == "hard" → plans/hard_<date>.json, otherwise plans/plan_<date>.json.
-// The two must never collide: a hard-word export on the same day as a daily
-// review would otherwise overwrite the daily plan and break `record`.
+//   - kind == "hard"      → plans/hard_<date>.json
+//   - kind == "sentences" → plans/sentences_<date>.json
+//   - otherwise           → plans/plan_<date>.json
+//
+// The three must never collide: a hard-word export or a sentences-only plan on
+// the same day as a daily review would otherwise overwrite the daily plan and
+// break `record` (word numbers would resolve to nothing).
 func (s *Storage) planJSONKey(kind, date string) string {
-	if kind == "hard" {
+	switch kind {
+	case "hard":
 		return fmt.Sprintf("%s/plans/hard_%s.json", s.cosPrefix(), date)
+	case "sentences":
+		return fmt.Sprintf("%s/plans/sentences_%s.json", s.cosPrefix(), date)
 	}
 	return fmt.Sprintf("%s/plans/plan_%s.json", s.cosPrefix(), date)
 }
@@ -307,9 +314,41 @@ func (s *Storage) DownloadHardPlan(ctx context.Context, planDate string) (*Revie
 	return &plan, nil
 }
 
+// UploadSentencePlan uploads a sentences-only plan JSON to COS (kind
+// "sentences"). Kept in its own key so it never clobbers the daily plan.
+func (s *Storage) UploadSentencePlan(ctx context.Context, plan *ReviewPlan) error {
+	key := s.planJSONKey("sentences", plan.Date)
+	data := []byte(toJSON(plan))
+	return s.store.PutObject(ctx, key, data)
+}
+
+// DownloadSentencePlan downloads a sentences-only plan JSON from COS.
+func (s *Storage) DownloadSentencePlan(ctx context.Context, planDate string) (*ReviewPlan, error) {
+	key := s.planJSONKey("sentences", planDate)
+	data, err := s.store.GetAll(ctx, key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download sentence plan: %w", err)
+	}
+	var plan ReviewPlan
+	if err := jsonUnmarshal(data, &plan); err != nil {
+		return nil, fmt.Errorf("failed to parse sentence plan: %w", err)
+	}
+	return &plan, nil
+}
+
 // UploadExcel uploads an Excel file to COS.
 func (s *Storage) UploadExcel(ctx context.Context, date string, major, minor int, localPath string) error {
 	key := fmt.Sprintf("%s/plans/review_%s_v%d.%d.xlsx", s.cosPrefix(), date, major, minor)
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		return fmt.Errorf("failed to read excel file: %w", err)
+	}
+	return s.store.PutObject(ctx, key, data)
+}
+
+// UploadSentenceExcel uploads a sentences-only Excel file to COS.
+func (s *Storage) UploadSentenceExcel(ctx context.Context, date string, major, minor int, localPath string) error {
+	key := fmt.Sprintf("%s/plans/sentences_%s_v%d.%d.xlsx", s.cosPrefix(), date, major, minor)
 	data, err := os.ReadFile(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to read excel file: %w", err)

@@ -258,6 +258,43 @@ Knowledge base IDs:
            那一句典型句——先按"最近没出过/从没出过"筛选，再在其中挑覆盖语法点的。
         4. 挑句后把当天 20 句 answer 追加进 `sentence_history.json` 并上传回 COS，
            清理 30 天前的旧日期记录。
+        5. **⚠️ 自检必须做「归一化」比对（2026-09-16 踩坑）**：历史上同一句可能被
+           存成带句号和不带句号两个版本（如「ガレージに車が5台あります」vs「…あります。」），
+           所以**不能用 `last[s]=max(dates)` 这种按原字符串求最新日期的办法**来判断
+           「多久没出过」——它会把带句号的近期版本当成另一句，让你误判为「>=7 天可用」。
+           正确做法：把近 7 天所有句子做成归一化集合
+           `norm(s)=re.sub(r'[\s。．、,.]','',s)`，候选句也归一化后再比对；
+           自检同时查「近 7 天重复」和「当天 20 句内部重复」。实测这一步能在提交前
+           拦下 5~6 句假可用句。
+        6. **⚠️ 错句重练（2026-09-16 起）**：`record` 的 `sentence_results` 是死字段，
+           造句对错不落库，所以造句的间隔重复在外部文件做：
+           `language-review/ja/plans/sentence_wrong.json`（下载/上传方式同 sentence_history）。
+           规则：
+           - 挑句时先取 `status=open` 且 `next_due <= 今天` 的条目，**强制放进当天 20 句**
+             （不受「7 天不重复」限制，错句就是要近期重出），放进去后 `last_seen=今天`；
+           - 老师反馈该句写对 → `status=archived`；写错 → `wrong_count+1`、`last_wrong=今天`、
+             `next_due=今天+interval`，interval = 3（count=1）/ 7（count=2）/ 14（count≥3）；
+           - 老师反馈的错句本文件里没有 → 追加条目，count=1，next_due=今天+3。
+           - ⚠️ 错句也是课本原文，照抄 answer 即可，**不要自造**。
+        7. **变形句「同骨架换词」（2026-09-16 老师批准采用）**：每天 20 句里**最多 4 句**
+           可做变形（纯句子模式 50 句 → 上限 10 句，同比例）。默写原文可能靠背，换词才真正验句型是否内化。硬约束：
+           - **骨架 = 课本原句的助词序列与句型结构，一字不改**（は/が/を/に/へ/で/と/より/
+             ほど/の，以及 〜ほど〜ない、〜に〜回、〜へ〜に 行きます 这类框架）。
+           - **可替换**：主语/宾语/场所/时间名词、数量词、形容词（同类互换：い形↔い形、
+             ナ形↔ナ形）、动词。
+           - **替换词的状态门槛（2026-09-16 老师放宽）**：只要词在档案里存在即可用，
+             🟢已掌握／🟡基本掌握／🔴待巩固／☠️钉子户 **全部允许**；
+             唯一排除 🔄待测试（从未测过，等同生词）。
+             老师原话：「待巩固的词可以出现在替换词里」——放进句子里反而是额外一遍复习，
+             不用担心拖累正确率。（此前版本把 🔴 也排除了，导致「だします(出します)」
+             这类 🔴 动词用不了，已废弃该限制。）
+           - **不可替换**：助词、句型框架、谓语后缀（です/ます/ない 等）。
+           - ⚠️ **替换词必须先核验在档案里存在**（档案行首 `|词`）。实测踩坑：
+             「りんご」根本不在档案；「図書館／映画／有名／広い」**按汉字查不到**，
+             表里写法是「としょかん(図書館)」「えいが(映画)」「ゆうめい(有名)」「ひろい」——
+             按汉字去查会误判"已学过"，结果拿生词造句。动词同理要查「かいます(買います)」。
+           - 中文提示前加「【变形】」前缀便于识别；answer 给正确日文。
+           - 变形句同样遵守「近 7 天不重复」，且必须能指回原型课本句。
       - **应用课文短问答可"成对"出题**：甲问乙答两句合成一道题（中文提示写成一问
         一答），把「あちらです」「5,800円です」「わたしのです」这类一句两三个词的
         短应答也纳入句池，避免有效句池被压缩到只剩每课 4 句基本课文。
@@ -290,6 +327,19 @@ Knowledge base IDs:
    - **This is the only Excel you present to the user** — the Excel from Step 1 (no sentences) was a data-extraction artifact and MUST NOT be presented
 7. Present the Excel file to the user using present_files (path must be in workspace `outputs/`)
 
+**精简版（出差/到期量过大时）**：老师出差或到期词爆量（>150）时，主动提出「精简版」——
+只保留 ☠️钉子户 + 🔴待巩固 + 🟡基本掌握，砍掉 🟢抽查（已掌握词的抽查，砍掉不丢进度，
+明天照常到期）。CLI **没有过滤参数**，做法：
+   1. 照常 `gen-plan`（全量），记住分区在计划里是**连续排序**的：钉子户 → 待巩固 →
+      基本掌握 → 抽查，序号连续。用 `tmp_due_*.json` 找出最后一个要保留的序号 N。
+   2. 复制 xlsx，用 openpyxl 对**两个 sheet 都** `delete_rows(start, count)` 删掉
+      「🟢抽查」那一整段（含它上面/下面的空行）。行号从 `✅答案版` 全表 dump 里确定。
+   3. **不要重排序号**——保留原始序号 1..N，这样老师报的错词序号能直接用 `record`
+      回填（record 按 COS 里 plan_YYYY-MM-DD.json 的序号匹配）。
+   4. 造句段在抽查段之后，删行后会自动接上，无需另处理；练习版公式引用的是答案版
+      同一行号，两个 sheet 删同样的行即保持对齐。
+   5. 输出文件名加后缀，如 `outputs/review_2026-09-16_v1.0_精简版64.xlsx`。
+
 **Excel structure**:
 - Sheet names: `✏️练习版` / `✅答案版`
 - Words grouped by status section: ☠️钉子户 → 🔴待巩固 → 🟡基本掌握 → 🟢抽查 → 🔄待测试
@@ -300,6 +350,37 @@ Knowledge base IDs:
 - Sentence exercises: `📝 造句 共N句` title, S1-SN numbering, B:C merged Chinese, D:F merged target language
 - Output naming: `review_yyyy-mm-dd_vA.B.xlsx` (version from current archive)
 
+**纯句子模式 `--sentences-only`（2026-09-18 新增）**
+
+**Trigger**：老师要「纯句子模式」「只出句子不出单词」「出 50 句」等。
+
+**命令**：
+```
+jrp --lang ja gen-plan --date YYYY-MM-DD --sentences-only --sentences tmp_sentences_XXXX.json
+```
+- `--sentences-only` 必须配 `--sentences`，否则 CLI 报错退出。
+- 行为差异（相比普通模式）：
+  - `plan.Words` 全清 → Excel **没有任何单词区块**，造句区从第 1 行开始（标题「📝 造句 共N句」）。
+  - **即使当天到期词为 0 也会正常出文件**（普通模式 due_count=0 直接返回不生成）。
+  - 默认输出名 `outputs/review_YYYY-MM-DD_sentences_vA.B.xlsx`（普通模式无 `_sentences`）。
+  - COS plan 存到**独立 key** `language-review/ja/plans/sentences_<date>.json`（普通模式是
+    `plan_<date>.json`），Excel 备份 `sentences_<date>_vA.B.xlsx`。**两者互不覆盖**——
+    这是必须的：纯句子 plan 里 words 为空，若写进 daily plan 会让当天 `record` 全部 not_found。
+  - 输出 JSON 里 `kind="sentences"`、`sentence_count=N`、`due_count=0`。
+
+**题量**：默认 **50 句**（普通模式 20 句）。挑句规则**完全沿用上面第 3 节 c 的全部约束**：
+课本原文、仅第1-13课、近 7 天归一化不重复、错句重练强制插入、变形句。
+- 变形句上限按比例放大：普通模式 20 句最多 4 句 → **纯句子 50 句最多 10 句**。
+- 50 句量大，**归一化自检必须做**（近 7 天重复 + 当天内部重复），否则重复率会明显上升。
+- 跨课覆盖要摊平：第1-13课每课至少 2-3 句，别被最近学的课吃掉一半。
+
+**回填**：纯句子模式**没有单词，不要跑 `record`**（跑了也只是写一条 0 对 0 错的 changelog）。
+造句对错走 `sentence_wrong.json`，规则不变（错 → +3/+7/+14 天重出；对 → archived）。
+
+**同日两种模式并存**：先出单词版、再出纯句子版（或反过来）都安全，plan key 独立；
+但两次都会各写一条 changelog，且第二次会因当天 changelog 已有「句子」标记而 bump 小版本
+（v1.0 → v1.1）。属正常现象，不用修。
+
 ### 4. Record Review Results
 
 **Trigger**: User reports review results (e.g., "1,3,5写错了，其他对").
@@ -307,7 +388,14 @@ Knowledge base IDs:
 **⚠️ 铁律（2026-08-22 事故后确立）**：`record` 只更新 JSON 里出现的序号，未出现的词**完全不处理**。
 老师只报错词 = **当天到期词里其余全部写对**。绝不能只提交错词——否则写对的词 ReviewCount 不 +1，
 正确率永久冻结、钉子户上不了岸。每次 record 必须把当天 plan 的**全部到期词**都写进 `word_results`：
-错词 `correct:false`，其余 `correct:true`。唯一例外：老师明确说"某部分没写/没来得及写"时，按 `word.status` 排除那部分。
+错词 `correct:false`，其余 `correct:true`。唯一例外：老师明确说"某部分没写/没来得及写"时，按 `word.status` 排除那部分
+（如 2026-09-14 老师只写了钉子户+待巩固 21 词、未写 41 词，`word_results` 就只写 1–21；未写的词完全不处理、下次照常到期）。
+
+**⚠️ changelog 描述无法表达"未写 Z"（2026-09-15 确认）**：`record` 的 changelog 描述是 CLI 固定生成的
+「复习结果：X词写对，Y词写错」，CLI **没有** `--desc` / `--note` 参数，传了也会被忽略。所以当 `M < N` 时，
+档案里永久查不到"还有 Z 词没写"这一事实，只有 X 和 Y。在这个参数加上之前，必须把
+`到期N / 实写M / 写对X / 写错Y / 未写Z` 五个数字写进**工作区 memory 当天日志**，否则当天实况不可追溯。
+TODO：给 `record` 加 `--note <string>`，拼进 changelog 描述。
 
 **Steps**:
 1. 等老师当天反馈**收尾**（报完所有错词，通常以"XX部分全对"或"XX部分没写"收尾）再一次性 record，

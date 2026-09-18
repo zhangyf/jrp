@@ -15,6 +15,7 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 	outputPath := fs.String("output", "", "Output Excel file path (default: outputs/review_<date>_vA.B.xlsx)")
 	sentencesFile := fs.String("sentences", "", "JSON file with sentence exercises [{\"chinese\":\"...\",\"answer\":\"...\"}]")
 	dateFlag := fs.String("date", "", "Target date for review plan (YYYY-MM-DD). Defaults to today.")
+	sentencesOnly := fs.Bool("sentences-only", false, "Sentences-only mode: no word section at all, drill sentences only (e.g. 50 sentences)")
 	fs.Parse(cmdArgs)
 
 	// Determine target date
@@ -84,7 +85,17 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 	dateStr := targetDate.Format("2006-01-02")
 	plan := BuildDuePlan(arc, lang, targetDate)
 
-	if len(plan.Words) == 0 {
+	// Sentences-only mode: drop the entire word section. Requires --sentences.
+	if *sentencesOnly {
+		if *sentencesFile == "" {
+			fmt.Fprintf(os.Stderr, "Error: --sentences-only requires --sentences <file.json>\n")
+			os.Exit(1)
+		}
+		plan.Words = nil
+		plan.Kind = "sentences"
+	}
+
+	if len(plan.Words) == 0 && !*sentencesOnly {
 		outputResult(map[string]interface{}{
 			"success":   true,
 			"command":   "gen-plan",
@@ -140,6 +151,9 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 			arcMinor++
 			desc = fmt.Sprintf("重新生成复习文件（句子轮换，共%d句）", len(plan.Sentences))
 		}
+		if *sentencesOnly {
+			desc = fmt.Sprintf("生成纯句子复习文件（共%d句）", len(plan.Sentences))
+		}
 
 		AddChangelogEntry(arc, targetDate, arcMajor, arcMinor, desc)
 		newContent := WriteArchive(arc)
@@ -153,7 +167,11 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 
 	// Generate Excel
 	if *outputPath == "" {
-		*outputPath = fmt.Sprintf("outputs/review_%s_v%d.%d.xlsx", dateStr, arcMajor, arcMinor)
+		if *sentencesOnly {
+			*outputPath = fmt.Sprintf("outputs/review_%s_sentences_v%d.%d.xlsx", dateStr, arcMajor, arcMinor)
+		} else {
+			*outputPath = fmt.Sprintf("outputs/review_%s_v%d.%d.xlsx", dateStr, arcMajor, arcMinor)
+		}
 	}
 
 	// Ensure output directory exists
@@ -170,25 +188,41 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 	// is consumed by `record` to map word numbers → text and does not need
 	// sentences. Stripping them prevents cross-contamination when `serve`
 	// regenerates and uploads the same plan key.
-	plan.Sentences = nil
+	// Exception: in sentences-only mode the sentences ARE the plan, keep them.
+	sentenceCount := len(plan.Sentences)
+	if !*sentencesOnly {
+		plan.Sentences = nil
+	}
 
-	// Upload plan JSON to COS
-	if err := storage.UploadPlan(ctx, plan); err != nil {
+	// Upload plan JSON to COS. Sentences-only uses its own key so the daily
+	// word plan (needed by `record` to resolve numbers → words) is never
+	// overwritten by a word-less plan.
+	if *sentencesOnly {
+		if err := storage.UploadSentencePlan(ctx, plan); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to upload sentence plan: %v\n", err)
+		}
+	} else if err := storage.UploadPlan(ctx, plan); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to upload plan: %v\n", err)
 	}
 
 	// Upload Excel to COS (backup)
-	if err := storage.UploadExcel(ctx, dateStr, arcMajor, arcMinor, *outputPath); err != nil {
+	if *sentencesOnly {
+		if err := storage.UploadSentenceExcel(ctx, dateStr, arcMajor, arcMinor, *outputPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to upload Excel backup: %v\n", err)
+		}
+	} else if err := storage.UploadExcel(ctx, dateStr, arcMajor, arcMinor, *outputPath); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to upload Excel backup: %v\n", err)
 	}
 
 	outputResult(map[string]interface{}{
-		"success":    true,
-		"command":    "gen-plan",
-		"date":       dateStr,
-		"due_count":  len(plan.Words),
-		"excel_path": *outputPath,
-		"plan_words": plan.Words,
+		"success":        true,
+		"command":        "gen-plan",
+		"date":           dateStr,
+		"kind":           plan.Kind,
+		"due_count":      len(plan.Words),
+		"sentence_count": sentenceCount,
+		"excel_path":     *outputPath,
+		"plan_words":     plan.Words,
 	})
 }
 
