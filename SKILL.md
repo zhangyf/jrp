@@ -28,9 +28,28 @@ all archive operations (parse, update, version, upload to COS).
 
 ## COS Credentials
 
-Auto-loaded from `~/.workbuddy/skills/tencentcloud-cos/.env.enc` (AES-256-GCM encrypted).
-No manual env var setup needed. The Go binary decrypts at runtime using the same key derivation
-as the COS skill (SHA-256 of hostname:username:skillDir).
+⚠️ **Credentials live OUTSIDE all skill directories, at `~/.workbuddy/cos-credentials/`:**
+- `.env` — plaintext master copy (mode 0600, the source of truth; keep it)
+- `.env.enc` — AES-256-GCM encrypted, key = SHA-256(hostname:username:skillDir)
+
+**Every jrp invocation MUST set the skill-dir env var** (non-interactive shells do NOT
+load `~/.zshrc`):
+```bash
+JRP_COS_SKILL_DIR=~/.workbuddy/cos-credentials $JRP_BIN --lang ja <command>
+```
+
+**⚠️ NEVER store credentials inside `~/.workbuddy/skills/tencentcloud-cos/`.** That directory
+is marketplace-managed: every skill update wholesale-replaces it and destroys any local files.
+The 2026-09-10 update wiped the `.env.enc` that lived there (third loss). A symlink
+`tencentcloud-cos/.env -> ~/.workbuddy/cos-credentials/.env` is provided for `cos_node.mjs`;
+if a skill update removes the symlink, recreate it:
+`ln -sf ~/.workbuddy/cos-credentials/.env ~/.workbuddy/skills/tencentcloud-cos/.env`
+
+`cos_node.mjs` also needs its npm dep from a stable location — run it as:
+`NODE_PATH=~/.workbuddy/binaries/node/workspace/node_modules node cos_node.mjs ...`
+
+To regenerate `.env.enc` after editing `.env`:
+`JRP_COS_SKILL_DIR=~/.workbuddy/cos-credentials $JRP_BIN encrypt-env`
 
 ## COS Storage Structure
 
@@ -766,6 +785,12 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
     这种只反映「提交了什么」、不反映「当天实况」的描述。2026-08-22 事故的根因正是
     `record` 只提交错词 → changelog 统计列（已掌握/待巩固/错误数/钉子户）持续失真 →
     正确率冻结 + 8/6 一天无法追溯。记录必须在**操作当下**写清，事后补回必然残缺。
+22. **⚠️ COS credentials live at `~/.workbuddy/cos-credentials/`** — always pass
+    `JRP_COS_SKILL_DIR=~/.workbuddy/cos-credentials` on every jrp invocation (non-interactive
+    shells don't load `.zshrc`). NEVER place credential files inside any
+    `~/.workbuddy/skills/<marketplace-skill>/` directory: marketplace skill updates
+    wholesale-replace those directories and wipe local files (this destroyed `.env.enc`
+    on 2026-09-10).
 
 ## Windows Environment Notes
 
