@@ -348,8 +348,12 @@ func groupPlanWordsByStatus(words []PlanWord) map[string][]PlanWord {
 // Sheet1 (✏️练习版): definitions + blank columns for writing. Sentences give a
 // wide writing area (C:F) so the student can hand-write Japanese answers.
 // Sheet2 (✅答案版): same word layout, sentences with answers filled in.
+//
+// meta 非 nil 时会额外写一个隐藏的 _meta sheet，供离线回填时定位 plan_date /
+// language / mode。离线包可能被改名、可能被微信转发，靠文件名不可靠；WPS 又会
+// 剥离自定义文档属性，所以藏一个 sheet 是最稳的。
 func writeTwoSheetWorkbook(order []string, byCat map[string][]PlanWord,
-	sentences []PlanSentence, outputPath string) error {
+	sentences []PlanSentence, outputPath string, meta *ExcelMeta) error {
 
 	w := newExcelWriter()
 	defer w.f.Close()
@@ -368,28 +372,50 @@ func writeTwoSheetWorkbook(order []string, byCat map[string][]PlanWord,
 	next2 := w.renderWordSections(sheet2, false, true, order, byCat, 1)
 	w.renderSentenceSection(sheet2, false, true, sentences, next2)
 
+	if meta != nil {
+		if err := w.writeMetaSheet(meta); err != nil {
+			return err
+		}
+	}
+	// _meta 是最后建的，会变成活动 sheet；改回练习版，打开时别跳到隐藏表
+	if idx, err := w.f.GetSheetIndex(sheet1); err == nil {
+		w.f.SetActiveSheet(idx)
+	}
+
 	return w.f.SaveAs(outputPath)
 }
 
 // GenerateExcel creates the daily review Excel file with 2 sheets, grouping
 // words by review category.
 func GenerateExcel(plan *ReviewPlan, outputPath string) error {
+	return GenerateExcelWithMeta(plan, outputPath, nil)
+}
+
+// GenerateExcelWithMeta 同 GenerateExcel，额外写入隐藏的 _meta sheet。
+func GenerateExcelWithMeta(plan *ReviewPlan, outputPath string, meta *ExcelMeta) error {
 	return writeTwoSheetWorkbook(
 		reviewCategories,
 		groupPlanWordsByStatus(plan.Words),
 		plan.Sentences,
 		outputPath,
+		meta,
 	)
 }
 
 // GenerateHardExcel creates the hard-word ("钉子户") Excel file, grouping words
 // by accuracy severity. No sentence exercises are included.
 func GenerateHardExcel(plan *ReviewPlan, outputPath string) error {
+	return GenerateHardExcelWithMeta(plan, outputPath, nil)
+}
+
+// GenerateHardExcelWithMeta 同 GenerateHardExcel，额外写入隐藏的 _meta sheet。
+func GenerateHardExcelWithMeta(plan *ReviewPlan, outputPath string, meta *ExcelMeta) error {
 	return writeTwoSheetWorkbook(
 		hardCategories,
 		groupPlanWordsByStatus(plan.Words),
 		nil,
 		outputPath,
+		meta,
 	)
 }
 
