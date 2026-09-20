@@ -19,7 +19,19 @@ import (
 )
 
 // cosSkillDir returns the directory where the encrypted .env.enc is stored.
-// Resolution order: JRP_COS_SKILL_DIR env var → $HOME/.workbuddy/skills/tencentcloud-cos.
+//
+// Resolution order:
+//  1. JRP_COS_SKILL_DIR env var (explicit override)
+//  2. $HOME/.workbuddy/cos-credentials — if it actually holds a .env or .env.enc.
+//     This is the durable home: it lives OUTSIDE every marketplace-managed skill
+//     directory, so skill updates cannot wipe it (that happened 3×; the
+//     2026-09-10 update destroyed the copy under skills/tencentcloud-cos).
+//  3. $HOME/.workbuddy/skills/tencentcloud-cos — legacy location, kept as fallback
+//     so a machine that has not been migrated yet still works.
+//
+// Step 2 is what makes the credential location platform-independent: neither the
+// Windows work machine nor the macOS home machine needs to export anything, and
+// non-interactive shells (which skip .zshrc/.bash_profile) still resolve it.
 func cosSkillDir() string {
 	if dir := os.Getenv("JRP_COS_SKILL_DIR"); dir != "" {
 		return dir
@@ -27,6 +39,13 @@ func cosSkillDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return filepath.Join(".workbuddy", "skills", "tencentcloud-cos")
+	}
+
+	migrated := filepath.Join(home, ".workbuddy", "cos-credentials")
+	for _, name := range []string{".env", ".env.enc"} {
+		if _, err := os.Stat(filepath.Join(migrated, name)); err == nil {
+			return migrated
+		}
 	}
 	return filepath.Join(home, ".workbuddy", "skills", "tencentcloud-cos")
 }
@@ -75,19 +94,29 @@ func loadCOSConfig() (objstore.Config, error) {
 	skillDir := cosSkillDir()
 	encPath := filepath.Join(skillDir, ".env.enc")
 	encData, err := os.ReadFile(encPath)
-	if err != nil {
-		return objstore.Config{}, fmt.Errorf("no env vars set and cannot read .env.enc: %w", err)
-	}
 
-	plaintext, err := decryptEnvFile(encData, skillDir)
-	if err != nil {
-		return objstore.Config{}, fmt.Errorf("failed to decrypt .env.enc: %w", err)
+	var plaintext string
+	if err == nil {
+		plaintext, err = decryptEnvFile(encData, skillDir)
+		if err != nil {
+			return objstore.Config{}, fmt.Errorf("failed to decrypt .env.enc: %w", err)
+		}
+	} else {
+		// No .env.enc (or unreadable) — try a plaintext .env in the same dir.
+		// This is what makes a half-finished migration still work: drop the
+		// plaintext master copy in ~/.workbuddy/cos-credentials/.env and jrp
+		// runs even before `encrypt-env` has been re-run there.
+		raw, perr := os.ReadFile(filepath.Join(skillDir, ".env"))
+		if perr != nil {
+			return objstore.Config{}, fmt.Errorf("no env vars set, cannot read .env.enc (%v) and no plaintext .env: %w", err, perr)
+		}
+		plaintext = string(raw)
 	}
 
 	envVars := parseEnvFile(plaintext)
 
 	if envVars["TENCENT_COS_SECRET_ID"] == "" || envVars["TENCENT_COS_SECRET_KEY"] == "" {
-		return objstore.Config{}, fmt.Errorf("credentials not found in .env.enc")
+		return objstore.Config{}, fmt.Errorf("credentials not found in %s", skillDir)
 	}
 
 	return objstore.Config{
@@ -115,9 +144,35 @@ func deriveEnvKey(skillDir string) []byte {
 			username = u.Username
 		}
 	}
-	seed := fmt.Sprintf("%s:%s:%s", hostname, username, skillDir)
+	seed := fmt.Sprintf("%s:%s:%s", hostname, username, normalizeSkillDir(skillDir))
 	key := sha256.Sum256([]byte(seed))
 	return key[:]
+}
+
+// normalizeSkillDir canonicalizes a skill directory before it is fed into the
+// key derivation. This matters: the key is SHA-256(hostname:username:skillDir)
+// over the *string*, so any spelling difference produces a different key and
+// the file becomes undecryptable — with no way to tell "wrong path" from
+// "corrupt file".
+//
+// Real-world breakages this fixes (2026-09-20):
+//   - "C:/Users/x/.workbuddy/cos-credentials" vs "C:\Users\x\.workbuddy\cos-credentials"
+//     → same directory, different key. Happens constantly because the dir comes
+//     from an env var on one path (forward slashes, as typed in bash) and from
+//     filepath.Join on the other (backslashes on Windows).
+//   - A trailing separator, or "./" prefixes, likewise change the key.
+//
+// Canonical form: cleaned absolute-ish path with forward slashes only.
+// Windows and macOS still derive different keys (different home paths), which is
+// correct — the encrypted file is machine-local; move the plaintext .env instead.
+//
+// ⚠️ Changing this invalidates every existing .env.enc: re-run `encrypt-env`
+// afterwards (the plaintext .env is the master copy, so this is lossless).
+func normalizeSkillDir(skillDir string) string {
+	if abs, err := filepath.Abs(skillDir); err == nil {
+		skillDir = abs
+	}
+	return filepath.ToSlash(filepath.Clean(skillDir))
 }
 
 // encryptEnvFile encrypts plaintext into the same format as cos_node.mjs:

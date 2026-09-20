@@ -26,48 +26,63 @@ all archive operations (parse, update, version, upload to COS).
 - Windows: `~/.workbuddy/skills/jrp/jrp.exe`
 - macOS:   `~/.workbuddy/skills/jrp/bin/jrp`
 
+## ⚠️ 双机开发（Windows 工作机 / macOS 家用机）
+
+同一个 repo `zhangyf/jrp`，**两台机器各有一份工作副本**，但只有一份共享的 `SKILL.md`：
+
+| | Windows（工作机） | macOS（家用机） |
+|---|---|---|
+| 源码目录 | `C:\Users\efrainzhang\jrp-src` | `~/jrp` |
+| 二进制 | `~/.workbuddy/skills/jrp/jrp.exe` | `~/.workbuddy/skills/jrp/bin/jrp` |
+| 编译 | PowerShell + `$HOME\go-sdk\go\bin` | `$HOME/.workbuddy/binaries/go/bin` + `GOPROXY=goproxy.cn` |
+| 默认 shell | Git Bash | zsh |
+| 代理 | `http://127.0.0.1:26698` | `http://127.0.0.1:7897` |
+
+**规则（2026-09-20 定）**：
+1. **SKILL.md 是共享文件**，写之前先想清楚这条是通用规则还是只在一台机器上成立。
+   只在一台机器上成立的内容（路径写法、shell 行为、符号链接命令、代理端口）
+   **必须写进文末的「Windows Environment Notes」/「macOS Environment Notes」**，
+   不准塞进共用章节——Mac 上写的 `ln -sf` / `.zshrc` 在 Windows 上无意义，反之亦然。
+2. **行为差异要修在代码里，不要修在文档里**。能用 Go 抹平的平台差异（路径分隔符、
+   目录解析顺序）就抹平，让两台机器跑同一份二进制得到同样结果；文档里写"记得加 env var"
+   这种靠人记的约定，迟早会漏。
+3. 看到远端有提交，先判断它来自哪台机器（macOS 痕迹：`.zshrc`、`ln -sf`、goproxy.cn；
+   Windows 痕迹：PowerShell、`C:\`、Git Bash 沙箱）。别默认"本机落后就要跟上"。
+
 ## COS Credentials
 
-⚠️ **Credentials live OUTSIDE all skill directories, at `~/.workbuddy/cos-credentials/`:**
-- `.env` — plaintext master copy (mode 0600, the source of truth; keep it)
-- `.env.enc` — AES-256-GCM encrypted, key = SHA-256(hostname:username:skillDir)
+⚠️ **凭证放在所有技能目录之外：`~/.workbuddy/cos-credentials/`**
+- `.env` — 明文主本（0600，唯一真源，保留）
+- `.env.enc` — AES-256-GCM 加密，key = SHA-256(hostname:username:normalizeSkillDir(dir))
 
-**Every jrp invocation MUST set the skill-dir env var** (non-interactive shells do NOT
-load `~/.zshrc`):
-```bash
-JRP_COS_SKILL_DIR=~/.workbuddy/cos-credentials $JRP_BIN --lang ja <command>
-```
+**解析顺序（代码自动完成，两台机器都不需要设 env var）**：
+1. `JRP_COS_SKILL_DIR` 环境变量（显式覆盖）
+2. `~/.workbuddy/cos-credentials/`（只要里面有 `.env` 或 `.env.enc` 就选它）
+3. `~/.workbuddy/skills/tencentcloud-cos/`（旧位置，未迁移的机器仍能跑）
 
-**⚠️ NEVER store credentials inside `~/.workbuddy/skills/tencentcloud-cos/`.** That directory
-is marketplace-managed: every skill update wholesale-replaces it and destroys any local files.
-The 2026-09-10 update wiped the `.env.enc` that lived there (third loss). A symlink
-`tencentcloud-cos/.env -> ~/.workbuddy/cos-credentials/.env` is provided for `cos_node.mjs`;
-if a skill update removes the symlink, recreate it:
-`ln -sf ~/.workbuddy/cos-credentials/.env ~/.workbuddy/skills/tencentcloud-cos/.env`
+**⚠️ 不要把凭证放进 `~/.workbuddy/skills/tencentcloud-cos/`。** 该目录由市场托管，
+每次技能更新整体替换、清空本地文件（2026-09-10 那次清掉了 `.env.enc`，第三次了）。
+`cos_node.mjs` 只认技能根目录下的 `.env`/`.env.enc`，所以那里放一个指向主本的链接/副本：
+- macOS: `ln -sf ~/.workbuddy/cos-credentials/.env ~/.workbuddy/skills/tencentcloud-cos/.env`
+- Windows: 见文末 Windows 章节（mklink / 直接复制）
 
-`cos_node.mjs` also needs its npm dep from a stable location — run it as:
-`NODE_PATH=~/.workbuddy/binaries/node/workspace/node_modules node cos_node.mjs ...`
+改了 `.env` 之后重新生成 `.env.enc`：
+`$JRP_BIN encrypt-env`（会自动落到解析出来的目录）
 
-To regenerate `.env.enc` after editing `.env`:
-`JRP_COS_SKILL_DIR=~/.workbuddy/cos-credentials $JRP_BIN encrypt-env`
+**⚠️ 升级到 2026-09-20 之后的构建必须重跑一次 `encrypt-env`**：密钥种子的 skillDir
+改成了规范化路径（Clean + 正斜杠），旧的 `.env.enc` 全部失效，报错形如
+`decryption failed (wrong machine/user?): cipher: message authentication failed`。
+这不是文件损坏——用 `$JRP_BIN encrypt-env` 从明文 `.env` 重新加密即可，无损。
+（明文 `.env` 缺失时才需要走下面的找回流程。）
 
-**本机迁移已完成（2026-09-20）**：`~/.workbuddy/cos-credentials/` 已建（`.env` + `.env.enc`），
-符号链接 `tencentcloud-cos/.env` 已建并验证可用。旧位置的 `.env.enc` 保留作回退，
-两条路径（设 / 不设 `JRP_COS_SKILL_DIR`）都实测能列出 21 篇知识库。
-
-**凭证彻底丢失时的找回流程（2026-09-10 实操过，仅供参考）**：
+**凭证彻底丢失时的找回流程**：
 1. 确认 bucket：搜 `~/.workbuddy/audit-log/*.jsonl` 里 `TENCENT_COS_BUCKET=` 出现最多的值
    （本项目 = `openclaw-backup-tx-1251036673`，region=`ap-beijing`）。不要靠猜。
    注意：audit-log **只记录了 region/bucket**，secret id/key 是脱敏的，取不到。
-2. 找回明文密钥：在旧工作区脚本里搜 `AKID`（本例在 `WorkBuddy/2026-07-29-15-44-15/batch_convert.py`）。
-   同一 appid 下所有桶共用这套密钥。
-3. 重建：写明文 `.env`（4 变量）到 `~/.workbuddy/cos-credentials/.env` →
-   `JRP_COS_SKILL_DIR=~/.workbuddy/cos-credentials $JRP_BIN encrypt-env` → 重建符号链接。
-4. 若只是要把**旧位置的 .env.enc 导出来**（它还没坏）：
-   `$JRP_BIN decrypt-env --out ~/.workbuddy/cos-credentials/.env`（不设 env var 即读旧位置），
-   再 `encrypt-env` 到新位置。这是本次迁移用的路径，比重新找密钥快得多。
-5. 恢复 SDK：`cd ~/.workbuddy/skills/tencentcloud-cos && npm install`。
-6. 验证：`$JRP_BIN --lang ja list-knowledge` 能列出知识文档即成功。
+2. 找回明文密钥：在旧工作区脚本里搜 `AKID`。同一 appid 下所有桶共用这套密钥。
+3. 重建：写明文 `.env`（4 变量）到 `~/.workbuddy/cos-credentials/.env` → `$JRP_BIN encrypt-env`
+   → 按上面各平台的方式重建链接。
+4. 只是要把**旧位置还没坏的 .env.enc 导出来**：`$JRP_BIN decrypt-env --out <新位置>/.env`。
 
 ## COS Storage Structure
 
@@ -806,12 +821,12 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
     这种只反映「提交了什么」、不反映「当天实况」的描述。2026-08-22 事故的根因正是
     `record` 只提交错词 → changelog 统计列（已掌握/待巩固/错误数/钉子户）持续失真 →
     正确率冻结 + 8/6 一天无法追溯。记录必须在**操作当下**写清，事后补回必然残缺。
-22. **⚠️ COS credentials live at `~/.workbuddy/cos-credentials/`** — always pass
-    `JRP_COS_SKILL_DIR=~/.workbuddy/cos-credentials` on every jrp invocation (non-interactive
-    shells don't load `.zshrc`). NEVER place credential files inside any
-    `~/.workbuddy/skills/<marketplace-skill>/` directory: marketplace skill updates
-    wholesale-replace those directories and wipe local files (this destroyed `.env.enc`
-    on 2026-09-10).
+22. **⚠️ COS 凭证放在 `~/.workbuddy/cos-credentials/`** — 不带任何 skill dir 的 jrp 命令一律写
+    `~/.workbuddy/cos-credentials/`（迁移首选）→ `~/.workbuddy/skills/tencentcloud-cos/`（旧位置回退）。
+    解析在代码里做，不用设 `JRP_COS_SKILL_DIR`，也不依赖 shell 是否加载了 `.zshrc`。
+    NEVER place credential files inside any `~/.workbuddy/skills/<marketplace-skill>/`
+    directory: marketplace skill updates wholesale-replace those directories and wipe
+    local files (this destroyed `.env.enc` on 2026-09-10).
 
 ## Windows Environment Notes
 
@@ -827,6 +842,16 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
   `[System.IO.File]::Delete($absolutePath)`.
 - **After editing `jrp-src\SKILL.md`, copy it to `.workbuddy\skills\jrp\SKILL.md`** — the two
   must stay in sync.
+- **Git Bash 的 PATH 会间歇性被清空**（表现为 `dirname: command not found`、
+  `grep: command not found`，2026-09-20 遇到过）。命令前补一行即可：
+  `export PATH="/c/Users/efrainzhang/go-sdk/go/bin:/usr/bin:/bin:$PATH"`。
+  PowerShell 的 stdout 有时也不回显，验证结果用 bash 的 `ls`/`head` 更可靠。
+- **凭证迁移已完成（2026-09-20）**：`C:\Users\efrainzhang\.workbuddy\cos-credentials\`
+  已建（`.env` + `.env.enc`），符号链接
+  `tencentcloud-cos\.env -> cos-credentials\.env` 已建并验证 `cos_node.mjs` 可读。
+  建链接用 PowerShell：`New-Item -ItemType SymbolicLink -Path <link> -Target <target>`
+  （本次成功；失败就退化为直接复制 `.env`）。旧位置的 `.env.enc` 保留作回退。
+- **本机源码目录** `C:\Users\efrainzhang\jrp-src`（macOS 那边是 `~/jrp`，别混）。
 
 ## macOS Environment Notes
 
@@ -853,6 +878,14 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
   + `git reset --hard origin/main`。
 - **After editing `~/jrp/SKILL.md`, copy it to `~/.workbuddy/skills/jrp/SKILL.md`** — the two
   must stay in sync（与 Windows 同理）。
+- **⚠️ 拉到 2026-09-20 之后的构建，第一次跑之前先重加密**（Windows 那边改了密钥种子的
+  路径规范化，所有旧 `.env.enc` 失效）：
+  ```bash
+  cd ~/.workbuddy/cos-credentials && $JRP_BIN encrypt-env
+  ```
+  若报 `cannot read .env.enc` 说明本机还没迁移过——先把明文 `.env` 放到
+  `~/.workbuddy/cos-credentials/.env` 再执行。
+- **本机源码目录** `~/jrp`（Windows 那边是 `C:\Users\efrainzhang\jrp-src`，别混）。
 
 ## Language Codes
 
@@ -889,9 +922,10 @@ PATH=$HOME/go-sdk/go/bin:$PATH
 PATH=$HOME/.workbuddy/binaries/go/bin:$PATH
 ```
 
-Or set the `JRP_COS_SKILL_DIR` env var if the encrypted COS credentials are in a non-default location.
-
 Set this before running jrp commands if the binary was compiled with a newer Go toolchain.
+
+Only set `JRP_COS_SKILL_DIR` when credentials live somewhere non-standard — the default
+resolution (cos-credentials → legacy skill dir) covers both machines.
 
 ## Source Code
 
