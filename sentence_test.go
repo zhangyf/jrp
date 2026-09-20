@@ -297,6 +297,69 @@ func TestNormSentence(t *testing.T) {
 	}
 }
 
+// 当天这批提交之后，刷新会拿到全新的一批 —— 这是既有行为，不是 bug：
+// 提交时 ApplySentenceState 把当天出过的句子记进 history，近 7 天去重会把它们
+// 全部挡掉，于是从剩下的句池里再挑 20 句。写测试固定住，别哪天悄悄变了。
+func TestSentencePlanRefreshesAfterCommit(t *testing.T) {
+	bank := bankWith([]string{"第1课", "第2课", "第3课", "第4课"}, 10) // 共 40 句
+	today := mustDate(t, "2026-09-20")
+	dateStr := "2026-09-20"
+
+	first := BuildSentencePlan(bank, SentenceHistory{}, &SentenceWrong{}, today, 20)
+	if len(first) != 20 {
+		t.Fatalf("first batch = %d, want 20", len(first))
+	}
+
+	// 未提交只刷新 → 完全相同的一批（纯函数，无随机）
+	again := BuildSentencePlan(bank, SentenceHistory{}, &SentenceWrong{}, today, 20)
+	for i := range first {
+		if i >= len(again) || first[i].Answer != again[i].Answer {
+			t.Fatalf("同一天未提交时刷新应返回同一批，第 %d 句变了", i+1)
+		}
+	}
+
+	// 模拟全部答对提交
+	var rs []SentenceResult
+	for _, p := range first {
+		rs = append(rs, SentenceResult{Number: p.Number, Correct: true, Answer: p.Answer, Chinese: p.Chinese})
+	}
+	wrong, hist := ApplySentenceState(&SentenceWrong{}, SentenceHistory{}, rs, dateStr)
+
+	second := BuildSentencePlan(bank, hist, wrong, today, 20)
+	if len(second) != 20 {
+		t.Fatalf("second batch = %d, want 20（句池应还剩 20 句）", len(second))
+	}
+
+	seen := map[string]bool{}
+	for _, p := range first {
+		seen[normSentence(p.Answer)] = true
+	}
+	for _, p := range second {
+		if seen[normSentence(p.Answer)] {
+			t.Fatalf("提交后刷新又出到了当天做过的句子：%q", p.Answer)
+		}
+	}
+}
+
+// 句池被 7 天去重榨干后，fill(false) 会放宽复用近 7 天出过的句子（最久没出过优先），
+// 保证永远凑得满 20 句 —— 否则老师会看到空白页。
+func TestSentencePlanReusesWhenPoolExhausted(t *testing.T) {
+	bank := bankWith([]string{"第1课", "第2课"}, 10) // 共 20 句，一次就出完
+	today := mustDate(t, "2026-09-20")
+
+	first := BuildSentencePlan(bank, SentenceHistory{}, &SentenceWrong{}, today, 20)
+	var rs []SentenceResult
+	for _, p := range first {
+		rs = append(rs, SentenceResult{Number: p.Number, Correct: true, Answer: p.Answer, Chinese: p.Chinese})
+	}
+	wrong, hist := ApplySentenceState(&SentenceWrong{}, SentenceHistory{}, rs, "2026-09-20")
+
+	second := BuildSentencePlan(bank, hist, wrong, today, 20)
+	if len(second) != 20 {
+		t.Fatalf("句池耗尽时应放宽复用凑满 20 句，实际 %d", len(second))
+	}
+}
+
 func TestSortLessons(t *testing.T) {
 	ls := []string{"第10课", "第2课", "第1课", "单元末"}
 	sortLessons(ls)
