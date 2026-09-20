@@ -1,0 +1,259 @@
+:root {
+  --bg: #f7f7f5;
+  --panel: #ffffff;
+  --line: #e2e2dd;
+  --ink: #23231f;
+  --muted: #8a8a80;
+  --accent: #2f6f4f;
+  --accent-soft: #e7f1ea;
+  --bad: #b4392f;
+  --bad-soft: #fbeceb;
+  --good: #2f6f4f;
+  --good-soft: #e7f1ea;
+  --unknown: #a8641c;
+  --unknown-soft: #fdf1e3;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 18px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-wrap: wrap;
+}
+
+.brand { font-weight: 700; letter-spacing: .05em; }
+.spacer { flex: 1; }
+.muted { color: var(--muted); font-size: 13px; }
+.hidden { display: none !important; }
+
+nav { display: flex; gap: 4px; flex-wrap: wrap; }
+.tab {
+  border: 1px solid transparent;
+  background: none;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--muted);
+}
+.tab:hover { background: var(--bg); }
+.tab.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+.grade-mode { font-size: 13px; color: var(--muted); }
+.grade-mode select, label select, label input {
+  font: inherit;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fff;
+}
+
+#tokenBar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 18px;
+  background: #fff8e6;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+#tokenInput { flex: 0 1 320px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; }
+
+#dryRunBanner {
+  padding: 9px 18px;
+  background: #ffe8e8;
+  border-bottom: 2px solid #d9534f;
+  color: #8a1f1b;
+  font-size: 13px;
+  font-weight: 600;
+}
+#dryRunBanner b { color: #c9302c; }
+
+main { max-width: 860px; margin: 0 auto; padding: 18px; }
+
+.summary {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+.summary .chip {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 12px;
+}
+.summary .chip.warn { border-color: var(--bad); color: var(--bad); }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px;
+  margin-bottom: 16px;
+}
+.card h3 { margin: 0 0 10px; font-size: 15px; }
+
+.card-head { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; }
+.tag { font-size: 12px; padding: 1px 8px; border-radius: 4px; background: var(--bg); }
+.tag.nail { background: var(--bad-soft); color: var(--bad); }
+
+.definition { font-size: 26px; font-weight: 600; margin: 10px 0 14px; }
+
+input[type=text] {
+  width: 100%;
+  font-size: 22px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: inherit;
+}
+input[type=text]:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
+button {
+  font: inherit;
+  padding: 7px 16px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: #fff;
+  cursor: pointer;
+}
+button:hover { background: var(--bg); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { filter: brightness(1.08); }
+button.ghost { color: var(--muted); }
+button:disabled { opacity: .5; cursor: default; }
+
+.feedback { margin-top: 10px; font-size: 14px; min-height: 20px; }
+.feedback.ok { color: var(--good); }
+.feedback.no { color: var(--bad); }
+.feedback .answer { font-size: 20px; font-weight: 600; }
+
+.nails { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+
+/* 造句 */
+.sentence-item {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+.sentence-item .cn { font-size: 15px; }
+.sentence-item .row { margin-top: 6px; }
+.sentence-item input[type=text] { font-size: 16px; padding: 6px 10px; }
+.sentence-item .ans { font-size: 14px; margin-top: 6px; word-break: break-all; }
+.sentence-item.graded-ok { border-left: 3px solid var(--good); }
+.sentence-item.graded-no { border-left: 3px solid var(--bad); }
+/* 「不会」要压在 graded-no 后面才能覆盖红条 */
+.sentence-item.unknown { border-left: 3px solid var(--unknown); }
+.sentence-item .cn { display: flex; align-items: baseline; gap: 8px; }
+.sentence-item .cn button.unk { margin-left: auto; }
+
+/* 一屏全列的练习列表 */
+.toprow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+.listbar {
+  position: sticky; bottom: 0; z-index: 5;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 14px; margin-top: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, .06);
+}
+
+.word-item {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 6px;
+}
+.word-item .wi-head { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.word-item .num { color: var(--muted); min-width: 2.2em; }
+.word-item .def { font-size: 17px; font-weight: 600; }
+.word-item .row { margin-top: 4px; }
+.word-item input[type=text] { font-size: 16px; padding: 5px 10px; }
+.word-item .ans { font-size: 14px; margin-top: 4px; word-break: break-all; }
+.word-item .pick { font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
+/* 判错的行「算对」要醒目 —— 老师写汉字被假名档判错时靠它改判 */
+.word-item.graded-no .pick { color: var(--good); font-weight: 600; }
+.word-item .ans .hint { margin-left: 8px; font-size: 12px; }
+.word-item.graded-ok { border-left: 3px solid var(--good); }
+.word-item.graded-no { border-left: 3px solid var(--bad); }
+/* 「不会」要压在 graded-no 后面才能覆盖红条 */
+.word-item.unknown { border-left: 3px solid var(--unknown); }
+.word-item.blank { opacity: .5; }
+.word-item .wi-head button.unk { margin-left: auto; }
+
+/* 导入预览表 */
+table { border-collapse: collapse; width: 100%; font-size: 13px; background: var(--panel); }
+th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+th { background: var(--bg); font-weight: 600; }
+td.you { word-break: break-all; }
+tr.blank { opacity: .45; }
+/* 「不会」压掉 blank 的灰化：它是要记进档案的，不能看着像被跳过 */
+tr.unknown td { background: var(--unknown-soft); }
+tr.unknown { opacity: 1; }
+.tag.low { background: #fff8e6; }
+
+/* 「不会」按钮 / 标签 */
+button.unk {
+  font-size: 12px; padding: 2px 9px;
+  border: 1px solid var(--line); border-radius: 5px;
+  background: var(--panel); color: var(--muted); cursor: pointer;
+}
+button.unk.on {
+  background: var(--unknown-soft);
+  border-color: var(--unknown);
+  color: var(--unknown);
+  font-weight: 600;
+}
+.unk-tag { color: var(--unknown); font-weight: 600; }
+.feedback.unknown-fb { color: var(--unknown); }
+
+/* 提交前确认弹窗 */
+.modal-mask {
+  position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+  background: rgba(0, 0, 0, .35);
+  z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  padding: 18px;
+}
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px;
+  max-width: 440px;
+}
+.modal h4 { margin: 0 0 8px; font-size: 15px; }
+.modal p { margin: 0; font-size: 13px; line-height: 1.6; }
+.modal .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+
+/* 统计 */
+.stat-block { margin-bottom: 18px; }
+.stat-block h4 { margin: 0 0 6px; font-size: 14px; }
+.kv { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+.kv .chip { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; }
+
+#toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+  background: var(--ink); color: #fff; padding: 8px 18px; border-radius: 8px;
+  font-size: 14px; z-index: 50;
+}

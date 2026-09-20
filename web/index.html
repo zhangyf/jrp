@@ -1,281 +1,200 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>JRP 复习 · 日语</title>
-<style>
-  :root{
-    --bg:#f5f6f8; --card:#ffffff; --ink:#1f2329; --sub:#6b7280;
-    --line:#e5e7eb; --accent:#2563eb; --ok:#16a34a; --bad:#dc2626;
-    --nail:#b91c1c; --consol:#ea580c; --untest:#0891b2; --basic:#ca8a04; --spot:#16a34a;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
-    font-family:-apple-system,"Segoe UI","Microsoft YaHei","Hiragino Sans",sans-serif;}
-  .wrap{max-width:640px;margin:0 auto;padding:16px;}
-  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
-  h1{font-size:18px;margin:0;font-weight:700;}
-  .bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:10px 0;}
-  .bar>i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s;}
-  .meta{display:flex;gap:8px;font-size:12px;color:var(--sub);align-items:center;flex-wrap:wrap;}
-  .tag{padding:2px 8px;border-radius:10px;font-size:12px;color:#fff;}
-  .t-nail{background:var(--nail)} .t-consol{background:var(--consol)}
-  .t-untest{background:var(--untest)} .t-basic{background:var(--basic)} .t-spot{background:var(--spot)}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px 20px;
-    box-shadow:0 1px 3px rgba(0,0,0,.05);}
-  .def{font-size:30px;font-weight:700;text-align:center;line-height:1.4;margin:6px 0 4px;}
-  .grp{text-align:center;color:var(--sub);font-size:13px;margin-bottom:16px;}
-  .answer{width:100%;font-size:26px;text-align:center;padding:12px;border:2px solid var(--line);
-    border-radius:10px;outline:none;}
-  .answer:focus{border-color:var(--accent);}
-  .actions{display:flex;gap:10px;margin-top:16px;}
-  .actions button{flex:1;padding:14px;border:none;border-radius:10px;font-size:16px;cursor:pointer;color:#fff;}
-  .submit{background:var(--accent);} .skip{background:#9ca3af;}
-  .feedback{text-align:center;font-size:18px;margin-top:14px;min-height:28px;font-weight:600;}
-  .feedback.ok{color:var(--ok);} .feedback.bad{color:var(--bad);}
-  .opts{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--sub);}
-  .opts input{transform:scale(1.1);}
-  .done{text-align:center;padding:30px 10px;}
-  .done h2{font-size:24px;margin:0 0 12px;}
-  .stat{font-size:16px;color:var(--sub);margin:6px 0;}
-  .done button{margin-top:18px;padding:12px 28px;border:none;background:var(--accent);color:#fff;
-    border-radius:10px;font-size:16px;cursor:pointer;}
-  .hint{font-size:12px;color:var(--sub);text-align:center;margin-top:8px;}
-  .imhint{text-align:center;margin-top:10px;font-size:13px;color:var(--sub);
-    background:#f0f5ff;padding:10px 12px;border-radius:8px;line-height:1.6;}
-  .imhint b{color:var(--accent);}
-  .loading{text-align:center;padding:60px 0;color:var(--sub);}
-</style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jrp 每日练习</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>🫧 JRP 复习</h1>
-    <label class="opts"><input type="checkbox" id="nailsOnly"> 只练钉子户</label>
-  </header>
 
-  <div id="app">
-    <div class="loading" id="loading">加载今日词表…</div>
-  </div>
+<header id="top">
+  <span class="brand">jrp</span>
+  <nav>
+    <button class="tab" data-page="practice">今日练习</button>
+    <button class="tab" data-page="sentence">造句</button>
+    <button class="tab" data-page="hard">钉子户</button>
+    <button class="tab" data-page="offline">离线回填</button>
+    <button class="tab" data-page="stats">统计</button>
+  </nav>
+  <span class="spacer"></span>
+  <label class="grade-mode">
+    视图
+    <select id="viewMode">
+      <option value="list" selected>列表</option>
+      <option value="card">卡片</option>
+    </select>
+  </label>
+  <label class="grade-mode">
+    判分
+    <select id="gradeMode">
+      <option value="kana" selected>假名档</option>
+      <option value="kanji">汉字档</option>
+      <option value="full">完整档</option>
+      <option value="either">任一档（假名/汉字都行）</option>
+    </select>
+  </label>
+  <span id="today" class="muted"></span>
+</header>
+
+<div id="dryRunBanner" class="hidden">
+  🚧 演练模式（服务端 --dry-run）：本次练习<b>不会</b>写入 COS，判分和版本号照常算，刷新即丢弃
 </div>
 
-<script>
-"use strict";
+<div id="tokenBar" class="hidden">
+  <input id="tokenInput" type="password" placeholder="访问 token（服务端设了鉴权才需要）">
+  <button id="tokenSave">保存</button>
+  <span class="muted">token 存在本机 localStorage</span>
+</div>
 
-const state = {
-  lang: "ja",
-  date: "",
-  all: [],
-  queue: [],
-  pos: 0,
-  results: {},
-  strict: false,
-};
-
-const STATUS_TAG = {
-  "☠️钉子户":["t-nail","钉子户"], "🔴待巩固":["t-consol","待巩固"],
-  "🔄待测试":["t-untest","待测试"], "🟡基本掌握":["t-basic","基本掌握"],
-  "🟢抽查":["t-spot","抽查"],
-};
-
-// ---- normalization + grading ----
-function toHira(s){
-  return s.replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0)-0x60));
-}
-function normalize(s){
-  return (s||"")
-    .replace(/\s+/g,"")
-    .replace(/[（）()]/g,"")
-    .replace(/[・･]/g,"")
-    .trim();
-}
-function answerForms(word){
-  const forms = new Set();
-  const raw = word.trim();
-  raw.split("/").forEach(part=>{
-    const m = part.match(/^(.+?)\((.+?)\)$/);
-    if(m){ forms.add(m[1].trim()); forms.add(m[2].trim()); forms.add(part.trim()); }
-    else { forms.add(part.trim()); }
-  });
-  return [...forms];
-}
-function grade(input, word, strict){
-  const forms = answerForms(word);
-  const nin = normalize(input);
-  if(!nin) return false;
-  if(strict){
-    return forms.some(f => normalize(f) === nin);
-  }
-  const ninH = toHira(nin);
-  return forms.some(f=>{
-    const nf = normalize(f);
-    return nf === nin || toHira(nf) === ninH;
-  });
-}
-
-// ---- data load ----
-async function loadPlan(){
-  const nailsOnly = document.getElementById("nailsOnly").checked;
-  const res = await fetch("/api/plan");
-  const data = await res.json();
-  if(!data.success){ showError(data.error||"加载失败"); return; }
-  state.date = data.date;
-  state.all = data.words || [];
-  if(nailsOnly){
-    state.all = state.all.filter(w => w.status === "☠️钉子户");
-  }
-  if(state.all.length === 0){ showError("今天没有到期的词。"); return; }
-  state.queue = state.all.map((_,i)=>i);
-  state.pos = 0;
-  state.results = {};
-  renderCard();
-}
-
-function showError(msg){
-  document.getElementById("app").innerHTML =
-    `<div class="card"><div class="def">😴</div><div class="grp">${msg}</div></div>`;
-}
-
-// ---- rendering ----
-function renderCard(){
-  if(state.pos >= state.queue.length){ renderDone(); return; }
-  const w = state.all[state.queue[state.pos]];
-  const [cls,label] = STATUS_TAG[w.status] || ["t-basic",w.status];
-  const answered = Object.keys(state.results).length;
-  const total = state.all.length;
-  const pct = Math.round(answered/total*100);
-
-  document.getElementById("app").innerHTML = `
-    <div class="meta">
-      <span>${state.date}</span>
-      <span>进度 ${answered}/${total}</span>
-      <span class="tag ${cls}">${label}</span>
+<main>
+  <!-- 今日练习 -->
+  <section id="page-practice" class="page">
+    <div class="toprow">
+      <div id="practiceSummary" class="summary"></div>
+      <label class="nails"><input id="nailsOnly" type="checkbox"> 只练钉子户</label>
     </div>
-    <div class="bar"><i style="width:${pct}%"></i></div>
+
+    <!-- 列表模式 -->
+    <div id="practiceList" class="hidden"></div>
+    <div id="practiceBar" class="listbar hidden">
+      <span id="practiceCount" class="muted"></span>
+      <button id="practiceGrade" class="primary">对答案</button>
+      <button id="practiceCommit" class="primary hidden">回写档案</button>
+      <span id="practiceNote" class="muted"></span>
+    </div>
+    <div id="practiceMsg" class="feedback"></div>
+    <div id="tomorrowBox"></div>
+
+    <!-- 卡片模式 -->
+    <div id="practiceCard" class="card hidden">
+      <div class="card-head">
+        <span id="wProgress" class="muted"></span>
+        <span id="wStatus" class="tag"></span>
+      </div>
+      <div id="wDefinition" class="definition"></div>
+      <input id="wInput" type="text" autocomplete="off" spellcheck="false" placeholder="写日语，回车提交">
+      <div id="wFeedback" class="feedback"></div>
+      <div class="row">
+        <button id="wSubmit">提交</button>
+        <button id="wUnknown" class="ghost">不会</button>
+        <button id="wReveal" class="ghost">看答案</button>
+        <button id="wSkip" class="ghost">跳过</button>
+      </div>
+    </div>
+    <div id="practiceDone" class="hidden">
+      <div id="practiceResult"></div>
+      <button id="practiceCommitCard" class="primary">回写档案</button>
+      <div id="commitResult" class="feedback"></div>
+      <div id="tomorrowBoxCard"></div>
+    </div>
+  </section>
+
+  <!-- 造句 -->
+  <section id="page-sentence" class="page hidden">
+    <div id="sentenceSummary" class="summary"></div>
+    <div id="sentenceList"></div>
+    <div id="sentenceDone" class="hidden">
+      <button id="sentenceCommit" class="primary">回写造句结果</button>
+      <div id="sentenceCommitResult" class="feedback"></div>
+    </div>
+  </section>
+
+  <!-- 钉子户专项 -->
+  <section id="page-hard" class="page hidden">
+    <div class="toprow">
+      <div id="hardSummary" class="summary"></div>
+    </div>
+
+    <!-- 列表模式 -->
+    <div id="hardList" class="hidden"></div>
+    <div id="hardBar" class="listbar hidden">
+      <span id="hardCount" class="muted"></span>
+      <button id="hardGrade" class="primary">对答案</button>
+      <button id="hardCommit" class="primary hidden">回写档案</button>
+      <span id="hardNote" class="muted"></span>
+    </div>
+    <div id="hardMsg" class="feedback"></div>
+    <div id="hardTomorrowBox"></div>
+
+    <!-- 卡片模式 -->
+    <div id="hardCard" class="card hidden">
+      <div class="card-head">
+        <span id="hProgress" class="muted"></span>
+        <span id="hMeta" class="tag"></span>
+      </div>
+      <div id="hDefinition" class="definition"></div>
+      <input id="hInput" type="text" autocomplete="off" spellcheck="false" placeholder="写日语，回车提交">
+      <div id="hFeedback" class="feedback"></div>
+      <div class="row">
+        <button id="hSubmit">提交</button>
+        <button id="hUnknown" class="ghost">不会</button>
+        <button id="hReveal" class="ghost">看答案</button>
+        <button id="hSkip" class="ghost">跳过</button>
+      </div>
+    </div>
+    <div id="hardDone" class="hidden">
+      <button id="hardCommitCard" class="primary">回写档案</button>
+      <div id="hardCommitResult" class="feedback"></div>
+    </div>
+  </section>
+
+  <!-- 离线回填 -->
+  <section id="page-offline" class="page hidden">
     <div class="card">
-      <div class="def">${escapeHtml(w.definition)}</div>
-      <div class="grp">${escapeHtml(w.group)}</div>
-
-      <input class="answer" id="ansInput" placeholder="用日语输入法作答" autocomplete="off">
-
-      <div class="imhint">
-        手写输入：将系统输入法切到 <b>日语 Microsoft IME</b>，右键托盘图标 → <b>IME Pad → Handwriting</b>，画的字会自动填入上方输入框
+      <h3>导出离线练习包</h3>
+      <div class="row">
+        <label>日期 <input id="exportDate" type="date"></label>
+        <label>类型
+          <select id="exportMode">
+            <option value="daily">单词 + 造句</option>
+            <option value="hard">钉子户专项</option>
+            <option value="sentences">纯造句（50 句）</option>
+          </select>
+        </label>
+        <button id="exportBtn" class="primary">下载 xlsx</button>
       </div>
-
-      <div class="actions">
-        <button class="submit" id="btnSubmit">提交</button>
-        <button class="skip" id="btnSkip">跳过</button>
-      </div>
-      <div class="feedback" id="fb"></div>
-      <div class="opts" style="justify-content:center;margin-top:10px">
-        <label><input type="checkbox" id="strictBox" ${state.strict?'checked':''}> 严格模式（假名+汉字都要对）</label>
-      </div>
-      <div class="hint">宽松模式下，假名写对即算对（忽略汉字/括号）。</div>
+      <p class="muted">文件里藏了 plan_date，隔天再回填也能对上号。用 WPS/Excel 打开填写日语列。</p>
     </div>
-  `;
 
-  document.getElementById("btnSubmit").onclick = onSubmit;
-  document.getElementById("btnSkip").onclick = onSkip;
-  document.getElementById("strictBox").onchange = e=>{ state.strict = e.target.checked; };
-
-  const inp = document.getElementById("ansInput");
-  inp.focus();
-  inp.onkeydown = e=>{ if(e.key==="Enter") onSubmit(); };
-}
-
-function onSubmit(){
-  const w = state.all[state.queue[state.pos]];
-  const ans = document.getElementById("ansInput").value;
-  if(!ans.trim()){ flash("请先作答", false); return; }
-  const ok = grade(ans, w.word, state.strict);
-  if(!(w.number in state.results)){
-    state.results[w.number] = ok;
-  }
-  const fb = document.getElementById("fb");
-  if(ok){
-    fb.className = "feedback ok";
-    fb.textContent = "✓ 正确  " + w.word;
-    setTimeout(nextCard, 700);
-  } else {
-    fb.className = "feedback bad";
-    fb.textContent = "✗ 正确答案：" + w.word;
-    state.queue.push(state.queue[state.pos]);
-    setTimeout(nextCard, 1600);
-  }
-}
-
-function onSkip(){
-  const w = state.all[state.queue[state.pos]];
-  if(!(w.number in state.results)) state.results[w.number] = false;
-  state.queue.push(state.queue[state.pos]);
-  nextCard();
-}
-
-function nextCard(){
-  state.pos++;
-  renderCard();
-}
-
-function flash(msg, ok){
-  const fb = document.getElementById("fb");
-  fb.className = "feedback " + (ok?"ok":"bad");
-  fb.textContent = msg;
-}
-
-function renderDone(){
-  const nums = Object.keys(state.results);
-  const correct = nums.filter(n=>state.results[n]).length;
-  const total = nums.length;
-  const pct = total? Math.round(correct/total*100):0;
-  document.getElementById("app").innerHTML = `
-    <div class="card done">
-      <h2>今日复习完成 🫧</h2>
-      <div class="stat">正确 <b style="color:var(--ok)">${correct}</b> / ${total}（${pct}%）</div>
-      <div class="stat" id="recStat">结果按每词首次作答记录</div>
-      <button id="btnRecord">回写档案到 COS</button>
-      <div class="feedback" id="recFb"></div>
+    <div class="card">
+      <h3>上传填好的 xlsx</h3>
+      <div class="row">
+        <input id="importFile" type="file" accept=".xlsx">
+        <button id="importBtn">解析</button>
+      </div>
+      <div id="importInfo" class="feedback"></div>
+      <div id="importWords"></div>
+      <div id="importSentences"></div>
+      <button id="importCommit" class="primary hidden">确认提交</button>
+      <div id="importCommitResult" class="feedback"></div>
     </div>
-  `;
-  document.getElementById("btnRecord").onclick = submitRecord;
-}
+  </section>
 
-async function submitRecord(){
-  const btn = document.getElementById("btnRecord");
-  btn.disabled = true; btn.textContent = "回写中…";
-  const word_results = Object.keys(state.results).map(n=>({
-    number: parseInt(n,10), correct: state.results[n]
-  }));
-  const body = { plan_date: state.date, language: state.lang,
-                 word_results, sentence_results: [] };
-  try{
-    const res = await fetch("/api/record",{
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(body)
-    });
-    const data = await res.json();
-    const fb = document.getElementById("recFb");
-    if(data.success){
-      fb.className="feedback ok";
-      fb.textContent = `已回写：正确${data.correct} 错误${data.wrong}，档案 ${data.version}`;
-      btn.textContent = "已完成";
-    } else {
-      fb.className="feedback bad";
-      fb.textContent = "回写失败：" + (data.error||"未知错误");
-      btn.disabled=false; btn.textContent="重试回写";
-    }
-  }catch(e){
-    document.getElementById("recFb").textContent = "网络错误：" + e.message;
-    btn.disabled=false; btn.textContent="重试回写";
-  }
-}
+  <!-- 统计 -->
+  <section id="page-stats" class="page hidden">
+    <div class="row">
+      <label>最近 <select id="statsDays">
+        <option value="7">7 天</option>
+        <option value="30" selected>30 天</option>
+        <option value="90">90 天</option>
+      </select></label>
+    </div>
+    <div id="statsBody"></div>
+  </section>
+</main>
 
-function escapeHtml(s){
-  return (s||"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-}
+<div id="toast" class="hidden"></div>
 
-document.getElementById("nailsOnly").onchange = loadPlan;
-loadPlan();
-</script>
+<script src="grade.js"></script>
+<script src="app.js"></script>
+<script src="unknown.js"></script>
+<script src="list.js"></script>
+<script src="practice.js"></script>
+<script src="sentence.js"></script>
+<script src="hard.js"></script>
+<script src="offline.js"></script>
+<script src="stats.js"></script>
+<script>app.boot()</script>
 </body>
 </html>

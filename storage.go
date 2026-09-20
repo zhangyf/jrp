@@ -54,7 +54,18 @@ func cosSkillDir() string {
 type Storage struct {
 	store objstore.Store
 	lang  string
+
+	// dryRun 为 true 时所有 Upload* 变成空操作，读取完全不受影响。
+	// 用于 serve 的演练模式：判分、序号匹配、版本号 bump 照常计算，
+	// 只是不落盘 —— 验收时随便点都不会脏档案。
+	dryRun bool
 }
+
+// SetDryRun 打开或关闭演练模式。
+func (s *Storage) SetDryRun(v bool) { s.dryRun = v }
+
+// IsDryRun 报告当前是否处于演练模式。
+func (s *Storage) IsDryRun() bool { return s.dryRun }
 
 // NewStorage creates a Storage instance with credentials loaded from
 // environment variables or the encrypted .env.enc file.
@@ -299,12 +310,18 @@ func (s *Storage) DownloadLatestArchive(ctx context.Context) ([]byte, string, er
 
 // UploadArchive uploads an archive to COS.
 func (s *Storage) UploadArchive(ctx context.Context, filename string, data []byte) error {
+	if s.dryRun {
+		return nil
+	}
 	key := s.cosPrefix() + "/archives/" + filename
 	return s.store.PutObject(ctx, key, data)
 }
 
 // UploadHistory uploads a historical archive to COS.
 func (s *Storage) UploadHistory(ctx context.Context, filename string, data []byte) error {
+	if s.dryRun {
+		return nil
+	}
 	key := s.cosPrefix() + "/history/" + filename
 	return s.store.PutObject(ctx, key, data)
 }
@@ -329,6 +346,9 @@ func (s *Storage) planJSONKey(kind, date string) string {
 
 // UploadPlan uploads a review plan JSON to COS.
 func (s *Storage) UploadPlan(ctx context.Context, plan *ReviewPlan) error {
+	if s.dryRun {
+		return nil
+	}
 	key := s.planJSONKey("", plan.Date)
 	data := []byte(toJSON(plan))
 	return s.store.PutObject(ctx, key, data)
@@ -350,6 +370,9 @@ func (s *Storage) DownloadPlan(ctx context.Context, planDate string) (*ReviewPla
 
 // UploadHardPlan uploads a hard-word plan JSON to COS.
 func (s *Storage) UploadHardPlan(ctx context.Context, plan *ReviewPlan) error {
+	if s.dryRun {
+		return nil
+	}
 	key := s.planJSONKey("hard", plan.Date)
 	data := []byte(toJSON(plan))
 	return s.store.PutObject(ctx, key, data)
@@ -372,6 +395,9 @@ func (s *Storage) DownloadHardPlan(ctx context.Context, planDate string) (*Revie
 // UploadSentencePlan uploads a sentences-only plan JSON to COS (kind
 // "sentences"). Kept in its own key so it never clobbers the daily plan.
 func (s *Storage) UploadSentencePlan(ctx context.Context, plan *ReviewPlan) error {
+	if s.dryRun {
+		return nil
+	}
 	key := s.planJSONKey("sentences", plan.Date)
 	data := []byte(toJSON(plan))
 	return s.store.PutObject(ctx, key, data)
@@ -393,6 +419,9 @@ func (s *Storage) DownloadSentencePlan(ctx context.Context, planDate string) (*R
 
 // UploadExcel uploads an Excel file to COS.
 func (s *Storage) UploadExcel(ctx context.Context, date string, major, minor int, localPath string) error {
+	if s.dryRun {
+		return nil
+	}
 	key := fmt.Sprintf("%s/plans/review_%s_v%d.%d.xlsx", s.cosPrefix(), date, major, minor)
 	data, err := os.ReadFile(localPath)
 	if err != nil {
@@ -403,6 +432,9 @@ func (s *Storage) UploadExcel(ctx context.Context, date string, major, minor int
 
 // UploadSentenceExcel uploads a sentences-only Excel file to COS.
 func (s *Storage) UploadSentenceExcel(ctx context.Context, date string, major, minor int, localPath string) error {
+	if s.dryRun {
+		return nil
+	}
 	key := fmt.Sprintf("%s/plans/sentences_%s_v%d.%d.xlsx", s.cosPrefix(), date, major, minor)
 	data, err := os.ReadFile(localPath)
 	if err != nil {
@@ -413,6 +445,9 @@ func (s *Storage) UploadSentenceExcel(ctx context.Context, date string, major, m
 
 // UploadHardExcel uploads a hard-word Excel file to COS.
 func (s *Storage) UploadHardExcel(ctx context.Context, date string, major, minor int, localPath string) error {
+	if s.dryRun {
+		return nil
+	}
 	key := fmt.Sprintf("%s/plans/hard_words_%s_v%d.%d.xlsx", s.cosPrefix(), date, major, minor)
 	data, err := os.ReadFile(localPath)
 	if err != nil {
@@ -423,6 +458,9 @@ func (s *Storage) UploadHardExcel(ctx context.Context, date string, major, minor
 
 // UploadKnowledge uploads a knowledge document to COS.
 func (s *Storage) UploadKnowledge(ctx context.Context, filename string, data []byte) error {
+	if s.dryRun {
+		return nil
+	}
 	key := s.cosPrefix() + "/knowledge/" + filename
 	return s.store.PutObject(ctx, key, data)
 }

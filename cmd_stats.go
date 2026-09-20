@@ -9,6 +9,18 @@ import (
 	"time"
 )
 
+// StatsResult 统计结果。CLI 的 stats 与网站的 /api/stats 共用。
+type StatsResult struct {
+	Snapshots []StatsSnapshot   `json:"snapshots"`
+	Changes   map[string]string `json:"changes"`
+	Detail    *StatsDetail      `json:"detail"`
+}
+
+// ComputeStats 统计最近 days 天。CLI 与 HTTP handler 共用，两边都只读。
+func ComputeStats(ctx context.Context, storage *Storage, lang string, days int) (*StatsResult, error) {
+	return computeStats(ctx, storage, lang, days)
+}
+
 func runStats(fs *flag.FlagSet, lang string) {
 	days := fs.Int("days", 7, "Number of days to look back")
 	fs.Parse(cmdArgs)
@@ -21,16 +33,33 @@ func runStats(fs *flag.FlagSet, lang string) {
 
 	ctx := context.Background()
 
+	res, err := ComputeStats(ctx, storage, lang, *days)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error computing stats: %v\n", err)
+		os.Exit(1)
+	}
+
+	outputResult(map[string]interface{}{
+		"success":   true,
+		"command":   "stats",
+		"language":  lang,
+		"days":      *days,
+		"snapshots": res.Snapshots,
+		"changes":   res.Changes,
+		"detail":    res.Detail,
+	})
+}
+
+func computeStats(ctx context.Context, storage *Storage, lang string, days int) (*StatsResult, error) {
 	// List all archives
 	objs, err := storage.ListAllArchives(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error listing archives: %v\n", err)
-		os.Exit(1)
+		return nil, err
 	}
 
 	// Find unique dates within the last N days
 	today := time.Now()
-	cutoff := today.AddDate(0, 0, -*days)
+	cutoff := today.AddDate(0, 0, -days)
 
 	// Group archives by date, keep the latest version per date
 	type dateEntry struct {
@@ -131,15 +160,7 @@ func runStats(fs *flag.FlagSet, lang string) {
 		changes["period"] = fmt.Sprintf("%s ~ %s", first.Date, last.Date)
 	}
 
-	outputResult(map[string]interface{}{
-		"success":   true,
-		"command":   "stats",
-		"language":  lang,
-		"days":      *days,
-		"snapshots": snapshots,
-		"changes":   changes,
-		"detail":    detail,
-	})
+	return &StatsResult{Snapshots: snapshots, Changes: changes, Detail: detail}, nil
 }
 
 func lastIndexOf(s, substr string) int {
