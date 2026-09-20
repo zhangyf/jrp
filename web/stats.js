@@ -49,13 +49,44 @@ function trend(snaps) {
     '</tr></thead><tbody>' + rows + '</tbody></table></div>';
 }
 
+// 后端 /api/stats 的 changes 用的是 Go 字段名（total_change 等），直接显示看不懂，
+// 这里做一层中文映射。顺序也固定住，别跟着 map 的字母序乱排。
+var CHANGE_LABELS = {
+  total_change: '总词量',
+  mastered_change: '已掌握',
+  basic_change: '基本掌握',
+  needs_consol_change: '待巩固',
+  errors_change: '错误数',
+  period: '统计区间'
+};
+var CHANGE_ORDER = ['total_change', 'mastered_change', 'basic_change', 'needs_consol_change', 'errors_change'];
+
 function changes(c) {
   var keys = Object.keys(c);
   if (!keys.length) return '';
-  return '<div class="stat-block"><h4>变化</h4><div class="kv">' +
-    keys.map(function (k) {
-      return '<span class="chip">' + esc(k) + ' <b>' + esc(c[k]) + '</b></span>';
-    }).join('') + '</div></div>';
+
+  // period 是区间说明，不是指标，单独放一行
+  var period = c.period
+    ? '<p class="muted" style="margin:0 0 6px;font-size:12px">统计区间：' + esc(c.period) + '</p>'
+    : '';
+
+  var shown = {};
+  var chips = CHANGE_ORDER.filter(function (k) {
+    if (c[k] === undefined) return false;
+    shown[k] = true;
+    return true;
+  }).map(function (k) {
+    return '<span class="chip">' + esc(CHANGE_LABELS[k] || k) + ' <b>' + esc(c[k]) + '</b></span>';
+  }).join('');
+
+  // 后端以后新增字段也别漏掉
+  keys.forEach(function (k) {
+    if (shown[k] || k === 'period') return;
+    chips += '<span class="chip">' + esc(CHANGE_LABELS[k] || k) + ' <b>' + esc(c[k]) + '</b></span>';
+  });
+
+  return '<div class="stat-block"><h4>变化</h4>' + period +
+    '<div class="kv">' + chips + '</div></div>';
 }
 
 function detail(d) {
