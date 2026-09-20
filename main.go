@@ -27,6 +27,7 @@ Commands:
   list-knowledge  List all knowledge documents in COS
   get-knowledge   Download a knowledge document from COS
   encrypt-env     Encrypt the plaintext .env into .env.enc (AES-256-GCM)
+  decrypt-env     Decrypt .env.enc back to plaintext .env (for credential migration)
   serve           Start the web review UI (keyboard + handwriting input)
 
 Global flags:
@@ -80,8 +81,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// encrypt-env only touches local files and does not need a language.
-	if cmd != "encrypt-env" {
+	// encrypt-env / decrypt-env only touch local files and do not need a language.
+	if cmd != "encrypt-env" && cmd != "decrypt-env" {
 		if lang == "" {
 			fmt.Fprintln(os.Stderr, "Error: --lang is required")
 			fmt.Print(usage)
@@ -126,6 +127,8 @@ func main() {
 		runGetKnowledge(fs, lang)
 	case "encrypt-env":
 		runEncryptEnv(fs, lang)
+	case "decrypt-env":
+		runDecryptEnv(fs, lang)
 	case "serve":
 		runServe(fs, lang)
 	default:

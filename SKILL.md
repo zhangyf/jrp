@@ -51,6 +51,24 @@ if a skill update removes the symlink, recreate it:
 To regenerate `.env.enc` after editing `.env`:
 `JRP_COS_SKILL_DIR=~/.workbuddy/cos-credentials $JRP_BIN encrypt-env`
 
+**本机迁移已完成（2026-09-20）**：`~/.workbuddy/cos-credentials/` 已建（`.env` + `.env.enc`），
+符号链接 `tencentcloud-cos/.env` 已建并验证可用。旧位置的 `.env.enc` 保留作回退，
+两条路径（设 / 不设 `JRP_COS_SKILL_DIR`）都实测能列出 21 篇知识库。
+
+**凭证彻底丢失时的找回流程（2026-09-10 实操过，仅供参考）**：
+1. 确认 bucket：搜 `~/.workbuddy/audit-log/*.jsonl` 里 `TENCENT_COS_BUCKET=` 出现最多的值
+   （本项目 = `openclaw-backup-tx-1251036673`，region=`ap-beijing`）。不要靠猜。
+   注意：audit-log **只记录了 region/bucket**，secret id/key 是脱敏的，取不到。
+2. 找回明文密钥：在旧工作区脚本里搜 `AKID`（本例在 `WorkBuddy/2026-07-29-15-44-15/batch_convert.py`）。
+   同一 appid 下所有桶共用这套密钥。
+3. 重建：写明文 `.env`（4 变量）到 `~/.workbuddy/cos-credentials/.env` →
+   `JRP_COS_SKILL_DIR=~/.workbuddy/cos-credentials $JRP_BIN encrypt-env` → 重建符号链接。
+4. 若只是要把**旧位置的 .env.enc 导出来**（它还没坏）：
+   `$JRP_BIN decrypt-env --out ~/.workbuddy/cos-credentials/.env`（不设 env var 即读旧位置），
+   再 `encrypt-env` 到新位置。这是本次迁移用的路径，比重新找密钥快得多。
+5. 恢复 SDK：`cd ~/.workbuddy/skills/tencentcloud-cos && npm install`。
+6. 验证：`$JRP_BIN --lang ja list-knowledge` 能列出知识文档即成功。
+
 ## COS Storage Structure
 
 ```
@@ -269,8 +287,11 @@ Knowledge base IDs:
         80 句里「小野さんは歌が好きです」等 4 句连出 4 次、7 句连出 3 次；②每天从零
         挑句、无历史记录，AI 无法避开近期出过的句子。修正规则：
         1. **挑句前先读轮换记录** `language-review/ja/plans/sentence_history.json`
-           （COS，用 `cos_node.mjs download` 取，key 同上），它按日期记录每天出过的
-           answer 原文。
+           （COS，用 `cos_node.mjs download` 取，key 同上；⚠️ 脚本实际路径是
+           `~/.workbuddy/skills/tencentcloud-cos/scripts/cos_node.mjs`，不是技能根目录，
+           且必须 cwd=技能根 运行才能加载 `.env`；npm 依赖若丢失，用
+           `NODE_PATH=~/.workbuddy/binaries/node/workspace/node_modules` 指过去），
+           它按日期记录每天出过的 answer 原文。
         2. **同一句 7 天内不重复出**。除非某课可用句池 < 需要的句数，才允许复用，
            且优先复用它"最久没出过"的一句。
         3. 把"覆盖重点语法"从硬优先降为**软参考**：语法点要覆盖，但不等于只能出
@@ -414,7 +435,7 @@ jrp --lang ja gen-plan --date YYYY-MM-DD --sentences-only --sentences tmp_senten
 「复习结果：X词写对，Y词写错」，CLI **没有** `--desc` / `--note` 参数，传了也会被忽略。所以当 `M < N` 时，
 档案里永久查不到"还有 Z 词没写"这一事实，只有 X 和 Y。在这个参数加上之前，必须把
 `到期N / 实写M / 写对X / 写错Y / 未写Z` 五个数字写进**工作区 memory 当天日志**，否则当天实况不可追溯。
-TODO：给 `record` 加 `--note <string>`，拼进 changelog 描述。
+TODO：给 `jrp-src` 的 `record` 加 `--note <string>`，拼进 changelog 描述。
 
 **Steps**:
 1. 等老师当天反馈**收尾**（报完所有错词，通常以"XX部分全对"或"XX部分没写"收尾）再一次性 record，
