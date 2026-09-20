@@ -112,12 +112,16 @@ type RecordResult struct {
 // Hard selects which plan to resolve word numbers against: false (default) reads
 // the daily plan, true reads the hard-word plan from export-hard. Existing
 // clients (web UI) omit the field and keep the original behaviour.
+//
+// SentenceResults 以前是死字段（全仓库没有读它的地方），造句对错压根不落库。
+// 现在改由 ApplySentenceState 处理，所以类型换成了带 answer/chinese 的
+// SentenceResult —— 造句的间隔重复需要原文才能定位。
 type RecordInput struct {
-	PlanDate        string         `json:"plan_date"`
-	Language        string         `json:"language"`
-	WordResults     []RecordResult `json:"word_results"`
-	SentenceResults []RecordResult `json:"sentence_results"`
-	Hard            bool           `json:"hard,omitempty"`
+	PlanDate        string           `json:"plan_date"`
+	Language        string           `json:"language"`
+	WordResults     []RecordResult   `json:"word_results"`
+	SentenceResults []SentenceResult `json:"sentence_results"`
+	Hard            bool             `json:"hard,omitempty"`
 }
 
 // AddWordsInput is the JSON input for the add-words command.
@@ -146,10 +150,10 @@ type UpdateWordInput struct {
 
 // StatsOutput is the result of the stats command.
 type StatsOutput struct {
-	Language     string            `json:"language"`
-	Days         int               `json:"days"`
-	Snapshots    []StatsSnapshot   `json:"snapshots"`
-	Changes      map[string]string `json:"changes"`
+	Language  string            `json:"language"`
+	Days      int               `json:"days"`
+	Snapshots []StatsSnapshot   `json:"snapshots"`
+	Changes   map[string]string `json:"changes"`
 }
 
 type StatsSnapshot struct {
@@ -167,9 +171,9 @@ type StatsSnapshot struct {
 // breakdown, accuracy distribution, and hard-word counts so callers never
 // need to parse the archive markdown manually.
 type StatsDetail struct {
-	ByLesson             []LessonCount   `json:"by_lesson"`
-	AccuracyDistribution map[string]int  `json:"accuracy_distribution"`
-	HardWords            HardWordCounts  `json:"hard_words"`
+	ByLesson             []LessonCount     `json:"by_lesson"`
+	AccuracyDistribution map[string]int    `json:"accuracy_distribution"`
+	HardWords            HardWordCounts    `json:"hard_words"`
 	TopReviewed          []TopReviewedWord `json:"top_reviewed"`
 }
 
@@ -186,8 +190,8 @@ type HardWordCounts struct {
 }
 
 type TopReviewedWord struct {
-	Word       string  `json:"word"`
-	Reviews    int     `json:"reviews"`
-	Errors     int     `json:"errors"`
-	Accuracy   float64 `json:"accuracy"`
+	Word     string  `json:"word"`
+	Reviews  int     `json:"reviews"`
+	Errors   int     `json:"errors"`
+	Accuracy float64 `json:"accuracy"`
 }

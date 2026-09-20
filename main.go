@@ -29,6 +29,10 @@ Commands:
   encrypt-env     Encrypt the plaintext .env into .env.enc (AES-256-GCM)
   decrypt-env     Decrypt .env.enc back to plaintext .env (for credential migration)
   serve           Start the web review UI (keyboard + handwriting input)
+  sentence-migrate  Read-only precheck of sentence_history/sentence_wrong
+  sentence-lint    Read-only check that every bank sentence is real textbook text
+  sentence-bank    Sentence bank management (--file upload / --dump / --stats)
+  sentence-preview  Read-only dry run: which sentences would be picked today
 
 Global flags:
   --lang string   Language code: ja (Japanese), en (English), fr (French) (required)
@@ -131,6 +135,14 @@ func main() {
 		runDecryptEnv(fs, lang)
 	case "serve":
 		runServe(fs, lang)
+	case "sentence-migrate":
+		runSentenceMigrate(fs, lang)
+	case "sentence-lint":
+		runSentenceLint(fs, lang)
+	case "sentence-bank":
+		runSentenceBank(fs, lang)
+	case "sentence-preview":
+		runSentencePreview(fs, lang)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		fmt.Print(usage)
