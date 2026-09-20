@@ -122,6 +122,11 @@ type RecordInput struct {
 	WordResults     []RecordResult   `json:"word_results"`
 	SentenceResults []SentenceResult `json:"sentence_results"`
 	Hard            bool             `json:"hard,omitempty"`
+
+	// 当天每题的详情，回写成功后存成快照供当天回看（只读）。
+	// 档案里只有累计值（复习次数/错误数/LastReview），不记当次对错 ——
+	// 没有它，老师练完就再也看不到自己写了什么、哪题错了。
+	ReviewItems []ReviewItem `json:"review_items,omitempty"`
 }
 
 // AddWordsInput is the JSON input for the add-words command.

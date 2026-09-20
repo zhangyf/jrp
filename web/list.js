@@ -19,7 +19,15 @@ function ListPractice(opts) {
     date: '',
     round: 1,         // 1 = 正常轮（回写）；2 = 错词巩固（不回写）
     graded: false,
-    committed: false // 已回写过就别再给按钮了（否则点「重新判分」能二次回写）
+    committed: false, // 已回写过就别再给按钮了（否则点「重新判分」能二次回写）
+    // 只读回看：回写成功后（或当天已练完再打开）整份列表变成不可编辑的回顾。
+    // 老师要的是「练完还能看到当天每个词写了什么、哪题错了」，不是一提交就清空。
+    reviewOnly: false,
+    pendingWrong: [],
+    // 草稿：写一半关掉也不丢。存 COS 而不是 localStorage，换设备能接着写。
+    // 见文件末尾「草稿」段落。
+    draftMode: opts.draftMode || 'words',
+    draftBar: null
   };
 
   var el = function (id) { return document.getElementById(id); };
@@ -30,6 +38,9 @@ function ListPractice(opts) {
     self.round = 1;
     self.graded = false;
     self.committed = false;
+    self.reviewOnly = false;
+    self.pendingWrong = [];
+    self.draftBar = null;
     self.items = words.map(function (w) {
       return {
         number: w.number, word: w.word, definition: w.definition,
@@ -39,9 +50,48 @@ function ListPractice(opts) {
     });
   };
 
+  // --- 装载「当天已练完」的只读快照 ---
+  // 数据来源 /api/review（回写成功时服务端存的那份）。
+  // 这里直接把判分结果拿来用，不重判 —— 回看要显示的是当时发生了什么，
+  // 老师现在切了判分档位也不该改写历史。
+  self.setReview = function (date, items) {
+    self.date = date;
+    self.round = 1;
+    self.graded = true;
+    self.committed = true;   // 回看态下永远不能再回写
+    self.reviewOnly = true;
+    self.draftBar = null;
+    self.pendingWrong = [];
+    self.items = items.map(function (r) {
+      return {
+        number: r.number, word: r.word, definition: r.definition,
+        status: r.status || '', group: r.group || '',
+        input: r.answer || '',
+        correct: r.blank ? null : !!r.correct,
+        manual: !!r.manual, blank: !!r.blank, unknown: !!r.unknown
+      };
+    });
+  };
+
+  // 回写时一并交给服务端存快照的详情（含没写的行，回看才完整）
+  self.reviewItems = function () {
+    return self.items.map(function (it) {
+      return {
+        number: it.number, word: it.word, definition: it.definition,
+        group: it.group, status: it.status,
+        answer: it.input || '',
+        correct: !!it.correct,
+        unknown: !!it.unknown,
+        manual: !!it.manual,
+        blank: !!it.blank || it.correct === null
+      };
+    });
+  };
+
   // --- 渲染：一次性把全部词铺出来 ---
   self.render = function () {
     var m = self.o.mount;
+    var ro = self.reviewOnly;
     m.innerHTML = self.items.map(function (it, i) {
       return '<div class="word-item" id="' + self.rowId(i) + '">' +
         '<div class="wi-head">' +
@@ -49,9 +99,10 @@ function ListPractice(opts) {
         (it.status ? '<span class="tag' + (it.status === '☠️钉子户' ? ' nail' : '') + '">' +
           esc(statusText(it.status)) + '</span>' : '') +
         '<span class="def">' + esc(it.definition) + '</span>' +
-        '<button class="unk" data-i="' + i + '" aria-pressed="false">不会</button>' +
+        (ro ? '' : '<button class="unk" data-i="' + i + '" aria-pressed="false">不会</button>') +
         '</div>' +
         '<div class="row"><input type="text" data-i="' + i + '" autocomplete="off" spellcheck="false" ' +
+        (ro ? 'disabled ' : '') +
         'placeholder="写日语，回车跳下一个"></div>' +
         '<div class="ans"></div>' +
         '</div>';
@@ -63,11 +114,13 @@ function ListPractice(opts) {
     o.gradeBtn.classList.remove('hidden');
     o.gradeBtn.textContent = '对答案';
     o.commitBtn.classList.add('hidden');
+    if (o.requeueBtn) o.requeueBtn.classList.add('hidden');
     // 第二轮是从「回写成功」直接切过来的，那条成功提示要留着，别清掉
     if (self.round === 1) { o.msg.textContent = ''; o.msg.className = 'feedback'; }
     o.note.textContent = self.round === 2
       ? '第二轮：只列错词，本轮仅当场巩固，不重复计入档案' : '';
     self.updateCount();
+    if (self.reviewOnly) { self.enterReview(); return; }
 
     var inputs = m.querySelectorAll('input[type=text]');
     Array.prototype.forEach.call(inputs, function (inp) {
@@ -82,6 +135,7 @@ function ListPractice(opts) {
           self.refreshSummary();
         }
         self.updateCount();
+        self.scheduleDraft();
       });
       inp.addEventListener('keydown', function (e) {
         if (e.key !== 'Enter') return;
@@ -151,6 +205,7 @@ function ListPractice(opts) {
     }
     self.renderResult(i);
     self.refreshSummary();
+    self.scheduleDraft();
   };
 
   self.renderResult = function (i) {
@@ -182,12 +237,13 @@ function ListPractice(opts) {
       ans.innerHTML = '<span class="muted">没写，跳过</span>';
       return;
     }
-    // 「算对」只给判错的行（以及老师手工改过的行）—— 判对的没东西可改
+    // 「算对」只给判错的行（以及老师手工改过的行）—— 判对的没东西可改。
+    // 只读回看一律不给：结果已经进档案了，改了也只是自欺欺人。
     ans.innerHTML =
       '<div>你写的：<span class="' + (it.correct ? 'ok' : 'no') + '">' + esc(it.input) + '</span></div>' +
       '<div>正确答案：<span class="answer">' + esc(it.word) + '</span></div>' +
-      (it.correct !== true || it.manual ? pickHtml(i, !!it.correct) + altHint(it) : '');
-    bindPick(ans, it, i);
+      (!self.reviewOnly && (it.correct !== true || it.manual)
+        ? pickHtml(i, !!it.correct) + altHint(it) : '');
   };
 
   function pickHtml(i, checked) {
@@ -224,6 +280,7 @@ function ListPractice(opts) {
       }
       self.renderResult(i);
       self.refreshSummary();
+      self.scheduleDraft();
     });
   }
 
@@ -282,11 +339,15 @@ function ListPractice(opts) {
         plan_date: self.date,
         hard: !!o.hard,
         word_results: wr,
-        sentence_results: []
+        sentence_results: [],
+        review_items: self.reviewItems()   // 存当天快照，供练完后回看
       })
     }).then(function (d) {
       o.commitBtn.disabled = false;
       self.committed = true;
+      // 已落库，草稿没用了 —— 不删的话下次打开会恢复出一堆早就写完的答案
+      self.dropDraftBar();
+      self.clearDraft();
       var w = d.words || {};
       var line = '已回写：正确 ' + (w.correct || 0) + '，错误 ' + (w.wrong || 0) +
         (w.not_found ? '，未匹配 ' + w.not_found : '') + '，档案 ' + (w.version || '');
@@ -294,20 +355,56 @@ function ListPractice(opts) {
       o.msg.textContent = line;
       renderTomorrow(o.tomorrow, d.tomorrow);
 
-      var wrongNums = self.items
-        .filter(function (it) { return it.correct === false; })
-        .map(function (it) { return it.number; });
-      if (wrongNums.length) self.requeue(wrongNums);
-      else {
-        o.commitBtn.classList.add('hidden');
-        o.note.textContent = '全对，没有需要巩固的词';
-      }
+      // 不再自动切进第二轮：那样答对的词当场就消失了，老师连自己写了什么都看不到。
+      // 改成整份列表原地变只读回看，错词巩固交给「再练错词」按钮。
+      self.enterReview();
       app.toast('已回写');
     }).catch(function (e) {
       o.commitBtn.disabled = false;
       o.msg.className = 'feedback no';
       o.msg.textContent = '回写失败：' + e.message;
     });
+  };
+
+  // --- 只读回看 ---
+  // 回写成功后、或当天已练完再打开页面时进入。整份列表不可编辑，
+  // 但每题的对错、老师写的答案、正确答案全部保留，能一直看到当天结束。
+  self.enterReview = function () {
+    var o = self.o;
+    self.reviewOnly = true;
+
+    // 渲染时输入的答案要回填到框里，否则只读框空着看不出写了什么
+    Array.prototype.forEach.call(o.mount.querySelectorAll('input[type=text]'), function (inp) {
+      var i = parseInt(inp.dataset.i, 10);
+      inp.value = self.items[i] ? (self.items[i].input || '') : '';
+      inp.disabled = true;
+    });
+
+    self.items.forEach(function (it, i) { self.renderResult(i); });
+
+    o.gradeBtn.classList.add('hidden');
+    o.commitBtn.classList.add('hidden');
+
+    self.pendingWrong = self.items
+      .filter(function (it) { return it.correct === false; })
+      .map(function (it) { return it.number; });
+
+    if (o.requeueBtn) {
+      if (self.pendingWrong.length && self.round === 1) {
+        o.requeueBtn.classList.remove('hidden');
+        o.requeueBtn.textContent = '再练这 ' + self.pendingWrong.length + ' 个错词';
+      } else {
+        o.requeueBtn.classList.add('hidden');
+      }
+    }
+
+    // 回看态下刷新汇总：告诉老师今天练了多少、对多少
+    var done = self.items.filter(function (it) { return it.correct !== null; });
+    var ok = done.filter(function (it) { return it.correct === true; }).length;
+    var skipped = self.items.length - done.length;
+    o.count.textContent = '共 ' + self.items.length + ' 词：对 ' + ok +
+      '，错 ' + (done.length - ok) + (skipped ? '，跳过 ' + skipped : '');
+    o.note.textContent = '今天这轮已回写，下面是只读回看（不可修改）';
   };
 
   // --- 第二轮：只列错词，不回写 ---
@@ -322,9 +419,138 @@ function ListPractice(opts) {
     });
     self.round = 2;
     self.graded = false;
+    // 第二轮是新的练习，必须能输入 —— 不清掉 render() 又会走回只读回看
+    self.reviewOnly = false;
+    self.draftBar = null;   // render() 会清空 mount，横幅自然没了
     self.o.commitBtn.classList.add('hidden');
+    if (self.o.requeueBtn) self.o.requeueBtn.classList.add('hidden');
     self.render();
     window.scrollTo({ top: 0 });
+  };
+
+  // ================= 草稿（写一半关掉也不丢） =================
+  //
+  // 存在 COS 的 /api/draft，按「日期 + 模式」分键，所以：
+  //   - 手机写到一半，电脑上打开能接着写
+  //   - 今天的今日练习和钉子户各存各的，不互相覆盖
+  //   - 隔天的旧草稿永远不会串到今天
+  //
+  // 只存老师亲手动过的三样：答案 / 「不会」/ 「算对」。
+  // 不存对错结果 —— 它由 (答案, 单词, 判分档位) 决定，恢复时重算，
+  // 这样切了判分档位再恢复也不会带上过期的判定。
+
+  var draftTimer = null;
+
+  // 防抖 1.2 秒：每敲一个字就发一次请求太吵，停手了才存
+  self.scheduleDraft = function () {
+    // 第二轮只巩固不回写，存它的草稿没意义
+    if (self.round !== 1) return;
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(self.saveDraft, 1200);
+  };
+
+  self.draftQuery = function () {
+    return '?mode=' + encodeURIComponent(self.draftMode) +
+      '&date=' + encodeURIComponent(self.date);
+  };
+
+  self.saveDraft = function () {
+    var items = self.items.map(function (it) {
+      return {
+        number: it.number,
+        answer: it.input || '',
+        unknown: !!it.unknown,
+        manual: !!it.manual
+      };
+    });
+    app.api('/api/draft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date: self.date,
+        mode: self.draftMode,
+        grade_mode: app.mode(),
+        items: items
+      })
+    }).catch(function () {
+      // 草稿存不上不该打断练习，静默失败
+    });
+  };
+
+  self.clearDraft = function () {
+    clearTimeout(draftTimer);
+    app.api('/api/draft' + self.draftQuery(), { method: 'DELETE' })
+      .catch(function () {});
+  };
+
+  // 装载完题目后调用：有草稿就回填，并挂一条「已恢复」横幅。
+  self.loadDraft = function () {
+    app.api('/api/draft' + self.draftQuery()).then(function (d) {
+      var dr = d && d.draft;
+      if (!dr || !dr.items || !dr.items.length) return;
+
+      var by = {};
+      dr.items.forEach(function (x) { by[x.number] = x; });
+      var hit = 0;
+      self.items.forEach(function (it) {
+        var x = by[it.number];
+        if (!x) return;              // 词号对不上（换过题）就跳过
+        if (x.answer) it.input = x.answer;
+        if (x.unknown) UNK.set(it, true);
+        if (x.manual) it.manual = true;  // 勾过「算对」的，重判时不覆盖
+        hit++;
+      });
+      if (!hit) return;
+
+      // render() 没给 input 写 value，得手动塞回去
+      var m = self.o.mount;
+      self.items.forEach(function (it, i) {
+        var inp = m.querySelector('input[data-i="' + i + '"]');
+        if (inp && it.input) inp.value = it.input;
+        self.renderResult(i);
+      });
+      self.updateCount();
+      self.refreshSummary();
+      self.showDraftBar(dr);
+    }).catch(function () {
+      // 读不到草稿 = 没有，不影响正常使用
+    });
+  };
+
+  self.showDraftBar = function (dr) {
+    var old = el(self.o.prefix + '-draftBar');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+
+    var bar = document.createElement('div');
+    bar.className = 'draft-bar';
+    bar.id = self.o.prefix + '-draftBar';
+    bar.innerHTML = '已恢复上次未完成的练习' +
+      (dr.saved_at ? '（存于 ' + esc(dr.saved_at) + '）' : '') +
+      '　<button type="button" class="linkbtn">清空草稿</button>';
+    self.o.mount.insertBefore(bar, self.o.mount.firstChild);
+    self.draftBar = bar;
+
+    bar.querySelector('button').addEventListener('click', function () {
+      self.items.forEach(function (it, i) {
+        it.input = ''; it.unknown = false; it.manual = false;
+        it.blank = false; it.correct = null;
+        var inp = self.o.mount.querySelector('input[data-i="' + i + '"]');
+        if (inp) inp.value = '';
+        self.renderResult(i);
+      });
+      self.updateCount();
+      self.refreshSummary();
+      self.dropDraftBar();
+      self.clearDraft();
+      app.toast('草稿已清空');
+    });
+  };
+
+  self.dropDraftBar = function () {
+    if (self.draftBar && self.draftBar.parentNode) {
+      self.draftBar.parentNode.removeChild(self.draftBar);
+    }
+    self.draftBar = null;
   };
 
   return self;

@@ -25,11 +25,35 @@ var hard = {
       count: el('hardCount'),
       gradeBtn: el('hardGrade'),
       commitBtn: el('hardCommit'),
+      requeueBtn: el('hardRequeue'),
       msg: el('hardMsg'),
       note: el('hardNote'),
       tomorrow: el('hardTomorrowBox'),
-      hard: true
+      hard: true,
+      draftMode: 'hard'
     });
+
+    el('hardRequeue').addEventListener('click', function () {
+      if (this.list.pendingWrong.length) this.list.requeue(this.list.pendingWrong);
+    }.bind(this));
+  },
+
+  // 只读回看渲染。快照由调用方取好再传进来。
+  renderReview: function (r) {
+    var done = r.items.filter(function (i) { return !i.blank; });
+    var ok = done.filter(function (i) { return i.correct; }).length;
+    renderSummary(el('hardSummary'), [
+      { label: '今天已练完', value: r.items.length },
+      { label: '对', value: ok },
+      { label: '错', value: done.length - ok, warn: done.length - ok > 0 }
+    ]);
+    this.date = r.date || this.date;
+    this.list.setReview(this.date, r.items);
+    this.list.render();
+    if (r.saved_at) {
+      el('hardMsg').className = 'feedback ok';
+      el('hardMsg').textContent = '今天这轮已回写（' + r.saved_at + '），下面是只读回看';
+    }
   },
 
   load: function () {
@@ -42,7 +66,21 @@ var hard = {
     el('hardTomorrowBox').innerHTML = '';
     el('hardSummary').innerHTML = '<span class="chip muted">加载中…</span>';
 
-    app.api('/api/hard').then(function (d) {
+    // 钉子户不做到期过滤，/api/hard 每次都返回同一批词。
+    // 所以先查今天有没有已回写的快照：有的话直接只读回看 —— 否则老师会
+    // 不知不觉把同一批词再练一遍，一回写就是二次改档案（间隔被改两次）。
+    var first = app.view() === 'list'
+      ? app.api('/api/review?mode=hard')
+      : Promise.resolve({ review: null });
+
+    first.then(function (rd) {
+      if (rd && rd.review && rd.review.items && rd.review.items.length) {
+        self.renderReview(rd.review);
+        return null;   // 后面的 then 收到 null 就什么都不做
+      }
+      return app.api('/api/hard');
+    }).then(function (d) {
+      if (!d) return;
       self.date = d.date;
       self.words = d.words || [];
       if (!self.words.length) {
@@ -59,6 +97,7 @@ var hard = {
       if (app.view() === 'list') {
         self.list.set(self.date, self.words);
         self.list.render();
+        self.list.loadDraft();   // 有上次没写完的草稿就回填
         return;
       }
       self.startCard();

@@ -53,6 +53,27 @@ func (s *server) handleRecord(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out["words"] = res
+
+		// 回写成功 → 存当天快照，供老师当天回看（只读）。
+		// 档案里只有累计值，不记当次对错，不存就永远查不回来了。
+		// 存失败不影响回写结果 —— 练习已经落库了，回看只是锦上添花。
+		if len(input.ReviewItems) > 0 {
+			mode := draftModeWords
+			if input.Hard {
+				mode = draftModeHard
+			}
+			snap := &ReviewSnapshot{
+				Date:  input.PlanDate,
+				Mode:  mode,
+				Items: input.ReviewItems,
+			}
+			if err := s.storage.UploadReview(s.ctx(), snap); err != nil {
+				out["review_saved"] = false
+				out["review_error"] = err.Error()
+			} else {
+				out["review_saved"] = true
+			}
+		}
 	}
 
 	// --- 造句 ---

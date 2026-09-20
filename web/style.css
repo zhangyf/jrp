@@ -195,6 +195,22 @@ button:disabled { opacity: .5; cursor: default; }
 .word-item.graded-no .pick { color: var(--good); font-weight: 600; }
 .word-item .ans .hint { margin-left: 8px; font-size: 12px; }
 .word-item.graded-ok { border-left: 3px solid var(--good); }
+
+/* 草稿恢复提示条：告诉老师「这些答案是上次没写完存下来的，不是你自己刚写的」 */
+.draft-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 14px; margin-bottom: 10px;
+  font-size: 13px; color: var(--unknown);
+  background: var(--unknown-soft);
+  border: 1px solid var(--unknown);
+  border-radius: 8px;
+}
+.draft-bar .linkbtn {
+  padding: 2px 10px; font-size: 13px;
+  color: var(--unknown); background: transparent;
+  border: 1px solid var(--unknown); border-radius: 5px; cursor: pointer;
+}
+.draft-bar .linkbtn:hover { background: var(--unknown); color: #fff; }
 .word-item.graded-no { border-left: 3px solid var(--bad); }
 /* 「不会」要压在 graded-no 后面才能覆盖红条 */
 .word-item.unknown { border-left: 3px solid var(--unknown); }

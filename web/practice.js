@@ -27,11 +27,49 @@ var practice = {
       count: el('practiceCount'),
       gradeBtn: el('practiceGrade'),
       commitBtn: el('practiceCommit'),
+      requeueBtn: el('practiceRequeue'),
       msg: el('practiceMsg'),
       note: el('practiceNote'),
       tomorrow: el('tomorrowBox'),
-      hard: false
+      hard: false,
+      draftMode: 'words'
     });
+
+    el('practiceRequeue').addEventListener('click', function () {
+      if (this.list.pendingWrong.length) this.list.requeue(this.list.pendingWrong);
+    }.bind(this));
+  },
+
+  // 今天已经练完（回写后到期日被推到未来，/api/plan 就空了）→ 拉当天快照只读回看。
+  // 只有列表视图支持，卡片是逐卡的，没有「一屏回看」这回事。
+  showReview: function () {
+    var self = this;
+    var empty = function () {
+      el('practiceSummary').innerHTML = '<span class="chip">今天没有到期的词</span>';
+    };
+    if (app.view() !== 'list') { empty(); return; }
+
+    el('practiceSummary').innerHTML = '<span class="chip muted">加载中…</span>';
+    app.api('/api/review?mode=words').then(function (d) {
+      var r = d.review;
+      if (!r || !r.items || !r.items.length) { empty(); return; }
+
+      var done = r.items.filter(function (i) { return !i.blank; });
+      var ok = done.filter(function (i) { return i.correct; }).length;
+      renderSummary(el('practiceSummary'), [
+        { label: '今天已练完', value: r.items.length },
+        { label: '对', value: ok },
+        { label: '错', value: done.length - ok, warn: done.length - ok > 0 }
+      ]);
+
+      self.date = r.date || self.date;
+      self.list.setReview(self.date, r.items);
+      self.list.render();   // render 内部识别 reviewOnly，自动进只读态
+      if (r.saved_at) {
+        el('practiceMsg').className = 'feedback ok';
+        el('practiceMsg').textContent = '今天这轮已回写（' + r.saved_at + '），下面是只读回看';
+      }
+    }).catch(function () { empty(); });
   },
 
   load: function () {
@@ -51,7 +89,9 @@ var practice = {
         self.words = self.words.filter(function (w) { return w.status === '☠️钉子户'; });
       }
       if (!self.words.length) {
-        el('practiceSummary').innerHTML = '<span class="chip">今天没有到期的词</span>';
+        // 今天已经练完（回写后到期日被推到未来）→ 拉当天快照只读回看，
+        // 否则老师练完就再也看不到自己写了什么。
+        self.showReview();
         return;
       }
       var chips = [{ label: '到期', value: self.words.length }];
@@ -64,6 +104,7 @@ var practice = {
       if (app.view() === 'list') {
         self.list.set(self.date, self.words);
         self.list.render();
+        self.list.loadDraft();   // 有上次没写完的草稿就回填
         return;
       }
       self.startCard();
