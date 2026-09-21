@@ -128,15 +128,23 @@ var sentence = {
       '<div>你写的：<span class="' + (s.correct ? 'ok' : 'no') + '">' + esc(s.input) + '</span></div>' +
       '<div>正确答案：' + esc(s.answer) + '</div>' +
       '<div class="row"><label><input type="checkbox" data-i="' + i + '" ' +
-      (s.correct ? 'checked' : '') + '> 算对</label>' +
-      '<span class="muted">自动判分仅供参考（长句手写易误判），请自己确认</span></div>';
+      (s.manual ? 'checked' : '') + '> 算对</label>' +
+      '<span class="muted">自动判分仅供参考；判错了但你写的其实对，就勾「算对」</span></div>';
+    // 「算对」是纯手动改判，绝不跟着自动判定走（2026-09-21 老师反馈：
+    // 判对自动勾上看着像系统乱动，一取消又变红，完全猜不透）。
+    // 对错看颜色：绿=自动判对，红=自动判错。勾上=强制改对，取消=退回自动判定。
     var cb = box.querySelector('input[type=checkbox]');
     cb.addEventListener('change', function () {
-      if (cb.checked) UNK.set(s, false);   // 算对与「不会」互斥
-      s.correct = cb.checked;
-      s.manual = cb.checked;               // 老师手改过，草稿恢复时别按自动判分覆盖
-      box.classList.toggle('graded-ok', s.correct);
-      box.classList.toggle('graded-no', !s.correct);
+      if (cb.checked) {
+        UNK.set(s, false);     // 算对与「不会」互斥
+        s.correct = true;
+        s.manual = true;       // 老师手改，草稿恢复/重判时不覆盖
+      } else {
+        s.manual = false;      // 取消手改，退回按写的自动判定
+        s.correct = s.input ? normSentence(s.input) === normSentence(s.answer) : null;
+      }
+      box.classList.toggle('graded-ok', s.correct === true && !s.unknown);
+      box.classList.toggle('graded-no', s.correct === false && !s.unknown);
       sentence.scheduleDraft();
     });
   },
