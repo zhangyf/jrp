@@ -228,6 +228,29 @@ tr.unknown td { background: var(--unknown-soft); }
 tr.unknown { opacity: 1; }
 .tag.low { background: #fff8e6; }
 
+/* 词汇总表：930 词的浏览表，密度优先，行高压紧一点 */
+.lexbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-bottom: 10px;
+}
+.lexbar input[type=text] { min-width: 190px; }
+.lexbar select { max-width: 240px; }
+.lexbar label { font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
+
+.lex-table { font-size: 13px; }
+.lex-table th { position: sticky; top: 0; z-index: 2; white-space: nowrap; }
+.lex-table th.sortable { cursor: pointer; user-select: none; }
+.lex-table th.sortable:hover { color: var(--accent); }
+.lex-table td { padding: 4px 8px; }
+.lex-table td.kana { font-weight: 600; white-space: nowrap; }
+.lex-table td.kanji { white-space: nowrap; }
+/* 动词/形容词的细分（一类・二类・い形）才是老师要看的重点，给个颜色 */
+.lex-table td.pos.has-sub { color: var(--accent); font-weight: 600; white-space: nowrap; }
+.lex-table td.st { white-space: nowrap; font-size: 12px; }
+.lex-table td.num { text-align: right; color: var(--muted); white-space: nowrap; }
+.lex-table td.num.bad { color: var(--bad); font-weight: 600; }
+.lex-table td.grp { font-size: 12px; white-space: nowrap; }
+
 /* 「不会」按钮 / 标签 */
 button.unk {
   font-size: 12px; padding: 2px 9px;

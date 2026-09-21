@@ -59,6 +59,7 @@ var app = {
     else if (page === 'sentence') sentence.load();
     else if (page === 'hard') hard.load();
     else if (page === 'stats') stats.load();
+    else if (page === 'lexicon') lexicon.load();
   },
 
   // api 统一走这里：带上 token，401 时弹 token 输入条。

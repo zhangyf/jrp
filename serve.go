@@ -77,6 +77,7 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 	mux.HandleFunc("/api/stats", srv.requireAuth(srv.handleStats))
 	mux.HandleFunc("/api/draft", srv.requireAuth(srv.handleDraft))
 	mux.HandleFunc("/api/review", srv.requireAuth(srv.handleReview))
+	mux.HandleFunc("/api/lexicon", srv.requireAuth(srv.handleLexicon))
 
 	listen := fmt.Sprintf("%s:%d", *addr, *port)
 	authNote := "（无鉴权，仅本机）"

@@ -16,6 +16,7 @@
     <button class="tab" data-page="hard">钉子户</button>
     <button class="tab" data-page="offline">离线回填</button>
     <button class="tab" data-page="stats">统计</button>
+    <button class="tab" data-page="lexicon">词汇总表</button>
   </nav>
   <span class="spacer"></span>
   <label class="grade-mode">
@@ -184,6 +185,20 @@
     </div>
     <div id="statsBody"></div>
   </section>
+
+  <!-- 词汇总表：全部词一览，看着复习用，不答题 -->
+  <section id="page-lexicon" class="page hidden">
+    <div class="lexbar">
+      <input id="lexSearch" type="text" autocomplete="off" placeholder="搜假名 / 汉字 / 中文">
+      <select id="lexPos"></select>
+      <select id="lexStatus"></select>
+      <select id="lexGroup"></select>
+      <label class="muted"><input id="lexWrongOnly" type="checkbox"> 只看错过</label>
+      <span id="lexCount" class="muted"></span>
+    </div>
+    <div id="lexSummary" class="summary"></div>
+    <div id="lexBody"></div>
+  </section>
 </main>
 
 <div id="toast" class="hidden"></div>
@@ -197,6 +212,7 @@
 <script src="hard.js"></script>
 <script src="offline.js"></script>
 <script src="stats.js"></script>
+<script src="lexicon.js"></script>
 <script>app.boot()</script>
 </body>
 </html>
