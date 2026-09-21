@@ -25,17 +25,15 @@ var lexicon = {
     });
   },
 
-  // 下拉选项：词性 / 阶段 / 课，都从实际数据里抽，不写死
+  // 下拉选项：词性 / 阶段，都从实际数据里抽，不写死
   fillSelects: function (d) {
-    var poss = {}, stats = {}, groups = {};
+    var poss = {}, stats = {};
     this.items.forEach(function (it) {
       poss[it.pos || ''] = (poss[it.pos || ''] || 0) + 1;
       stats[it.status || ''] = (stats[it.status || ''] || 0) + 1;
-      if (it.group) groups[it.group] = true;
     });
     var posKeys = Object.keys(poss).filter(Boolean).sort();
     var statKeys = Object.keys(stats).filter(Boolean).sort();
-    var groupKeys = Object.keys(groups).sort(naturalCmp);
 
     el('lexPos').innerHTML = '<option value="">全部词性</option>' +
       posKeys.map(function (k) {
@@ -44,10 +42,6 @@ var lexicon = {
     el('lexStatus').innerHTML = '<option value="">全部阶段</option>' +
       statKeys.map(function (k) {
         return '<option value="' + esc(k) + '">' + esc(k) + '（' + stats[k] + '）</option>';
-      }).join('');
-    el('lexGroup').innerHTML = '<option value="">全部课</option>' +
-      groupKeys.map(function (g) {
-        return '<option value="' + esc(g) + '">' + esc(g) + '</option>';
       }).join('');
 
     renderSummary(el('lexSummary'), [
@@ -65,7 +59,7 @@ var lexicon = {
       clearTimeout(t);
       t = setTimeout(function () { self.render(); }, 200);
     });
-    ['lexPos', 'lexStatus', 'lexGroup'].forEach(function (id) {
+    ['lexPos', 'lexStatus'].forEach(function (id) {
       el(id).addEventListener('change', function () { self.render(); });
     });
     el('lexWrongOnly').addEventListener('change', function () { self.render(); });
@@ -75,13 +69,11 @@ var lexicon = {
     var q = el('lexSearch').value.trim().toLowerCase();
     var pos = el('lexPos').value;
     var st = el('lexStatus').value;
-    var grp = el('lexGroup').value;
     var wrongOnly = el('lexWrongOnly').checked;
 
     return this.items.filter(function (it) {
       if (pos && (it.pos || '') !== pos) return false;
       if (st && (it.status || '') !== st) return false;
-      if (grp && it.group !== grp) return false;
       if (wrongOnly && !(it.errors > 0)) return false;
       if (q) {
         var hay = ((it.kana || '') + (it.kanji || '') + (it.def || '')).toLowerCase();
@@ -91,16 +83,20 @@ var lexicon = {
     });
   },
 
+  // 数值列必须按数字比，不能转字符串比 —— 否则会排成 1, 10, 100, 11, 12 …
+  NUMERIC_KEYS: { number: 1, reviews: 1, errors: 1 },
+
   sorted: function (rows) {
     var k = this.sortKey, dir = this.sortDir;
+    var numeric = this.NUMERIC_KEYS[k] === 1;
     var out = rows.slice();
     out.sort(function (a, b) {
       var x, y;
-      if (k === 'reviews' || k === 'errors') { x = a[k]; y = b[k]; }
+      if (numeric) { x = a[k] || 0; y = b[k] || 0; }
       else { x = String(a[k] || ''); y = String(b[k] || ''); }
       if (x < y) return -1 * dir;
       if (x > y) return 1 * dir;
-      return a.number - b.number;
+      return (a.number || 0) - (b.number || 0);
     });
     return out;
   },
@@ -117,8 +113,7 @@ var lexicon = {
 
     var head = [
       ['number', '#'], ['kana', '假名'], ['kanji', '汉字'], ['def', '中文释义'],
-      ['pos', '词性'], ['status', '阶段'], ['reviews', '复习'], ['errors', '错'],
-      ['group', '课']
+      ['pos', '词性'], ['status', '阶段'], ['reviews', '复习'], ['errors', '错']
     ];
     var self = this;
     var th = head.map(function (h) {
@@ -138,7 +133,6 @@ var lexicon = {
         '<td class="st">' + esc(it.status || '') + '</td>' +
         '<td class="num">' + it.reviews + '</td>' +
         '<td class="num' + (it.errors > 0 ? ' bad' : '') + '">' + (it.errors || '·') + '</td>' +
-        '<td class="grp muted">' + esc(shortGroup(it.group)) + '</td>' +
         '</tr>';
     }).join('');
 
@@ -157,18 +151,3 @@ var lexicon = {
     return table;
   }
 };
-
-// 课分组标题形如「📖 第7课01 饮食寒暄/综合（7/6–7/8）」—— 表格里只留「第7课01」
-function shortGroup(g) {
-  if (!g) return '';
-  var m = g.match(/第\d+课\d*/);
-  return m ? m[0] : g.replace(/^[📖\s]+/, '').slice(0, 14);
-}
-
-// 第2课 < 第10课（按数字排，不按字符串）
-function naturalCmp(a, b) {
-  var na = (String(a).match(/\d+/) || [0])[0] | 0;
-  var nb = (String(b).match(/\d+/) || [0])[0] | 0;
-  if (na !== nb) return na - nb;
-  return String(a) < String(b) ? -1 : 1;
-}
