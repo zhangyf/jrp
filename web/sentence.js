@@ -39,6 +39,10 @@ var sentence = {
       el('sentenceDone').classList.remove('hidden');
       Array.prototype.forEach.call(el('sentenceList').querySelectorAll('input'), function (inp) {
         inp.addEventListener('keydown', function (e) {
+          // IME 确认转换的那次 Enter（isComposing / keyCode 229）不能当提交：
+          // 否则判分发生在打字/转换中途，留下一个过期的「错」，
+          // 之后改字也只更新 input 不刷新判定 —— 「写的跟答案一样却判错」的根源。
+          if (e.isComposing || e.keyCode === 229) return;
           if (e.key === 'Enter') self.grade(parseInt(inp.dataset.i, 10));
         });
         // 标了「不会」又写了字 —— 以写的为准，自动解除
@@ -48,6 +52,11 @@ var sentence = {
           s.input = inp.value.trim();
           if (s.unknown && s.input) {
             UNK.set(s, false);
+            self.renderItem(i);
+          }
+          // 已经判过再改字：当场重判，别留着旧结论
+          if (!s.unknown && s.correct !== null && s.input) {
+            s.correct = normSentence(s.input) === normSentence(s.answer);
             self.renderItem(i);
           }
         });

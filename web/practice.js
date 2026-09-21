@@ -309,6 +309,7 @@ function renderTomorrow(node, t, append) {
 document.addEventListener('DOMContentLoaded', function () {
   el('wSubmit').addEventListener('click', function () { practice.submit(); });
   el('wInput').addEventListener('keydown', function (e) {
+    if (e.isComposing || e.keyCode === 229) return; // IME 确认转换的 Enter 不当提交
     if (e.key === 'Enter') practice.submit();
   });
   el('wUnknown').addEventListener('click', function () { practice.unknown(); });
