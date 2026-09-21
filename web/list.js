@@ -165,6 +165,10 @@ function ListPractice(opts) {
   // --- 对答案：统一判分 ---
   self.gradeAll = function () {
     var mode = app.mode();
+    // graded 必须先置位再渲染 —— renderResult 里 !graded 会把答案区清空
+    // （防提前泄答案是给「判分前」用的）。放在循环后面的话，第一次点
+    // 「对答案」只有颜色没有答案、也没有「算对」，得再点一次才出来。
+    self.graded = true;
     self.items.forEach(function (it, i) {
       // 「不会」= 答错，不重判（it.manual 其实也挡住了，这里再挡一次更明确）
       if (it.unknown) { it.blank = false; self.renderResult(i); return; }
@@ -180,7 +184,6 @@ function ListPractice(opts) {
       self.renderResult(i);
     });
 
-    self.graded = true;
     self.o.gradeBtn.textContent = '重新判分';
     self.refreshSummary();
   };
@@ -244,6 +247,10 @@ function ListPractice(opts) {
       '<div>正确答案：<span class="answer">' + esc(it.word) + '</span></div>' +
       (!self.reviewOnly && (it.correct !== true || it.manual)
         ? pickHtml(i, !!it.correct) + altHint(it) : '');
+    // ⚠️ innerHTML 里的复选框是每次重画的新节点，事件必须跟着重绑。
+    // 只读回看改版时这里丢过一行 bindPick —— 复选框画得出来但点上去
+    // 没有任何反应（不红转绿、回写照样记错），老师勾了「算对」白勾。
+    bindPick(ans, it, i);
   };
 
   function pickHtml(i, checked) {
@@ -484,8 +491,9 @@ function ListPractice(opts) {
   };
 
   // 装载完题目后调用：有草稿就回填，并挂一条「已恢复」横幅。
+  // 返回 promise，调用方（测试/时序敏感的逻辑）能等它完成。
   self.loadDraft = function () {
-    app.api('/api/draft' + self.draftQuery()).then(function (d) {
+    return app.api('/api/draft' + self.draftQuery()).then(function (d) {
       var dr = d && d.draft;
       if (!dr || !dr.items || !dr.items.length) return;
 
@@ -498,6 +506,9 @@ function ListPractice(opts) {
         if (x.answer) it.input = x.answer;
         if (x.unknown) UNK.set(it, true);
         if (x.manual) it.manual = true;  // 勾过「算对」的，重判时不覆盖
+        // 勾过「算对」的行没有可重算的对错（判分跳过 manual），correct 必须
+        // 一并恢复，否则重判时留 null、回写时 collect() 把它当未判漏掉。
+        if (x.manual && !x.unknown) it.correct = true;
         hit++;
       });
       if (!hit) return;
