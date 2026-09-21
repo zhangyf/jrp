@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha1"
+	"crypto/subtle"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -10,10 +14,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"time"
-
-	"crypto/subtle"
 )
 
 //go:embed web
@@ -67,7 +70,7 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 
 	mux := http.NewServeMux()
 	// 静态资源不鉴权：浏览器第一次打开要能拿到页面，token 在页面里输入后存 localStorage。
-	mux.Handle("/", http.FileServer(http.FS(sub)))
+	mux.Handle("/", staticHandler(sub))
 
 	mux.HandleFunc("/api/plan", srv.requireAuth(srv.handlePlan))
 	mux.HandleFunc("/api/hard", srv.requireAuth(srv.handleHard))
@@ -100,6 +103,71 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 		fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// staticHandler 服务内嵌的前端资源，带内容 ETag 协商缓存。
+//
+// 不能用裸 http.FileServer：embed.FS 的 ModTime 是零值，它既不发 Last-Modified
+// 也不发 ETag，浏览器拿不到任何缓存依据，只能启发式缓存 —— 结果就是部署了新
+// 二进制，老师浏览器还拿着旧 JS 继续跑，「明明修了怎么还有 bug」的锅全是它。
+//
+// 做法：启动时给每个文件算内容 hash 当 ETag（前端总共不到 200KB，开销可忽略）；
+// Cache-Control: no-cache 让浏览器每次部署后重新协商，平时靠 ETag 命中 304
+// 不重复下载。nginx gzip 会把 ETag 弱化成 W/"..." 再回传，比较时剥掉。
+func staticHandler(sub fs.FS) http.Handler {
+	etags := map[string]string{}
+	if err := fs.WalkDir(sub, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := fs.ReadFile(sub, p)
+		if err != nil {
+			return err
+		}
+		sum := sha1.Sum(data)
+		etags[p] = `"` + hex.EncodeToString(sum[:8]) + `"`
+		return nil
+	}); err != nil {
+		panic(fmt.Errorf("扫描内嵌前端资源失败: %w", err))
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		if p == "" {
+			p = "index.html"
+		}
+		etag, ok := etags[p]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("ETag", etag)
+		w.Header().Set("Cache-Control", "no-cache")
+		if etagMatch(r.Header.Get("If-None-Match"), etag) {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		data, _ := fs.ReadFile(sub, p)
+		http.ServeContent(w, r, p, time.Time{}, bytes.NewReader(data))
+	})
+}
+
+// etagMatch 宽松比较 If-None-Match：忽略 W/ 前缀与引号差异，支持逗号分隔多值。
+func etagMatch(header, etag string) bool {
+	if header == "" {
+		return false
+	}
+	strip := func(s string) string {
+		s = strings.TrimSpace(s)
+		s = strings.TrimPrefix(s, "W/")
+		return strings.Trim(s, `"`)
+	}
+	want := strip(etag)
+	for _, part := range strings.Split(header, ",") {
+		if strip(part) == want {
+			return true
+		}
+	}
+	return false
 }
 
 // requireAuth 校验 Authorization: Bearer <token>。未设 token 时直接放行（本机场景）。
