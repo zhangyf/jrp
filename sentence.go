@@ -90,19 +90,36 @@ func (s *Storage) sentenceWrongKey() string   { return s.cosPrefix() + "/plans/s
 
 // 注意：Go 的 \s 只认 ASCII 空白，全角空格 U+3000 必须单独列 —— SKILL.md 的
 // norm 规则是 Python 的 re.sub，Python 的 \s 是 Unicode-aware 的，会吃掉全角空格。
-var sentenceNormRe = regexp.MustCompile(`[\s　。．、,./／]`)
+var sentenceNormRe = regexp.MustCompile(`[\s　。．、,./／!?:;]`)
 
-// normSentence 造句归一化：删掉所有空白（含全角空格）、句号（。．）、
-// 读点（、）、逗号（,.）、斜杠（/／）。
+// foldWidth 把全角 ASCII 形式（U+FF01～U+FF5E：全角数字、全角字母、
+// 全角标点）折成对应半角。全角空格 U+3000 不在此区间，由正则单独删。
+func foldWidth(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r >= 0xFF01 && r <= 0xFF5E {
+			r -= 0xFEE0
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// normSentence 造句归一化：先折全角为半角，再删掉所有空白（含全角空格）、
+// 句号（。．）、读点（、）、逗号（,.）、斜杠（/／）、感叹号问号分号。
 //
 // 与 SKILL.md 第 321 行的 norm 规则一致，额外多剥斜杠：历史错句里有
 // 「甲／乙」这类成对句（两个半句合成一题），全角半角混用很常见，
 // 判分时应当视作同一句。
 //
+// 宽度折叠是 2026-09-21 加的：老师用日语 IME 打「２万円」（全角２），
+// 原句是半角「2」，肉眼是同一个句子，不该判错。
+//
 // 历史上有同一句被存成带句号和不带句号两个版本的情况，所以任何涉及"这句出过没有"
 // 的判断都必须先归一化，不能按原字符串比。
 func normSentence(s string) string {
-	return sentenceNormRe.ReplaceAllString(s, "")
+	return sentenceNormRe.ReplaceAllString(foldWidth(s), "")
 }
 
 // ---------- 读取（对既有文件做容错解析） ----------

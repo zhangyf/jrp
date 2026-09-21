@@ -333,9 +333,14 @@ var sentence = {
 };
 
 // 与 Go 侧 sentence.go 的 normSentence 一致：
-// 删掉空白（含全角空格）、句号、读点、逗号、斜杠
+// 先把全角 ASCII（U+FF01～U+FF5E：全角数字/字母/标点）折成半角，
+// 再删掉空白（含全角空格）、句号、读点、逗号、斜杠、感叹号问号分号。
+// 宽度折叠：日语 IME 打「２万円」（全角２）和原句半角「2」应算同一句。
 function normSentence(s) {
-  return (s || '').replace(/[\s　。．、,./／]/g, '');
+  var t = (s || '').replace(/[！-～]/g, function (c) {
+    return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+  });
+  return t.replace(/[\s　。．、,./／!?:;]/g, '');
 }
 
 document.addEventListener('DOMContentLoaded', function () {
