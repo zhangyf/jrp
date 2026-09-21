@@ -59,6 +59,25 @@ func TestGradeAnswer(t *testing.T) {
 		{"片假名词写平假名", "カレー", "かれー", GradeKana, true},
 		{"片假名词写错", "カレー", "カレイ", GradeKana, false},
 
+		// ---- IME 分隔符：多写法词老师打不出半角 /，会打中黑点「・」----
+		// （ grade.js 与本文件逐字同步，测试意图见两边注释）
+		{"kana 中黑点写全两种", "そう/ああ", "そう・ああ", GradeKana, true},
+		{"kana 半角中黑点", "そう/ああ", "そう･ああ", GradeKana, true},
+		{"kana 顿号分隔", "そう/ああ", "そう、ああ", GradeKana, true},
+		{"kana 全角斜杠分隔", "そう/ああ", "そう／ああ", GradeKana, true},
+		{"kana 半角斜杠分隔", "そう/ああ", "そう/ああ", GradeKana, true},
+		{"kana 中黑点+空格混排", "そう/ああ", "そう・ ああ", GradeKana, true},
+		{"kana 分隔后只中一段", "そう/ああ", "xxx・ああ", GradeKana, true},
+		{"kana 中黑点只写一种", "そう/ああ", "そう", GradeKana, true},
+		{"kana 连写不算对", "そう/ああ", "そうああ", GradeKana, false},
+		{"kana 分隔段全错", "そう/ああ", "そ・あ", GradeKana, false},
+		{"kana 只打了个点", "そう/ああ", "・", GradeKana, false},
+		{"either 中黑点写汉字+假名", "おんがく(音楽)/おんがく", "音楽・おんがく", GradeEither, true},
+
+		// ---- 兜底：词本身含中黑点时，整串删点比的老行为不能丢 ----
+		{"kana 词含中黑点写整串", "あい・うえ", "あいうえ", GradeKana, true},
+		{"kana 词含中黑点照抄带点", "あい・うえ", "あい・うえ", GradeKana, true},
+
 		// ---- 归一化：空白 / 中黑点不敏感 ----
 		{"带空格", "てぶくろ(手袋)", " てぶくろ ", GradeKana, true},
 		{"带全角空格", "てぶくろ(手袋)", "て　ぶくろ", GradeKana, true},

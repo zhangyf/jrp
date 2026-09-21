@@ -119,6 +119,34 @@ func normalizeAnswer(s string) string {
 	return strings.TrimSpace(s)
 }
 
+// inputVariants 把老师的输入拆成若干「候选答案」。
+//
+// 多写法的词（そう/ああ）在档案里用「/」分隔，但日语 IME 打不出半角斜杠 ——
+// IME 里「/」键打出来是中黑点「・」，也有人打顿号「、」。这些分隔符把输入
+// 拆开逐段判，任何一段命中任一写法即算对；不含分隔符时整串就是唯一候选。
+// 拆完全为空（比如只打了个「・」）返回 nil，按没写处理。
+func inputVariants(input string) []string {
+	fields := strings.FieldsFunc(input, func(r rune) bool {
+		switch r {
+		case '/', '／', '・', '･', '、': // 半角斜杠 / 全角斜杠 / 全角中黑点 / 半角中黑点 / 顿号
+			return true
+		}
+		return false
+	})
+	var out []string
+	for _, f := range fields {
+		if n := normalizeAnswer(f); n != "" {
+			out = append(out, n)
+		}
+	}
+	// 兜底：万一哪天词本身含中黑点（「あい・うえ」类复合词），老逻辑靠
+	// 「删点整串比」通过 —— 整串归一化结果也放进候选，别让拆段把它挤掉。
+	if n := normalizeAnswer(input); n != "" {
+		out = append(out, n)
+	}
+	return out
+}
+
 // toHiragana 片假名转平假名，用于假名档的放宽比对。
 func toHiragana(s string) string {
 	var b strings.Builder
@@ -159,11 +187,10 @@ func GradeAnswer(input, word string, mode GradeMode) bool {
 	if len(forms) == 0 {
 		return false
 	}
-	nin := normalizeAnswer(input)
-	if nin == "" {
+	variants := inputVariants(input)
+	if len(variants) == 0 {
 		return false
 	}
-	ninH := toHiragana(nin)
 
 	// 无汉字的词在汉字档 / 完整档 / 任一档下没有意义，退回假名档。
 	hasKanji := false
@@ -177,24 +204,28 @@ func GradeAnswer(input, word string, mode GradeMode) bool {
 		mode = GradeKana
 	}
 
-	for _, f := range forms {
-		switch mode {
-		case GradeKanji:
-			if matchKanjiWay(f, nin) {
-				return true
-			}
-		case GradeFull:
-			// 假名和汉字都得写出来
-			if f.Kanji != "" && normalizeAnswer(f.Full) == nin {
-				return true
-			}
-		case GradeEither:
-			if matchKanaWay(f, nin, ninH) || matchKanjiWay(f, nin) {
-				return true
-			}
-		default: // GradeKana
-			if matchKanaWay(f, nin, ninH) {
-				return true
+	// 输入的每一段（可能由「・」「、」等分隔出多段）逐个跟全部写法比。
+	for _, nin := range variants {
+		ninH := toHiragana(nin)
+		for _, f := range forms {
+			switch mode {
+			case GradeKanji:
+				if matchKanjiWay(f, nin) {
+					return true
+				}
+			case GradeFull:
+				// 假名和汉字都得写出来
+				if f.Kanji != "" && normalizeAnswer(f.Full) == nin {
+					return true
+				}
+			case GradeEither:
+				if matchKanaWay(f, nin, ninH) || matchKanjiWay(f, nin) {
+					return true
+				}
+			default: // GradeKana
+				if matchKanaWay(f, nin, ninH) {
+					return true
+				}
 			}
 		}
 	}

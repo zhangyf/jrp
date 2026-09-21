@@ -56,6 +56,22 @@ function normalizeAnswer(s) {
     .trim();
 }
 
+// 输入拆成若干「候选答案」。
+// 多写法的词（そう/ああ）档案里用「/」分隔，但日语 IME 打不出半角斜杠 ——
+// IME 的「/」键打出来是中黑点「・」，也有人打顿号「、」。这些分隔符把输入
+// 拆开逐段判，任何一段命中任一写法即算对；拆完全为空按没写处理。
+// ⚠️ 与 Go 侧 inputVariants（grade.go）保持一致。
+function inputVariants(input) {
+  var out = (input || '').split(/[\/／・･、]/)
+    .map(normalizeAnswer)
+    .filter(function (n) { return n; });
+  // 兜底：万一词本身含中黑点（「あい・うえ」类复合词），老逻辑靠
+  // 「删点整串比」通过 —— 整串归一化结果也放进候选，别让拆段把它挤掉。
+  var whole = normalizeAnswer(input);
+  if (whole) out.push(whole);
+  return out;
+}
+
 // 片假名 → 平假名，用于假名档放宽比对。
 function toHiragana(s) {
   return (s || '').replace(/[\u30A1-\u30F6]/g, function (c) {
@@ -80,26 +96,29 @@ function matchKanjiWay(f, nin) {
 function gradeAnswer(input, word, mode) {
   var forms = parseAnswerForms(word);
   if (!forms.length) return false;
-
-  var nin = normalizeAnswer(input);
-  if (!nin) return false;
-  var ninH = toHiragana(nin);
+  var variants = inputVariants(input);
+  if (!variants.length) return false;
 
   // 无汉字的词在汉字档 / 完整档 / 任一档下没有意义，退回假名档。
   var hasKanji = forms.some(function (f) { return f.kanji !== ''; });
   if (mode !== GradeMode.kana && !hasKanji) mode = GradeMode.kana;
 
-  for (var i = 0; i < forms.length; i++) {
-    var f = forms[i];
-    if (mode === GradeMode.kanji) {
-      if (matchKanjiWay(f, nin)) return true;
-    } else if (mode === GradeMode.full) {
-      if (f.kanji && normalizeAnswer(f.full) === nin) return true;
-    } else if (mode === GradeMode.either) {
-      // 任一档：假名或汉字，写哪个都算对
-      if (matchKanaWay(f, nin, ninH) || matchKanjiWay(f, nin)) return true;
-    } else {
-      if (matchKanaWay(f, nin, ninH)) return true;
+  // 输入的每一段（可能由「・」「、」等分隔出多段）逐个跟全部写法比。
+  for (var v = 0; v < variants.length; v++) {
+    var nin = variants[v];
+    var ninH = toHiragana(nin);
+    for (var i = 0; i < forms.length; i++) {
+      var f = forms[i];
+      if (mode === GradeMode.kanji) {
+        if (matchKanjiWay(f, nin)) return true;
+      } else if (mode === GradeMode.full) {
+        if (f.kanji && normalizeAnswer(f.full) === nin) return true;
+      } else if (mode === GradeMode.either) {
+        // 任一档：假名或汉字，写哪个都算对
+        if (matchKanaWay(f, nin, ninH) || matchKanjiWay(f, nin)) return true;
+      } else {
+        if (matchKanaWay(f, nin, ninH)) return true;
+      }
     }
   }
   return false;
