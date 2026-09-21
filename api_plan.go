@@ -163,8 +163,20 @@ func (s *server) handleHard(w http.ResponseWriter, r *http.Request) {
 }
 
 // buildSentencePlan 从句库挑当天的造句。upload 为 false 时只读（明日预告场景）。
+//
+// 「当天锁定」是这里最重要的一条：只要 COS 上已经有这天的造句 plan，就原样返回，
+// 不再重算出题。否则老师写到一半刷新（或换台设备打开）题就变了，
+// 草稿对不上、白写一场。换新一批的唯一途径是回写成功 —— 见 api_record.go 的
+// DeleteSentencePlan。
 func (s *server) buildSentencePlan(targetDate time.Time, upload bool) (*ReviewPlan, error) {
 	ctx := s.ctx()
+
+	if upload {
+		if old, err := s.storage.DownloadSentencePlan(ctx, targetDate.Format("2006-01-02")); err == nil &&
+			sentencePlanLocked(old, targetDate.Format("2006-01-02")) {
+			return old, nil
+		}
+	}
 
 	bank, err := s.storage.DownloadSentenceBank(ctx)
 	if err != nil {
@@ -193,6 +205,16 @@ func (s *server) buildSentencePlan(targetDate time.Time, upload bool) (*ReviewPl
 		}
 	}
 	return plan, nil
+}
+
+// sentencePlanLocked 判断 COS 上已存的造句 plan 能不能直接复用 —— 「不提交就不换题」。
+//
+// 三个条件缺一不可：
+//   - 读到了对象（下载失败时 old 是 nil，必须重新出题）
+//   - 日期对得上（陈年 plan 绝不能当成今天的）
+//   - 里面真有句子（空 plan 等于没出过题）
+func sentencePlanLocked(old *ReviewPlan, date string) bool {
+	return old != nil && old.Date == date && len(old.Sentences) > 0
 }
 
 func countByStatus(words []PlanWord) map[string]int {

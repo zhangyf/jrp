@@ -105,6 +105,11 @@ func (s *server) handleRecord(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		// 造句「提交之后才换下一批」：清掉当天锁定的 plan。
+		// 下一次 GET /api/plan?mode=sentences 发现没有存档，才会重新出题。
+		// 删失败不报错 —— 最坏结果是下一批还是这几句，不会丢数据。
+		_ = s.storage.DeleteSentencePlan(s.ctx(), input.PlanDate)
+
 		correct, wrongN := 0, 0
 		for _, sr := range input.SentenceResults {
 			if sr.Correct {
@@ -114,7 +119,10 @@ func (s *server) handleRecord(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		out["sentences"] = map[string]interface{}{
-			"correct": correct, "wrong": wrongN, "plan_date": input.PlanDate,
+			"correct":         correct,
+			"wrong":           wrongN,
+			"plan_date":       input.PlanDate,
+			"next_on_refresh": true, // 前端提示「换下一批」
 		}
 	}
 

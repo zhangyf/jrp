@@ -7,17 +7,24 @@ var sentence = {
   items: [],
   date: '',
 
+  draftTimer: null,
+  draftBar: null,
+
   load: function () {
     var self = this;
     el('sentenceList').innerHTML = '';
     el('sentenceDone').classList.add('hidden');
+    el('sentenceNext').classList.add('hidden');
+    el('sentenceCommitResult').textContent = '';
+    el('sentenceCommitResult').className = 'feedback';
+    self.dropDraftBar();
     el('sentenceSummary').innerHTML = '<span class="chip muted">加载中…</span>';
 
     app.api('/api/plan?mode=sentences').then(function (d) {
       self.date = d.date;
       self.items = (d.sentences || []).map(function (s) {
         return { number: s.number, chinese: s.chinese, answer: s.answer,
-                 input: '', correct: null, unknown: false };
+                 input: '', correct: null, unknown: false, manual: false };
       });
       if (!self.items.length) {
         el('sentenceSummary').innerHTML = '<span class="chip warn">句库没建或为空</span>';
@@ -59,6 +66,7 @@ var sentence = {
             s.correct = normSentence(s.input) === normSentence(s.answer);
             self.renderItem(i);
           }
+          self.scheduleDraft();
         });
       });
       Array.prototype.forEach.call(el('sentenceList').querySelectorAll('button.unk'), function (btn) {
@@ -66,6 +74,8 @@ var sentence = {
           self.toggleUnknown(parseInt(btn.dataset.i, 10));
         });
       });
+      // 有没写完的草稿就回填。后端把当天的造句题锁定了，所以题号一定对得上。
+      self.loadDraft();
     }).catch(function (e) {
       el('sentenceSummary').innerHTML = '<span class="chip warn">' + esc(e.message) + '</span>';
     });
@@ -89,6 +99,7 @@ var sentence = {
     var s = this.items[i];
     UNK.set(s, !s.unknown);
     this.renderItem(i);
+    this.scheduleDraft();
   },
 
   renderItem: function (i) {
@@ -123,9 +134,128 @@ var sentence = {
     cb.addEventListener('change', function () {
       if (cb.checked) UNK.set(s, false);   // 算对与「不会」互斥
       s.correct = cb.checked;
+      s.manual = cb.checked;               // 老师手改过，草稿恢复时别按自动判分覆盖
       box.classList.toggle('graded-ok', s.correct);
       box.classList.toggle('graded-no', !s.correct);
+      sentence.scheduleDraft();
     });
+  },
+
+  // ================= 草稿：写一半关掉 / 刷新都不丢 =================
+  //
+  // 跟练习页同一套机制，存 COS 的 /api/draft（mode=sentences，按日期分键），
+  // 换设备也能接着写。配后端「当天造句 plan 锁定」才成立：
+  // 不提交就永远是同一批题，草稿才接得上；提交回写后 plan 被删，下次才换新一批。
+  //
+  // 只存老师亲手动过的三样：写的句子 / 「不会」/ 「算对」。
+  // 对错不存 —— 它由 (写的句子, 原句) 决定，恢复时重算。
+
+  scheduleDraft: function () {
+    var self = this;
+    clearTimeout(self.draftTimer);
+    self.draftTimer = setTimeout(function () { self.saveDraft(); }, 1200);   // 停手 1.2 秒才存
+  },
+
+  saveDraft: function () {
+    var self = this;
+    if (!self.date) return;
+    app.api('/api/draft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date: self.date,
+        mode: 'sentences',
+        grade_mode: app.mode(),
+        items: self.items.map(function (s) {
+          return {
+            number: s.number,
+            answer: s.input || '',
+            unknown: !!s.unknown,
+            manual: !!s.manual,
+            prompt: s.answer        // 原句指纹：恢复时核对，防止串到换过的题上
+          };
+        })
+      })
+    }).catch(function () {   // 草稿存不上不该打断练习
+    });
+  },
+
+  clearDraft: function () {
+    var self = this;
+    clearTimeout(self.draftTimer);
+    if (!self.date) return;
+    app.api('/api/draft?mode=sentences&date=' + encodeURIComponent(self.date), { method: 'DELETE' })
+      .catch(function () {});
+  },
+
+  // 装载完题目后调用：有草稿就回填，并挂一条「已恢复」横幅。
+  loadDraft: function () {
+    var self = this;
+    if (!self.date) return Promise.resolve();
+    return app.api('/api/draft?mode=sentences&date=' + encodeURIComponent(self.date))
+      .then(function (d) {
+        var dr = d && d.draft;
+        if (!dr || !dr.items || !dr.items.length) return;
+
+        var by = {};
+        dr.items.forEach(function (x) { by[x.number] = x; });
+        var hit = 0;
+        self.items.forEach(function (s) {
+          var x = by[s.number];
+          if (!x) return;                  // 序号对不上（换过题）就跳过
+          // 序号对得上、句子却不是同一句（手工重跑过 gen-plan）也必须跳过，
+          // 否则上一批写的句子会被糊到这一批上。
+          if (x.prompt && x.prompt !== s.answer) return;
+          if (x.unknown) { UNK.set(s, true); }        // unknown 优先：它自带 manual
+          else {
+            if (x.answer) s.input = x.answer;
+            if (x.manual) { s.manual = true; s.correct = true; }
+            else if (s.input) s.correct = normSentence(s.input) === normSentence(s.answer);
+          }
+          hit++;
+        });
+        if (!hit) return;
+
+        self.items.forEach(function (s, i) {
+          var inp = el('sentenceList').querySelector('input[data-i="' + i + '"]');
+          if (inp && s.input) inp.value = s.input;
+          self.renderItem(i);
+        });
+        self.showDraftBar(dr);
+      }).catch(function () {   // 读不到草稿 = 没有
+      });
+  },
+
+  showDraftBar: function (dr) {
+    var self = this;
+    self.dropDraftBar();
+    var list = el('sentenceList');
+    var bar = document.createElement('div');
+    bar.className = 'draft-bar';
+    bar.id = 'sentenceDraftBar';
+    bar.innerHTML = '已恢复上次没写完的造句' +
+      (dr.saved_at ? '（存于 ' + esc(dr.saved_at) + '）' : '') +
+      '　<button type="button" class="linkbtn">清空草稿</button>';
+    list.parentNode.insertBefore(bar, list);
+    self.draftBar = bar;
+
+    bar.querySelector('button').addEventListener('click', function () {
+      self.items.forEach(function (s, i) {
+        s.input = ''; s.unknown = false; s.manual = false; s.correct = null;
+        var inp = el('sentenceList').querySelector('input[data-i="' + i + '"]');
+        if (inp) inp.value = '';
+        self.renderItem(i);
+      });
+      self.dropDraftBar();
+      self.clearDraft();
+      app.toast('草稿已清空');
+    });
+  },
+
+  dropDraftBar: function () {
+    var bar = el('sentenceDraftBar');
+    if (bar && bar.parentNode) bar.parentNode.removeChild(bar);
+    this.draftBar = null;
   },
 
   commit: function () {
@@ -188,6 +318,11 @@ var sentence = {
       el('sentenceCommitResult').textContent =
         '已回写：正确 ' + (s.correct || 0) + '，错误 ' + (s.wrong || 0) +
         '（错句会按 3/7/14 天重出）';
+      // 这批已经归档，草稿没用了；后端同时清掉了当天锁定的 plan，
+      // 所以下一次装载才是新的一批 —— 换题发生在提交之后，不是刷新之后。
+      self.dropDraftBar();
+      self.clearDraft();
+      el('sentenceNext').classList.remove('hidden');
       app.toast('造句结果已回写');
     }).catch(function (e) {
       el('sentenceCommit').disabled = false;
@@ -205,4 +340,6 @@ function normSentence(s) {
 
 document.addEventListener('DOMContentLoaded', function () {
   el('sentenceCommit').addEventListener('click', function () { sentence.commit(); });
+  // 「换下一批」只在回写成功后出现：提交之前无论怎么刷新都是同一批。
+  el('sentenceNext').addEventListener('click', function () { sentence.load(); });
 });

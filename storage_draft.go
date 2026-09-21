@@ -27,6 +27,13 @@ type DraftItem struct {
 	Answer  string `json:"answer"`
 	Unknown bool   `json:"unknown"`
 	Manual  bool   `json:"manual"`
+	// Prompt 题目原文：造句存原句，单词存词形。恢复时用来核对。
+	//
+	// 造句的 number 只是当天的 1..N 位置号，不是句子的身份。万一同一天
+	// 换过一批题（比如手工重跑了 gen-plan），位置对得上、句子却不是同一句，
+	// 没有它就会把上一批写的句子糊到下一批上 —— 老师看到的「你写的」
+	// 和「正确答案」会驴唇不对马嘴，还容易被当成判分 bug。
+	Prompt string `json:"prompt,omitempty"`
 }
 
 // HasContent 判断这份草稿有没有实际内容。全空的草稿没必要往 COS 里写，

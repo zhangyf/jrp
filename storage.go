@@ -403,6 +403,21 @@ func (s *Storage) UploadSentencePlan(ctx context.Context, plan *ReviewPlan) erro
 	return s.store.PutObject(ctx, key, data)
 }
 
+// DeleteSentencePlan 删掉某天已出过的造句 plan。
+//
+// 造句的换题时机是「提交之后」，不是「刷新之后」：plan 一旦出过就锁在 COS 上，
+// 同一天反复刷新、换设备打开都是同一批；只有回写成功才把它删掉，
+// 让下一次 GET /api/plan?mode=sentences 重新出题。
+//
+// 对象不存在时 COS 返回 404，这里一律当成功 —— 删不掉最坏只是沿用旧的一批。
+func (s *Storage) DeleteSentencePlan(ctx context.Context, planDate string) error {
+	if s.dryRun {
+		return nil
+	}
+	_ = s.store.DeleteObject(ctx, s.planJSONKey("sentences", planDate))
+	return nil
+}
+
 // DownloadSentencePlan downloads a sentences-only plan JSON from COS.
 func (s *Storage) DownloadSentencePlan(ctx context.Context, planDate string) (*ReviewPlan, error) {
 	key := s.planJSONKey("sentences", planDate)
