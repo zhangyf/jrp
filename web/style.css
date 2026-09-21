@@ -291,6 +291,93 @@ button.unk.on {
 .kv { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; }
 .kv .chip { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; }
 
+/* 统计页：卡片 + 网格版面 */
+.stat-period { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.kpi {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.kpi-label { font-size: 12px; color: var(--muted); }
+.kpi-value { font-size: 26px; font-weight: 700; line-height: 1.25; letter-spacing: -.01em; }
+.kpi-foot { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 2px; }
+.delta {
+  font-weight: 600; font-size: 12px;
+  padding: 1px 7px; border-radius: 999px;
+}
+.delta.up { color: var(--good); background: var(--good-soft); }
+.delta.down { color: var(--bad); background: var(--bad-soft); }
+.delta.flat { color: var(--muted); background: var(--bg); }
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px 16px;
+  margin-bottom: 14px;
+}
+.stat-grid .card { margin-bottom: 0; }
+.card-head {
+  display: flex; align-items: baseline; gap: 8px;
+  margin-bottom: 10px; flex-wrap: wrap;
+}
+.card-head h4 { margin: 0; font-size: 14px; font-weight: 600; }
+.card-head .muted { font-size: 12px; }
+.span-all { grid-column: 1 / -1; }
+
+/* 掌握度构成条 */
+.share-bar {
+  display: flex; height: 12px; border-radius: 999px; overflow: hidden;
+  background: var(--bg); margin-bottom: 8px;
+}
+.share-seg { height: 100%; }
+
+/* 图表 */
+.chart-svg { display: block; width: 100%; height: auto; }
+.chart-donut { max-width: 168px; flex: 0 0 168px; }
+.chart-empty {
+  padding: 26px 10px; text-align: center;
+  color: var(--muted); font-size: 13px;
+  background: var(--bg); border-radius: 8px;
+}
+.chart-note { font-size: 12px; color: var(--muted); margin-top: 6px; text-align: center; }
+.donut-wrap { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; margin-top: 8px; }
+.legend-col { flex-direction: column; gap: 6px; flex: 1; min-width: 130px; }
+.legend-item { display: flex; align-items: center; gap: 6px; }
+.legend-item i { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 9px; }
+.legend-col .legend-item { justify-content: flex-start; }
+.legend-col .legend-name { flex: 1; }
+.legend .muted { font-size: 12px; }
+
+/* 复习最多的词：正确率条 */
+.acc-cell { display: flex; align-items: center; gap: 8px; }
+.acc-bar { flex: 1; height: 7px; background: var(--bg); border-radius: 999px; overflow: hidden; min-width: 60px; }
+.acc-bar i { display: block; height: 100%; border-radius: 999px; }
+.acc-cell b { font-size: 12px; min-width: 34px; text-align: right; }
+table td.num { text-align: right; color: var(--muted); }
+
+details summary {
+  cursor: pointer; font-size: 13px; font-weight: 600;
+  padding: 2px 0; user-select: none;
+}
+details summary:hover { color: var(--accent); }
+details[open] summary { margin-bottom: 10px; }
+
 #toast {
   position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
   background: var(--ink); color: #fff; padding: 8px 18px; border-radius: 8px;
