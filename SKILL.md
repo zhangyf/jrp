@@ -799,6 +799,16 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
     normalize). After `normalize-words` unifies the forms, run `dedupe --dry-run` to
     check, then `dedupe` to clean. Never delete lines manually — that corrupts the
     word count and `dedupe` already handles backup + assertion.
+    **⚠️ `dedupe` only matches byte-identical word text.** A bare-kana entry and its
+    kanji-annotated twin (`すし` vs `すし(寿司)`) are NOT caught — they survive forever and
+    split one word's review history into two rows, so accuracy is computed against a partial
+    history and the total word count is inflated. For that case use `merge-words`:
+    `jrp --lang ja merge-words --input merges.json --dry-run`
+    with `{"language":"ja","merges":[{"from":"すし","into":"すし(寿司)"}]}`.
+    Merge rules: ReviewCount + ErrorCount are **summed** (both rows are real history),
+    ConsecutiveCorrect takes the **max** (summing would invent a streak that never happened),
+    LastReview takes the later MM/DD, Status is recomputed. Target keeps its group; the source
+    row is deleted. Backs up to `history/` first.
 21. **⚠️ 造句必须是课本原文 (verbatim textbook lines).** NEVER compose your own sentences.
     Select 20 lines verbatim from the knowledge docs' 基本课文 / 应用课文 / 语法例句 tables;
     the Chinese prompt is the doc's own translation. This replaced the old "generate from
@@ -948,7 +958,8 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 | `update-def` | `--input <json>` | Update word definition |
 | `update-word` | `--input <json>` | Update a word's target-language form (fix a typo like a stray long-vowel mark) |
 | `normalize-words` | `--dry-run` | Normalize word forms to `かな(漢字)`. Backs up to `history/` first; aborts if word count changes. **Always dry-run first** |
-| `dedupe` | `--dry-run` | Remove duplicate word entries from archive. Keeps the one with highest reviewCount. Backs up to `history/` first. **Always dry-run first** |
+| `dedupe` | `--dry-run` | Remove duplicate word entries from archive (byte-identical text only). Keeps the one with highest reviewCount. Backs up to `history/` first. **Always dry-run first** |
+| `merge-words` | `--input <json>` `--dry-run` | Merge two entries that are the same word under different forms (e.g. `すし` → `すし(寿司)`) — the case `dedupe` cannot catch. Sums ReviewCount/ErrorCount, max's ConsecutiveCorrect, later LastReview. Backs up to `history/` first. **Always dry-run first** |
 | `stats` | `--days <N>` | Show statistics for last N days |
 | `save-lesson` | `--file <path> --name <name>` | Save knowledge doc to COS |
 | `list-knowledge` | (none) | List all knowledge documents in COS |

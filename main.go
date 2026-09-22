@@ -23,6 +23,7 @@ Commands:
   update-word  Update a word's target-language form (fix typos)
   stats           Show statistics for the last N days
   dedupe          Remove duplicate word entries from the archive
+  merge-words     Merge two entries that are the same word under different forms
   save-lesson     Save a knowledge document to COS
   list-knowledge  List all knowledge documents in COS
   get-knowledge   Download a knowledge document from COS
@@ -122,6 +123,8 @@ func main() {
 		runNormalizeWords(fs, lang)
 	case "dedupe":
 		runDedupe(fs, lang)
+	case "merge-words":
+		runMergeWords(fs, lang)
 	case "stats":
 		runStats(fs, lang)
 	case "save-lesson":
