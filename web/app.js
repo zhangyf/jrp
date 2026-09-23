@@ -114,6 +114,11 @@ function todayStr() {
   var d = new Date();
   return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 }
+// 'YYYY-MM-DD HH:MM:SS' —— 回写时间，跟服务端存快照的 saved_at 一个格式
+function nowStamp() {
+  var d = new Date();
+  return todayStr() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
 function pad(n) { return n < 10 ? '0' + n : '' + n; }
 
 function el(id) { return document.getElementById(id); }
@@ -139,4 +144,48 @@ function renderSummary(node, items) {
     var cls = 'chip' + (it.warn ? ' warn' : '');
     return '<span class="' + cls + '">' + esc(it.label) + ' <b>' + it.value + '</b></span>';
   }).join('');
+}
+
+// 「今天这轮已回写」的回看卡 —— 列表模式和卡片模式共用这一套版式。
+// 以前两种模式各画各的：卡片模式有卡（统计 + 错题行 + 按钮），列表模式只在
+// 底部塞一个 ghost 按钮，老师看着像两个产品。现在统一成同一张卡。
+//   items     /api/review 的当天快照（number/word/definition/answer/correct/unknown/blank）
+//   opts      { saved_at, btnId, onRequeue }
+function renderReviewCard(box, items, opts) {
+  if (!box) return;
+  opts = opts || {};
+  items = items || [];
+  var wrongs = items.filter(function (i) { return !i.blank && !i.correct; });
+  var unk = wrongs.filter(function (i) { return i.unknown; }).length;
+
+  var rows = wrongs.map(function (x) {
+    var mine = x.answer
+      ? '<span class="no">' + esc(x.answer) + '</span>'
+      : '<span class="unk-tag">不会</span>';
+    return '<div class="wrong-row">' +
+      '<span class="num">#' + x.number + '</span>' +
+      '<span class="def">' + esc(x.definition || '') + '</span>' +
+      '<span class="answer">' + esc(x.word) + '</span>' +
+      '<span class="muted">你写的：' + mine + '</span>' +
+      '</div>';
+  }).join('');
+
+  box.innerHTML =
+    '<div class="card"><h3>今天这轮已回写' +
+    (opts.saved_at ? '（' + esc(opts.saved_at) + '）' : '') + '</h3>' +
+    '<div class="kv"><span class="chip">共 ' + items.length + ' 词</span>' +
+    '<span class="chip' + (wrongs.length ? ' warn' : '') + '">错 ' + wrongs.length + ' 个' +
+    (unk ? '（其中「不会」' + unk + '）' : '') + '</span></div>' +
+    (wrongs.length
+      ? '<div class="wrong-list">' + rows + '</div>' +
+        '<button id="' + opts.btnId + '" class="primary">再练这 ' + wrongs.length + ' 个错词</button>' +
+        '<p class="muted">再练一遍只是当场巩固，不计入档案 —— 今天的成绩已经回写过一次了。</p>'
+      : '<p class="muted">今天没有错题，全对。</p>') +
+    '</div>';
+  box.classList.remove('hidden');
+
+  if (wrongs.length && opts.btnId && opts.onRequeue) {
+    var btn = el(opts.btnId);
+    if (btn) btn.addEventListener('click', opts.onRequeue);
+  }
 }

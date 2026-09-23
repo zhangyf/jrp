@@ -20,6 +20,7 @@ function ListPractice(opts) {
     round: 1,         // 1 = 正常轮（回写）；2 = 错词巩固（不回写）
     graded: false,
     committed: false, // 已回写过就别再给按钮了（否则点「重新判分」能二次回写）
+    savedAt: '',      // 回看卡标题里那句「（回写时间）」，由调用方从快照带进来
     // 只读回看：回写成功后（或当天已练完再打开）整份列表变成不可编辑的回顾。
     // 老师要的是「练完还能看到当天每个词写了什么、哪题错了」，不是一提交就清空。
     reviewOnly: false,
@@ -39,6 +40,7 @@ function ListPractice(opts) {
     self.graded = false;
     self.committed = false;
     self.reviewOnly = false;
+    self.savedAt = '';
     self.pendingWrong = [];
     self.draftBar = null;
     self.items = words.map(function (w) {
@@ -60,6 +62,7 @@ function ListPractice(opts) {
     self.graded = true;
     self.committed = true;   // 回看态下永远不能再回写
     self.reviewOnly = true;
+    self.savedAt = '';
     self.draftBar = null;
     self.pendingWrong = [];
     self.items = items.map(function (r) {
@@ -363,7 +366,8 @@ function ListPractice(opts) {
       renderTomorrow(o.tomorrow, d.tomorrow);
 
       // 不再自动切进第二轮：那样答对的词当场就消失了，老师连自己写了什么都看不到。
-      // 改成整份列表原地变只读回看，错词巩固交给「再练错词」按钮。
+      // 改成整份列表原地变只读回看，错词巩固交给回看卡上的「再练这 N 个错词」。
+      self.savedAt = nowStamp();   // 刚回写的，卡标题上写这一刻
       self.enterReview();
       app.toast('已回写');
     }).catch(function (e) {
@@ -396,7 +400,20 @@ function ListPractice(opts) {
       .filter(function (it) { return it.correct === false; })
       .map(function (it) { return it.number; });
 
-    if (o.requeueBtn) {
+    // 「再练这 N 个错词」不再挂在底部工具栏 —— 那里是个 ghost 小按钮，
+    // 跟卡片模式那张回看卡完全不是一个风格。现在列表模式也用同一张卡
+    // （renderReviewCard，见 app.js），摆在只读清单上方，按钮和错题行在一起。
+    if (o.reviewBox) {
+      renderReviewCard(o.reviewBox, self.reviewItems(), {
+        saved_at: self.savedAt,
+        btnId: o.reviewBtnId || (o.reviewBox.id + 'Btn'),
+        onRequeue: function () {
+          if (!self.pendingWrong.length) return;
+          if (self.o.onRequeue) self.o.onRequeue(self.pendingWrong);
+          else self.requeue(self.pendingWrong);
+        }
+      });
+    } else if (o.requeueBtn) {
       if (self.pendingWrong.length && self.round === 1) {
         o.requeueBtn.classList.remove('hidden');
         o.requeueBtn.textContent = '再练这 ' + self.pendingWrong.length + ' 个错词';
@@ -431,6 +448,11 @@ function ListPractice(opts) {
     self.draftBar = null;   // render() 会清空 mount，横幅自然没了
     self.o.commitBtn.classList.add('hidden');
     if (self.o.requeueBtn) self.o.requeueBtn.classList.add('hidden');
+    // 回看卡收起并清空，让位给第二轮（留着 DOM 会有一个已经失效的「再练」按钮）
+    if (self.o.reviewBox) {
+      self.o.reviewBox.classList.add('hidden');
+      self.o.reviewBox.innerHTML = '';
+    }
     self.render();
     window.scrollTo({ top: 0 });
   };

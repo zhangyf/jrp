@@ -25,17 +25,15 @@ var hard = {
       count: el('hardCount'),
       gradeBtn: el('hardGrade'),
       commitBtn: el('hardCommit'),
-      requeueBtn: el('hardRequeue'),
       msg: el('hardMsg'),
       note: el('hardNote'),
       tomorrow: el('hardTomorrowBox'),
       hard: true,
-      draftMode: 'hard'
+      draftMode: 'hard',
+      // 与练习页同一张回看卡（renderReviewCard，见 app.js）
+      reviewBox: el('hardListReview'),
+      reviewBtnId: 'hardListRequeue'
     });
-
-    el('hardRequeue').addEventListener('click', function () {
-      if (this.list.pendingWrong.length) this.list.requeue(this.list.pendingWrong);
-    }.bind(this));
   },
 
   // 只读回看渲染。快照由调用方取好再传进来。
@@ -49,7 +47,8 @@ var hard = {
     ]);
     this.date = r.date || this.date;
     this.list.setReview(this.date, r.items);
-    this.list.render();
+    this.list.savedAt = r.saved_at || '';
+    this.list.render();   // 回看卡在 enterReview 里画
     if (r.saved_at) {
       el('hardMsg').className = 'feedback ok';
       el('hardMsg').textContent = '今天这轮已回写（' + r.saved_at + '），下面是只读回看';
@@ -61,6 +60,7 @@ var hard = {
     el('hardCard').classList.add('hidden');
     el('hardDone').classList.add('hidden');
     el('hardList').classList.add('hidden');
+    el('hardListReview').classList.add('hidden');
     el('hardBar').classList.add('hidden');
     el('hardMsg').textContent = '';
     el('hardTomorrowBox').innerHTML = '';
