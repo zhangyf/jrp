@@ -41,14 +41,16 @@ var practice = {
   },
 
   // 今天已经练完（回写后到期日被推到未来，/api/plan 就空了）→ 拉当天快照只读回看。
-  // 只有列表视图支持，卡片是逐卡的，没有「一屏回看」这回事。
+  // 两种视图都要给落脚点：
+  //   - 列表：整份列表原地变只读（见 list.js 的 reviewOnly）
+  //   - 卡片：单独摆一张「今天的错题」卡 —— 卡片是一张一张过的，练完就
+  //     什么都不剩。以前这里直接判空，老师在卡片模式下提交完就只看到
+  //     「今天没有到期的词」，今天错了什么都查不到。
   showReview: function () {
     var self = this;
     var empty = function () {
       el('practiceSummary').innerHTML = '<span class="chip">今天没有到期的词</span>';
     };
-    if (app.view() !== 'list') { empty(); return; }
-
     el('practiceSummary').innerHTML = '<span class="chip muted">加载中…</span>';
     app.api('/api/review?mode=words').then(function (d) {
       var r = d.review;
@@ -63,13 +65,70 @@ var practice = {
       ]);
 
       self.date = r.date || self.date;
-      self.list.setReview(self.date, r.items);
-      self.list.render();   // render 内部识别 reviewOnly，自动进只读态
-      if (r.saved_at) {
-        el('practiceMsg').className = 'feedback ok';
-        el('practiceMsg').textContent = '今天这轮已回写（' + r.saved_at + '），下面是只读回看';
+      if (app.view() === 'list') {
+        self.list.setReview(self.date, r.items);
+        self.list.render();   // render 内部识别 reviewOnly，自动进只读态
+        if (r.saved_at) {
+          el('practiceMsg').className = 'feedback ok';
+          el('practiceMsg').textContent = '今天这轮已回写（' + r.saved_at + '），下面是只读回看';
+        }
+        return;
       }
+      self.showCardReview(r);
     }).catch(function () { empty(); });
+  },
+
+  // 卡片模式的回看：把今天的错题摆出来，给个「再练一遍」的入口。
+  // 只列错的（含主动点「不会」的），全对就不给按钮。
+  showCardReview: function (r) {
+    var self = this;
+    var box = el('practiceCardReview');
+    var items = r.items || [];
+    var wrongs = items.filter(function (i) { return !i.blank && !i.correct; });
+    var unk = wrongs.filter(function (i) { return i.unknown; }).length;
+
+    var rows = wrongs.map(function (x) {
+      var mine = x.answer
+        ? '<span class="no">' + esc(x.answer) + '</span>'
+        : '<span class="unk-tag">不会</span>';
+      return '<div class="wrong-row">' +
+        '<span class="num">#' + x.number + '</span>' +
+        '<span class="def">' + esc(x.definition || '') + '</span>' +
+        '<span class="answer">' + esc(x.word) + '</span>' +
+        '<span class="muted">你写的：' + mine + '</span>' +
+        '</div>';
+    }).join('');
+
+    box.innerHTML =
+      '<div class="card"><h3>今天这轮已回写' +
+      (r.saved_at ? '（' + esc(r.saved_at) + '）' : '') + '</h3>' +
+      '<div class="kv"><span class="chip">共 ' + items.length + ' 词</span>' +
+      '<span class="chip warn">错 ' + wrongs.length + ' 个' +
+      (unk ? '（其中「不会」' + unk + '）' : '') + '</span></div>' +
+      (wrongs.length
+        ? '<div class="wrong-list">' + rows + '</div>' +
+          '<button id="practiceCardRequeue" class="primary">再练这 ' + wrongs.length + ' 个错词</button>' +
+          '<p class="muted">再练一遍只是当场巩固，不计入档案 —— 今天的成绩已经回写过一次了。</p>'
+        : '<p class="muted">今天没有错题，全对。</p>') +
+      '</div>';
+    box.classList.remove('hidden');
+
+    var btn = el('practiceCardRequeue');
+    if (btn) btn.addEventListener('click', function () { self.startCardRequeue(wrongs); });
+  },
+
+  // 用今天的错词起一轮卡片巩固。不回写 —— 同一天回写两次会把间隔改两遍。
+  startCardRequeue: function (wrongs) {
+    var self = this;
+    self.words = wrongs.map(function (x) {
+      return {
+        number: x.number, word: x.word,
+        definition: x.definition || '', status: x.status || ''
+      };
+    });
+    self.cardRequeue = true;
+    el('practiceCardReview').classList.add('hidden');
+    self.startCard();
   },
 
   load: function () {
@@ -78,8 +137,11 @@ var practice = {
     el('practiceDone').classList.add('hidden');
     el('practiceList').classList.add('hidden');
     el('practiceBar').classList.add('hidden');
+    el('practiceCardReview').classList.add('hidden');
     el('practiceMsg').textContent = '';
     el('tomorrowBox').innerHTML = '';
+    el('practiceMsg').className = 'feedback';
+    self.cardRequeue = false;
     el('practiceSummary').innerHTML = '<span class="chip muted">加载中…</span>';
 
     app.api('/api/plan?mode=words').then(function (d) {
@@ -216,18 +278,25 @@ var practice = {
       else { wrong++; if (this.unknowns[k]) unk++; }
     }
     el('practiceResult').innerHTML =
-      '<div class="card"><h3>本轮完成</h3><div class="kv">' +
+      '<div class="card"><h3>' + (this.cardRequeue ? '巩固轮完成' : '本轮完成') + '</h3><div class="kv">' +
       '<span class="chip">正确 <b>' + correct + '</b></span>' +
       '<span class="chip">错误 <b>' + (wrong - unk) + '</b></span>' +
       '<span class="chip">不会 <b>' + unk + '</b></span>' +
       '<span class="chip">未作答 <b>' + (this.words.length - correct - wrong) + '</b></span>' +
-      '</div><p class="muted">空白 = 没写，按老规矩完全不处理，不会记进档案。' +
-      '点「不会」= 按答错记进档案，这里单列出来。</p></div>';
+      '</div><p class="muted">' +
+      (this.cardRequeue
+        ? '这是今天的错词巩固，不回写档案 —— 同一天回写两次会把间隔改两遍。'
+        : '空白 = 没写，按老规矩完全不处理，不会记进档案。' +
+          '点「不会」= 按答错记入档案，这里单列出来。') +
+      '</p></div>';
+    // 巩固轮不给回写按钮：今天的成绩已经写过一次了
+    el('practiceCommitCard').classList.toggle('hidden', !!this.cardRequeue);
     el('commitResult').textContent = '';
   },
 
   commitCard: function () {
     var self = this;
+    if (self.cardRequeue) { app.toast('这是错词巩固轮，不计入档案'); return; }
     var build = function () {
       var wr = [];
       for (var k in self.results) wr.push({ number: parseInt(k, 10), correct: self.results[k] });

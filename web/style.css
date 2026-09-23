@@ -196,6 +196,20 @@ button:disabled { opacity: .5; cursor: default; }
 .word-item .ans .hint { margin-left: 8px; font-size: 12px; }
 .word-item.graded-ok { border-left: 3px solid var(--good); }
 
+/* 卡片模式「今天已练完」的错题清单：一行一个错词，词形要最大最显眼 */
+.wrong-list { margin: 8px 0 12px; }
+.wrong-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.wrong-row .num { color: var(--muted); font-size: 12px; min-width: 3em; }
+.wrong-row .def { font-size: 15px; }
+.wrong-row .answer { font-size: 17px; font-weight: 600; }
+
 /* 草稿恢复提示条：告诉老师「这些答案是上次没写完存下来的，不是你自己刚写的」 */
 .draft-bar {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
