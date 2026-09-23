@@ -404,3 +404,110 @@ func TestSortLessons(t *testing.T) {
 		t.Errorf("无数字的课名应排最后：%v", ls)
 	}
 }
+
+// 20 句 ÷ 13 个分组必然剩零头。原来零头固定给排最前的课，导致
+// 「第1-7课每天 2 句、第8课起每天 1 句」—— 前 7 课回头速度快 2.6 倍。
+// 改成起点按日期轮换后，多出来的名额应该逐天落到不同的课上。
+func TestSentenceRotationSpreadsLeftover(t *testing.T) {
+	lessons := []string{"第1课", "第2课", "第3课", "第4课", "第5课", "第6课",
+		"第7课", "第8课", "第9课", "第10课", "第11课", "第12课", "单元末"}
+
+	// 同一天必须稳定（否则刷新页面题目会变 —— 那才是真 bug）
+	a := sentenceRotation(lessons, time.Date(2026, 9, 23, 0, 0, 0, 0, time.UTC))
+	b := sentenceRotation(lessons, time.Date(2026, 9, 23, 0, 0, 0, 0, time.UTC))
+	if len(a) != len(b) {
+		t.Fatalf("同一天的轮转顺序应稳定：%v vs %v", a, b)
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			t.Fatalf("同一天的轮转顺序应稳定：%v vs %v", a, b)
+		}
+	}
+
+	// 「最近学的课」= 库里课号最大的两课，第一轮各排两遍；单元末不加权
+	rc := recentLessons(lessons, 2)
+	if !rc["第12课"] || !rc["第11课"] || rc["单元末"] || rc["第1课"] {
+		t.Errorf("最近学的课取错了：%v", rc)
+	}
+	cnt := map[string]int{}
+	for _, ls := range firstRoundOrder(lessons, time.Date(2026, 9, 23, 0, 0, 0, 0, time.UTC)) {
+		cnt[ls]++
+	}
+	if cnt["第12课"] != 2 || cnt["第11课"] != 2 {
+		t.Errorf("最近学的课应在第一轮排两遍：%v", cnt)
+	}
+	if cnt["单元末"] != 1 {
+		t.Errorf("单元末不该加权：%v", cnt)
+	}
+	// 加权只在第一轮：后续轮次各课一律一份
+	rot := map[string]int{}
+	for _, ls := range a {
+		rot[ls]++
+	}
+	for _, ls := range lessons {
+		if rot[ls] != 1 {
+			t.Errorf("后续轮次不该加权，%s 出现 %d 次", ls, rot[ls])
+		}
+	}
+
+	// 13 天里起点必须换过位置，否则零头还是年年落在同一批课上
+	starts := map[string]bool{}
+	for d := 0; d < 13; d++ {
+		day := time.Date(2026, 9, 1+d, 0, 0, 0, 0, time.UTC)
+		starts[sentenceRotation(lessons, day)[0]] = true
+	}
+	if len(starts) < 5 {
+		t.Errorf("13 天里轮转起点只出现过 %d 种，摊不平：%v", len(starts), starts)
+	}
+}
+
+// 端到端：连出 12 天，看每课累计被练了多少次。加权课（库里最新两课）
+// 应当明显更多，其余各课之间不该再出现「前几课系统性双份」。
+func TestSentencePlanSpreadsAcrossLessons(t *testing.T) {
+	lessons := []string{"第1课", "第2课", "第3课", "第4课", "第5课", "第6课",
+		"第7课", "第8课", "第9课", "第10课", "第11课", "第12课"}
+	bank := bankWith(lessons, 10) // 每课 10 句，共 120 句
+	lessonOf := map[string]string{}
+	for _, s := range bank.Sentences {
+		lessonOf[s.Answer] = s.Lesson
+	}
+
+	hist := SentenceHistory{}
+	counts := map[string]int{}
+	day0 := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	for d := 0; d < 12; d++ {
+		cur := day0.AddDate(0, 0, d)
+		plan := BuildSentencePlan(bank, hist, nil, cur, 20)
+		if len(plan) != 20 {
+			t.Fatalf("第 %d 天只出了 %d 句", d, len(plan))
+		}
+		asked := make([]string, 0, len(plan))
+		for _, p := range plan {
+			counts[lessonOf[p.Answer]]++
+			asked = append(asked, p.Answer)
+		}
+		hist[cur.Format("2006-01-02")] = asked
+	}
+
+	var base []int
+	for _, ls := range lessons[:10] { // 排除加权课 11、12
+		base = append(base, counts[ls])
+	}
+	minB, maxB := base[0], base[0]
+	for _, v := range base {
+		if v < minB {
+			minB = v
+		}
+		if v > maxB {
+			maxB = v
+		}
+	}
+	if float64(maxB) > float64(minB)*1.6 {
+		t.Errorf("非加权课之间仍不均衡（%d~%d，差 %.2f 倍）：%v",
+			minB, maxB, float64(maxB)/float64(minB), counts)
+	}
+	// 加权课应当比非加权课明显多练
+	if counts["第12课"] < maxB {
+		t.Errorf("最新课没拿到加权：第12课 %d vs 其他最多 %d", counts["第12课"], maxB)
+	}
+}

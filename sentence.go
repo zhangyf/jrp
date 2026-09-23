@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"regexp"
 	"sort"
 	"strconv"
@@ -355,11 +356,17 @@ func BuildSentencePlan(bank *SentenceBank, hist SentenceHistory, wrong *Sentence
 	}
 	sortLessons(lessons)
 
+	// 轮转顺序（见 sentenceRotation / firstRoundOrder）：
+	// 起点按日期轮换；第一轮里「最近学的课」排两遍，之后各课均分。
+	rotated := sentenceRotation(lessons, today)
+	firstRound := firstRoundOrder(lessons, today)
+
 	fill := func(strict bool) {
 		cursor := make(map[string]int, len(lessons))
+		order := firstRound
 		for len(picked) < count {
 			progressed := false
-			for _, ls := range lessons {
+			for _, ls := range order {
 				lst := byLesson[ls]
 				for cursor[ls] < len(lst) {
 					c := lst[cursor[ls]]
@@ -383,6 +390,7 @@ func BuildSentencePlan(bank *SentenceBank, hist SentenceHistory, wrong *Sentence
 			if !progressed {
 				return // 句池耗尽
 			}
+			order = rotated // 第二轮起各课均分，加权只发生在第一轮
 		}
 	}
 	fill(true)
@@ -433,6 +441,76 @@ func sortLessons(ls []string) {
 		}
 		return ls[i] < ls[j]
 	})
+}
+
+// sentenceRotation 本天的轮转顺序：起点按日期哈希轮换。
+//
+// 为什么要轮换起点：20 句 ÷ 13 个分组（12 课 + 单元末）必然剩零头，原来固定
+// 从排序最前的课开始补，结果**每天都是第1-7课各 2 句、第8课起各 1 句**——
+// 前 7 课的句子回头速度是后 5 课的约 2.6 倍，老师会觉得"总在前几个单元"。
+// 起点每天换，零头就轮流落到不同课上，13 天摊平。
+func sentenceRotation(lessons []string, today time.Time) []string {
+	if len(lessons) == 0 {
+		return nil
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(today.Format("2006-01-02")))
+	start := int(h.Sum32()) % len(lessons)
+
+	out := make([]string, 0, len(lessons))
+	for i := 0; i < len(lessons); i++ {
+		out = append(out, lessons[(start+i)%len(lessons)])
+	}
+	return out
+}
+
+// firstRoundOrder 第一轮的顺序：轮转顺序 + 「最近学的课」再排一遍。
+//
+// 只在第一轮加权（多拿 1 句）。若每一轮都排两遍，20 句里最新两课会各吃 4 句
+// （约 4 倍）—— 实测过，太狠。第二轮起回到 sentenceRotation，各课均分。
+//
+// 加权对象是「库里课号最大的两课」，不写死课号：句库补进第4单元后自动前移。
+func firstRoundOrder(lessons []string, today time.Time) []string {
+	rotated := sentenceRotation(lessons, today)
+	recent := recentLessons(lessons, 2)
+	if len(recent) == 0 {
+		return rotated
+	}
+	out := make([]string, 0, len(rotated)+len(recent))
+	for _, ls := range rotated {
+		out = append(out, ls)
+		if recent[ls] {
+			out = append(out, ls)
+		}
+	}
+	return out
+}
+
+// recentLessons 取课号最大的 n 课；「单元末」这类没数字的分组不参与。
+func recentLessons(lessons []string, n int) map[string]bool {
+	type lessonNum struct {
+		name string
+		num  int
+	}
+	var ns []lessonNum
+	for _, ls := range lessons {
+		m := lessonNumRe.FindString(ls)
+		if m == "" {
+			continue
+		}
+		v, err := strconv.Atoi(m)
+		if err != nil {
+			continue
+		}
+		ns = append(ns, lessonNum{ls, v})
+	}
+	sort.SliceStable(ns, func(i, j int) bool { return ns[i].num > ns[j].num })
+
+	out := make(map[string]bool, n)
+	for i := 0; i < len(ns) && i < n; i++ {
+		out[ns[i].name] = true
+	}
+	return out
 }
 
 // ---------- 落库 ----------
