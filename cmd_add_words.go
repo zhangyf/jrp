@@ -5,8 +5,27 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
+
+// sameDefinitionWords 找出档案里释义与 def 一字不差的其他词（exclude 用来排除自己）。
+// 中文释义撞车 = 复习时看中文分不出该写哪个词，所以 add-words / update-def 都要点名。
+func sameDefinitionWords(groups []WordGroup, def, exclude string) []string {
+	if strings.TrimSpace(def) == "" {
+		return nil
+	}
+	var out []string
+	for _, g := range groups {
+		for _, w := range g.Words {
+			if w.Word == exclude || w.Definition != def {
+				continue
+			}
+			out = append(out, w.Word)
+		}
+	}
+	return out
+}
 
 func runAddWords(fs *flag.FlagSet, lang string) {
 	inputFile := fs.String("input", "", "JSON file with words to add (default: stdin)")
@@ -87,6 +106,11 @@ func runAddWords(fs *flag.FlagSet, lang string) {
 	}
 	input.Words = deduped
 
+	// 释义撞车检测：中文释义跟已有词一字不差的话，复习时看中文根本分不出该写
+	// 哪个（2026-09-24 老师反馈：だめ / いけません 都写成「不行，不可以」）。
+	// 不阻断导入，只在输出里点名，逼着把区分补进括号里。
+	var dupDefs []string
+
 	// Add words (skip duplicates already in archive)
 	added := 0
 	duplicates := 0
@@ -95,6 +119,10 @@ func runAddWords(fs *flag.FlagSet, lang string) {
 		if existing, _ := FindWord(arc.Groups, w.Word); existing != nil {
 			duplicates++
 			continue
+		}
+		if others := sameDefinitionWords(arc.Groups, w.Definition, ""); len(others) > 0 {
+			dupDefs = append(dupDefs, fmt.Sprintf("新词「%s」的释义与已有「%s」完全相同：%s —— 请加括号区分用法",
+				w.Word, strings.Join(others, "、"), w.Definition))
 		}
 		targetGroup.Words = append(targetGroup.Words, Word{
 			Word:       w.Word,
@@ -132,15 +160,19 @@ func runAddWords(fs *flag.FlagSet, lang string) {
 		os.Exit(1)
 	}
 
-	outputResult(map[string]interface{}{
-		"success":       true,
-		"command":       "add-words",
-		"added":         added,
-		"duplicates":    duplicates,
-		"old_filename":  oldFilename,
-		"new_filename":  newFilename,
-		"version":       fmt.Sprintf("v%d.%d", newMajor, newMinor),
-		"major_bump":    needMajorBump,
-		"total_words":   CountAllWords(arc.Groups),
-	})
+	out := map[string]interface{}{
+		"success":      true,
+		"command":      "add-words",
+		"added":        added,
+		"duplicates":   duplicates,
+		"old_filename": oldFilename,
+		"new_filename": newFilename,
+		"version":      fmt.Sprintf("v%d.%d", newMajor, newMinor),
+		"major_bump":   needMajorBump,
+		"total_words":  CountAllWords(arc.Groups),
+	}
+	if len(dupDefs) > 0 {
+		out["dup_definitions"] = dupDefs
+	}
+	outputResult(out)
 }

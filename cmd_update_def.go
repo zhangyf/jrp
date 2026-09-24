@@ -62,6 +62,9 @@ func runUpdateDef(fs *flag.FlagSet, lang string) {
 	oldDef := w.Definition
 	w.Definition = input.Definition
 
+	// 改完还跟别的词一字不差的话，复习时照样分不出来 —— 点名提醒。
+	sameAs := sameDefinitionWords(arc.Groups, input.Definition, w.Word)
+
 	// Calculate version
 	oldDate, oldMajor, oldMinor, _ := ParseFilename(oldFilename)
 	today := time.Now()
@@ -80,7 +83,7 @@ func runUpdateDef(fs *flag.FlagSet, lang string) {
 		os.Exit(1)
 	}
 
-	outputResult(map[string]interface{}{
+	out := map[string]interface{}{
 		"success":      true,
 		"command":      "update-def",
 		"word":         input.Word,
@@ -89,5 +92,9 @@ func runUpdateDef(fs *flag.FlagSet, lang string) {
 		"old_filename": oldFilename,
 		"new_filename": newFilename,
 		"version":      fmt.Sprintf("v%d.%d", newMajor, newMinor),
-	})
+	}
+	if len(sameAs) > 0 {
+		out["same_def_as"] = sameAs
+	}
+	outputResult(out)
 }
