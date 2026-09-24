@@ -218,7 +218,11 @@ Knowledge base IDs:
 **Steps**:
 1. Read the photo(s) — identify the vocabulary section
 2. Extract each word: target language word (including kanji) + Chinese definition
-3. Create a JSON file:
+3. **先对照档案去重**：下载最新档案，逐词核对——词形完全相同的跳过；
+   同读法不同汉字（如已有的 あたたかい(暖かい) 与本课 あたたかい(温かい)）
+   不要新增条目（会拆分复习历史），用 `update-def` 把区分写进现有词条释义；
+   同读法同动词不同汉字（とります(撮ります) vs とります(取ります)）语义确实
+   不同才新增。Create a JSON file:
 
 ```json
 {
