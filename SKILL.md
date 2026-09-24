@@ -192,7 +192,7 @@ any external dependency.
 - `jrp --lang ja list-knowledge` — list all knowledge documents (name + size)
 - `jrp --lang ja get-knowledge --name <filename>` — download a document's full content
 
-Current Japanese knowledge docs (8 lessons, 标准日本语初级上册 第1-8课):
+Current Japanese knowledge docs (标准日本语初级上册 第1-15课，其中第15课为 2026-09-24 增补):
 `标准日本语初级上册_第N课知识点.md`
 
 ### IMA Knowledge Base (legacy / human-readable fallback)
@@ -287,7 +287,7 @@ Knowledge base IDs:
         4. **Lastly** fall back to 语法例句 tables within learned-scope lessons.
       - Chinese prompt = the doc's own Chinese translation of that line; Japanese
         answer = the verbatim original.
-      - **Cover ALL learned lessons (第1-14课；句库当前覆盖到第14课，第4单元15-16课待补), NOT just the last 2-3.** Balance the 20
+      - **Cover ALL learned lessons (第1-15课；句库 v3 覆盖到第15课，第4单元仅第16课待补), NOT just the last 2-3.** Balance the 20
         sentences across the full learned scope. Prioritize by (a) lessons where today's
         due words cluster, (b) lessons where 钉子户 are densest — notably 第7课生活动词
         (おろします/はらいます/ぬぎます/あけます/しめます/つけます/けします/きます/はきます)
@@ -358,7 +358,7 @@ Knowledge base IDs:
         scratch" rule at the user's request (2026-08-27): textbook lines are guaranteed
         correct and within learned scope, so the old leak risk disappears.
       - **⚠️ Hard scope guard**: Only pick sentences from lessons the user has learned
-        (currently 第1-14课，第4单元仅13-14课入库). If a consolidated-原文 doc has a placeholder
+        (currently 第1-15课，第4单元仅13-15课入库). If a consolidated-原文 doc has a placeholder
         "（待补 — 用户未提供...）", SKIP that section entirely.
 
    d. **Self-check before saving**: Verify each of the 20 sentences is a verbatim
@@ -424,10 +424,10 @@ jrp --lang ja gen-plan --date YYYY-MM-DD --sentences-only --sentences tmp_senten
   - 输出 JSON 里 `kind="sentences"`、`sentence_count=N`、`due_count=0`。
 
 **题量**：默认 **50 句**（普通模式 20 句）。挑句规则**完全沿用上面第 3 节 c 的全部约束**：
-课本原文、句库 v2 覆盖第1-14课（第4单元15-16课待补）、近 7 天归一化不重复、错句重练强制插入、变形句。
+课本原文、句库 v3 覆盖第1-15课（第4单元仅第16课待补）、近 7 天归一化不重复、错句重练强制插入、变形句。
 - 变形句上限按比例放大：普通模式 20 句最多 4 句 → **纯句子 50 句最多 10 句**。
 - 50 句量大，**归一化自检必须做**（近 7 天重复 + 当天内部重复），否则重复率会明显上升。
-- 跨课覆盖要摊平：第1-14课每课至少 2-3 句，别被最近学的课吃掉一半（程序侧已有轮转起点轮换+最新两课加权）。
+- 跨课覆盖要摊平：第1-15课每课至少 2-3 句，别被最近学的课吃掉一半（程序侧已有轮转起点轮换+最新两课加权）。
 
 **回填**：纯句子模式**没有单词，不要跑 `record`**（跑了也只是写一条 0 对 0 错的 changelog）。
 造句对错走 `sentence_wrong.json`，规则不变（错 → +3/+7/+14 天重出；对 → archived）。

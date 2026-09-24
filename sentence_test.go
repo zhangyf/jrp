@@ -60,9 +60,12 @@ func TestBuildSentencePlanSpreadsAcrossLessons(t *testing.T) {
 	if len(per) != 4 {
 		t.Errorf("只覆盖了 %d 课，want 4：%v", len(per), per)
 	}
+	// 份额规则（2026-09-23 起的第一轮加权）：库里课号最大的两课双倍份额，
+	// 其余均分。10句×4课取12句 → 最新两课各4句，其余各2句。
+	want := map[string]int{"第1课": 2, "第2课": 2, "第3课": 4, "第4课": 4}
 	for ls, c := range per {
-		if c != 3 {
-			t.Errorf("第 %s 课出了 %d 句，want 3", ls, c)
+		if c != want[ls] {
+			t.Errorf("第 %s 课出了 %d 句，want %d", ls, c, want[ls])
 		}
 	}
 

@@ -94,6 +94,28 @@ func ParseArchive(content string, lang string) (*Archive, error) {
 				continue
 			}
 
+			// 词表表头行/全空行：不进 footer。
+			// 表头行出现在 |--- 分隔行之前，此时 inWordTable 还是 false，
+			// 以前会被当"正文"塞进 RawFooter —— 每次保存每个分组多复制一行
+			// 表头（58 个分组 = 每写一次 footer 涨 58 行，2026-09-24 发现时
+			// 已积到 1 万行）。全空行（|||||||）同理。两者都直接跳过。
+			if strings.HasPrefix(trimmed, "|") && !inWordTable {
+				parts := splitTableRow(trimmed)
+				if len(parts) >= 2 && parts[1] == "中文释义" {
+					continue // 词表表头（第2列固定是"中文释义"，与语言无关）
+				}
+				allEmpty := true
+				for _, p := range parts {
+					if p != "" {
+						allEmpty = false
+						break
+					}
+				}
+				if allEmpty {
+					continue
+				}
+			}
+
 			// Parse word rows
 			if inWordTable && strings.HasPrefix(trimmed, "|") {
 				word := parseWordRow(trimmed)
