@@ -141,6 +141,7 @@ function ListPractice(opts) {
         self.scheduleDraft();
       });
       inp.addEventListener('keydown', function (e) {
+        if (e.isComposing || e.keyCode === 229) return; // IME 确认转换的 Enter 不当「跳下一行」
         if (e.key !== 'Enter') return;
         e.preventDefault();
         var i = parseInt(inp.dataset.i, 10);
