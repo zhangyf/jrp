@@ -10,6 +10,7 @@ import (
 
 // runWordMeta 词性表的上传与查看。
 //
+//	jrp --lang ja word-meta --dump word_meta.json   # 下载到本地（改之前先 dump）
 //	jrp --lang ja word-meta --file word_meta.json   # 上传（整份覆盖）
 //	jrp --lang ja word-meta                         # 下载并打印统计
 //
@@ -17,6 +18,7 @@ import (
 // 上传是整份覆盖 —— 词性表小（930 条约 60KB），没必要做增量合并。
 func runWordMeta(fs *flag.FlagSet, lang string) {
 	file := fs.String("file", "", "本地 word_meta.json 路径；不给则下载并打印统计")
+	dump := fs.String("dump", "", "把词性表下载到本地文件（改之前先 dump，改完再 --file 上传）")
 	fs.Parse(cmdArgs)
 
 	storage, err := NewStorage(lang)
@@ -56,6 +58,18 @@ func runWordMeta(fs *flag.FlagSet, lang string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error downloading: %v\n", err)
 		os.Exit(1)
+	}
+
+	// 上传是整份覆盖，所以必须先能完整导出，不然改一条就丢一批
+	if *dump != "" {
+		if err := os.WriteFile(*dump, []byte(toJSON(m)+"\n"), 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "Error writing dump: %v\n", err)
+			os.Exit(1)
+		}
+		outputResult(map[string]interface{}{
+			"success": true, "command": "word-meta", "dumped": len(m.Items), "path": *dump,
+		})
+		return
 	}
 	summary := map[string]int{}
 	for _, p := range m.Items {
