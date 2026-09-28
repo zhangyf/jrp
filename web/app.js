@@ -107,6 +107,53 @@ var app = {
     t.classList.remove('hidden');
     clearTimeout(this._t);
     this._t = setTimeout(function () { t.classList.add('hidden'); }, 2600);
+  },
+
+  // ---------------- 词条附加信息：词性 + 备注 ----------------
+  //
+  // 老师 2026-09-28 要的：卡片上不能只有中文释义，得带上词性和备注。
+  // 备注主要写「跟近义词怎么区分」；词义明确的就空着（空着是正常的）。
+  //
+  // 这几个方法挂 app 上而不是写成全局函数 —— web/*.js 是老式多 script
+  // 全局挂载，顶层 function 会覆盖别的文件里的同名 var（踩过一次整站白屏）。
+
+  // 拆释义：「浴室，浴缸（泡澡用；…）」→ 主部「浴室，浴缸」+ 备注「泡澡用；…」
+  // 括号里那截本来就是区分说明，摆进备注比堆在释义后面好看，也跟
+  // 「主释义只留一个义项」的录词规矩对上。没括号就整串都是主部。
+  defParts: function (def) {
+    var s = String(def == null ? '' : def);
+    var i = s.search(/[（(]/);
+    if (i <= 0) return { main: s, note: '' };
+    var main = s.slice(0, i).replace(/[、，,;；/／\s]+$/, '');
+    var note = s.slice(i + 1).replace(/[）)]\s*$/, '').trim();
+    if (!main) return { main: s, note: '' };
+    return { main: main, note: note };
+  },
+
+  posText: function (w) {
+    var t = (w && w.pos) ? String(w.pos) : '';
+    if (w && w.sub) t += '·' + w.sub;
+    return t;
+  },
+
+  // 「词性 / 备注」两行。卡片模式、列表模式、今日练习、钉子户全都调这一个
+  // 函数 —— 同一件事不许画成两种样子（2026-09-23 老师定的规矩）。
+  //   w         词条目（pos/sub/note）
+  //   extraNote 兜底备注：释义括号里拆出来的那截。词表里手写了 note 就以
+  //             手写的为准（那是老师亲自校准过的区分点）。
+  factsHtml: function (w, extraNote) {
+    w = w || {};
+    var pos = this.posText(w);
+    var note = String(w.note || '').trim() || String(extraNote || '').trim();
+    return '<dl class="facts">' +
+      '<div class="f-row"><dt>词性</dt><dd>' +
+        (pos ? '<span class="pos-chip">' + esc(pos) + '</span>'
+             : '<span class="f-empty">—</span>') +
+      '</dd></div>' +
+      '<div class="f-row"><dt>备注</dt><dd class="f-note">' +
+        (note ? esc(note) : '<span class="f-empty">—</span>') +
+      '</dd></div>' +
+      '</dl>';
   }
 };
 

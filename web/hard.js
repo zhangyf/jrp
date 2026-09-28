@@ -124,7 +124,10 @@ var hard = {
     var w = this.words[this.queue[this.pos]];
     el('hProgress').textContent = '第 ' + (this.pos + 1) + ' / ' + this.queue.length + '　#' + w.number;
     el('hMeta').textContent = metaText(w);
-    el('hDefinition').textContent = w.definition;
+    // 与今日练习卡片同一套：释义主部 + 词性/备注（见 app.js 的 factsHtml）
+    var parts = app.defParts(w.definition);
+    el('hDefinition').textContent = parts.main;
+    el('hFacts').innerHTML = app.factsHtml(w, parts.note);
     el('hInput').value = '';
     el('hFeedback').textContent = '';
     el('hFeedback').className = 'feedback';

@@ -112,6 +112,37 @@ main { max-width: 860px; margin: 0 auto; padding: 18px; }
 
 .definition { font-size: 26px; font-weight: 600; margin: 10px 0 14px; }
 
+/* 词条附加信息：词性 + 备注（近义区分）。
+   卡片模式和列表模式共用同一段结构 —— 只是行内紧凑一档，版式不许两套。 */
+.facts {
+  margin: 0 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.facts .f-row {
+  display: flex; align-items: baseline; gap: 12px;
+  padding: 7px 12px;
+}
+.facts .f-row + .f-row { border-top: 1px solid var(--line); }
+.facts dt {
+  flex: 0 0 3em; margin: 0;
+  color: var(--muted); font-size: 13px;
+}
+.facts dd { margin: 0; flex: 1; font-size: 14px; }
+.facts .f-note { line-height: 1.5; }
+.facts .f-empty { color: #bfbfb5; }
+.pos-chip {
+  display: inline-block; padding: 1px 10px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 13px; font-weight: 600;
+}
+.word-item .facts { margin: 6px 0 0; }
+.word-item .facts .f-row { padding: 5px 10px; }
+.word-item .facts dd { font-size: 13px; }
+.word-item .facts dt { flex-basis: 2.6em; }
+
 input[type=text] {
   width: 100%;
   font-size: 22px;

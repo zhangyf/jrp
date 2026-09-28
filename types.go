@@ -77,6 +77,12 @@ type PlanWord struct {
 	ErrorCount  int      `json:"error_count,omitempty"`
 	ReviewCount int      `json:"review_count,omitempty"`
 	Accuracy    *float64 `json:"accuracy,omitempty"`
+	// 词性 / 备注不在档案里，也不进 plan 存档 —— 只在 API 返回时按词形
+	// 从 word_meta.json join 上来（enrichWordMeta），给页面显示用。
+	// 塞进 plan 存档会牵动 record 的序号映射和存档体积，没必要。
+	Pos  string `json:"pos,omitempty"`
+	Sub  string `json:"sub,omitempty"`
+	Note string `json:"note,omitempty"`
 }
 
 // PlanSentence is a sentence exercise in a review plan.

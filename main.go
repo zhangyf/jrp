@@ -28,6 +28,7 @@ Commands:
   list-knowledge  List all knowledge documents in COS
   get-knowledge   Download a knowledge document from COS
   word-meta       Upload/inspect the word part-of-speech table (词汇总表用词性)
+  word-note       Set/clear/list per-word notes (备注：近义词怎么区分)
   encrypt-env     Encrypt the plaintext .env into .env.enc (AES-256-GCM)
   decrypt-env     Decrypt .env.enc back to plaintext .env (for credential migration)
   serve           Start the web review UI (keyboard + handwriting input)
@@ -135,6 +136,8 @@ func main() {
 		runGetKnowledge(fs, lang)
 	case "word-meta":
 		runWordMeta(fs, lang)
+	case "word-note":
+		runWordNote(fs, lang)
 	case "encrypt-env":
 		runEncryptEnv(fs, lang)
 	case "decrypt-env":

@@ -38,6 +38,8 @@ func (s *server) handleReview(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		// 词性 / 备注同样只在读的时候 join，不落进快照
+		s.enrichReviewMeta(s.ctx(), snap)
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"success": true, "review": snap, "date": date, "mode": mode, "dry_run": s.dryRun,
 		})

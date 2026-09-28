@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -100,6 +101,9 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		// 词性 / 备注只在这里 join 给前端显示，不写进 plan 存档
+		// （存档只服务于 record 的序号映射，多塞字段没意义）。
+		s.enrichWordMeta(ctx, plan.Words)
 		out["due_count"] = len(plan.Words)
 		out["words"] = plan.Words
 		out["by_status"] = countByStatus(plan.Words)
@@ -150,6 +154,8 @@ func (s *server) handleHard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	s.enrichWordMeta(ctx, plan.Words)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success":      true,
@@ -215,6 +221,54 @@ func (s *server) buildSentencePlan(targetDate time.Time, upload bool) (*ReviewPl
 //   - 里面真有句子（空 plan 等于没出过题）
 func sentencePlanLocked(old *ReviewPlan, date string) bool {
 	return old != nil && old.Date == date && len(old.Sentences) > 0
+}
+
+// enrichWordMeta 把词性 / 备注 join 到计划里的每个词上。
+//
+// 这两样存在独立的 word_meta.json 里（不在档案表格中），按完整词形
+// 「假名(汉字)」匹配。读不到就整批留空 —— 纯展示增强，绝不能因为词性表
+// 挂掉或还没上传，就把今天的练习题给弄没了。
+func (s *server) enrichWordMeta(ctx context.Context, words []PlanWord) {
+	if len(words) == 0 {
+		return
+	}
+	meta, err := s.storage.DownloadWordMeta(ctx)
+	if err != nil || meta == nil {
+		return
+	}
+	for i := range words {
+		words[i].Pos, words[i].Sub, words[i].Note = lookupWordMeta(meta, words[i].Word)
+	}
+}
+
+// lookupWordMeta 按完整词形「假名(汉字)」查词性 / 备注。
+// 查不到返回三个空串 —— 页面显示「—」，不影响练习。
+func lookupWordMeta(meta *WordMeta, word string) (pos, sub, note string) {
+	if meta == nil {
+		return "", "", ""
+	}
+	p, ok := meta.Items[word]
+	if !ok {
+		return "", "", ""
+	}
+	return p.Pos, p.Sub, p.Note
+}
+
+// enrichReviewMeta 给回看快照 join 词性 / 备注 —— 跟 enrichWordMeta 同一份
+// word_meta.json，只是对象不同（快照里存的是 ReviewItem）。
+// 快照可能是 nil（那天没练），直接返回。
+func (s *server) enrichReviewMeta(ctx context.Context, snap *ReviewSnapshot) {
+	if snap == nil || len(snap.Items) == 0 {
+		return
+	}
+	meta, err := s.storage.DownloadWordMeta(ctx)
+	if err != nil || meta == nil {
+		return
+	}
+	for i := range snap.Items {
+		snap.Items[i].Pos, snap.Items[i].Sub, snap.Items[i].Note =
+			lookupWordMeta(meta, snap.Items[i].Word)
+	}
 }
 
 func countByStatus(words []PlanWord) map[string]int {

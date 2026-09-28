@@ -47,6 +47,8 @@ function ListPractice(opts) {
       return {
         number: w.number, word: w.word, definition: w.definition,
         status: w.status || '', group: w.group || '',
+        // 词性 / 备注由 /api/plan 从 word_meta.json join 上来
+        pos: w.pos || '', sub: w.sub || '', note: w.note || '',
         input: '', correct: null, manual: false, blank: false, unknown: false
       };
     });
@@ -69,6 +71,7 @@ function ListPractice(opts) {
       return {
         number: r.number, word: r.word, definition: r.definition,
         status: r.status || '', group: r.group || '',
+        pos: r.pos || '', sub: r.sub || '', note: r.note || '',
         input: r.answer || '',
         correct: r.blank ? null : !!r.correct,
         manual: !!r.manual, blank: !!r.blank, unknown: !!r.unknown
@@ -96,14 +99,17 @@ function ListPractice(opts) {
     var m = self.o.mount;
     var ro = self.reviewOnly;
     m.innerHTML = self.items.map(function (it, i) {
+      // 与卡片模式同一套：释义摆主部，括号里那截进「备注」
+      var parts = app.defParts(it.definition);
       return '<div class="word-item" id="' + self.rowId(i) + '">' +
         '<div class="wi-head">' +
         '<span class="num">' + it.number + '</span>' +
         (it.status ? '<span class="tag' + (it.status === '☠️钉子户' ? ' nail' : '') + '">' +
           esc(statusText(it.status)) + '</span>' : '') +
-        '<span class="def">' + esc(it.definition) + '</span>' +
+        '<span class="def">' + esc(parts.main) + '</span>' +
         (ro ? '' : '<button class="unk" data-i="' + i + '" aria-pressed="false">不会</button>') +
         '</div>' +
+        app.factsHtml(it, parts.note) +
         '<div class="row"><input type="text" data-i="' + i + '" autocomplete="off" spellcheck="false" ' +
         (ro ? 'disabled ' : '') +
         'placeholder="写日语，回车跳下一个"></div>' +
@@ -439,6 +445,7 @@ function ListPractice(opts) {
       return {
         number: it.number, word: it.word, definition: it.definition,
         status: it.status, group: it.group,
+        pos: it.pos, sub: it.sub, note: it.note,
         input: '', correct: null, manual: false, blank: false, unknown: false
       };
     });

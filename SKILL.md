@@ -584,6 +584,44 @@ cannot fix the word form itself — use this command instead.
 duplicate). Word count is unchanged; no `history/` backup is taken (single-entry edit,
 mirrors `update-def`).
 
+### 6c. Word Notes (备注：近义词怎么区分)
+
+**Trigger**: 两个词的中文释义容易混（老师复习时看中文分不出该写哪个），
+或老师直接说「X 和 Y 的释义没什么区分」。
+
+**备注写什么**：写区分点 —— 用法、搭配、范围、语气。不写例句，不重复释义。
+例：`とおります(通ります)` → `空间上从某处穿过（道・橋・トンネル を通ります）；過ぎます 是时间流逝/超过某点`
+
+**什么时候不用写**：词义明确、跟别的词不撞车的，空着。空着是正常的，不是缺数据 ——
+老师的原话是「如果词义比较明确不需要额外说明，那么备注说明这里可以空着」。
+
+**存在哪**：`word_meta.json` 的 `items[词形].note`，跟词性同一份表（不在档案里 ——
+档案表格是 7 列，加列会牵动解析/写入/Excel 全链）。
+
+**命令**：
+
+```bash
+# 单条设置 / 清除
+jrp --lang ja word-note --word とおります(通ります) --text "空间上从某处穿过；過ぎます 是时间流逝/超过某点"
+jrp --lang ja word-note --word とおります(通ります) --clear
+
+# 批量合并（JSON: {词形: 备注}）
+jrp --lang ja word-note --file /tmp/notes.json
+
+# 列出现有备注（只看写了的，没写的不列）
+jrp --lang ja word-note
+```
+
+**⚠️ 匹配是精确的完整词形「假名(汉字)」**。对不上会报错并给几个候选（只打假名也能搜到）。
+不猜、不做模糊匹配 —— 猜错会把另一个词的备注贴上来。
+
+**页面怎么显示**（`/api/plan` / `/api/review` 按词形 join 出来，前端同一套）：
+- 释义只摆**主部**（第一个括号前的部分），括号里那截挪到「备注」行 —— 跟
+  「主释义只留一个义项」的录词规矩一致，卡片上三行信息各归各位。
+- 词表里手写了 `note` 就以手写的为准；没写就用释义括号里那截兜底。
+- 词性来自同一个 `word_meta.json` 的 `pos`/`sub`（动词·一类 这种）。
+- 两样都没有就显示 `—`，行还在，版式不塌。
+
 ### 7. Normalize Word Forms (词形规范化)
 
 **Canonical word form: `かな(漢字)` — reading outside the parens, kanji inside.**

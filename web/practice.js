@@ -170,7 +170,10 @@ var practice = {
     var tag = el('wStatus');
     tag.textContent = statusText(w.status);
     tag.className = 'tag' + (w.status === '☠️钉子户' ? ' nail' : '');
-    el('wDefinition').textContent = w.definition;
+    // 释义只摆主部，括号里那截进「备注」—— 卡片上三行信息各归各位
+    var parts = app.defParts(w.definition);
+    el('wDefinition').textContent = parts.main;
+    el('wFacts').innerHTML = app.factsHtml(w, parts.note);
     el('wInput').value = '';
     el('wFeedback').textContent = '';
     el('wFeedback').className = 'feedback';

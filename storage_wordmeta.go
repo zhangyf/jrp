@@ -23,9 +23,14 @@ type WordMeta struct {
 // WordPOS 一个词的词性。Sub 是细分：
 // 动词 → 一类(五段) / 二类(一段) / 三类(サ変・カ変)
 // 形容词 → い形 / な形
+//
+// Note 是备注：主要写「跟哪个近义词怎么区分」（老师 2026-09-28 要的），
+// 比如 通ります 的备注写「空间上从某处穿过；過ぎます 是时间流逝/超过某点」。
+// 词义明确、不会跟别的词混的就空着 —— 空着是正常的，不是缺数据。
 type WordPOS struct {
-	Pos string `json:"pos"`
-	Sub string `json:"sub"`
+	Pos  string `json:"pos"`
+	Sub  string `json:"sub"`
+	Note string `json:"note,omitempty"`
 }
 
 func (s *Storage) wordMetaKey() string {
