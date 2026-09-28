@@ -64,6 +64,8 @@ func runUpdateDef(fs *flag.FlagSet, lang string) {
 
 	// 改完还跟别的词一字不差的话，复习时照样分不出来 —— 点名提醒。
 	sameAs := sameDefinitionWords(arc.Groups, input.Definition, w.Word)
+	// 主部（括号前）撞车也要点名：不是一字不差照样没区分度。
+	sameCoreAs := sameCoreWords(arc.Groups, input.Definition, w.Word)
 
 	// Calculate version
 	oldDate, oldMajor, oldMinor, _ := ParseFilename(oldFilename)
@@ -95,6 +97,9 @@ func runUpdateDef(fs *flag.FlagSet, lang string) {
 	}
 	if len(sameAs) > 0 {
 		out["same_def_as"] = sameAs
+	}
+	if len(sameCoreAs) > 0 {
+		out["same_core_as"] = sameCoreAs
 	}
 	outputResult(out)
 }

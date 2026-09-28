@@ -46,3 +46,57 @@ func TestSameDefinitionWords(t *testing.T) {
 		t.Errorf("勉强 = %v, want [むり]", got)
 	}
 }
+
+func TestDefinitionCore(t *testing.T) {
+	cases := map[string]string{
+		"开(电器/灯)":     "开",
+		"开（灯）":       "开",
+		"浴室、洗澡（泡澡）":   "浴室、洗澡",
+		"过":          "过",
+		"通过，穿过（空间上…）": "通过，穿过",
+		"（只有括号）":      "",
+		"   ":        "",
+	}
+	for in, want := range cases {
+		if got := definitionCore(in); got != want {
+			t.Errorf("definitionCore(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSameCoreWords(t *testing.T) {
+	groups := []WordGroup{{Title: "g", Words: []Word{
+		{Word: "とても", Definition: "非常"},
+		{Word: "あけます", Definition: "开(门窗)"},
+		{Word: "つけます", Definition: "开(电器/灯)"},
+		{Word: "すぎます", Definition: "过"},
+	}}}
+	// 义项部分重合（老师 09-28 反馈的真实场景：なかなか「相当，很，非常」vs とても「非常」）
+	if got := sameCoreWords(groups, "相当，很，非常", "なかなか"); len(got) != 1 || got[0] != "とても" {
+		t.Errorf("共享义项「非常」应命中とても，got %v", got)
+	}
+	// 主部完全相同也命中
+	if got := sameCoreWords(groups, "非常", "XXX"); len(got) != 1 || got[0] != "とても" {
+		t.Errorf("同义项应命中とても，got %v", got)
+	}
+	// 两边都带区分括号 → 不算撞车（开(门窗) / 开(电器/灯) 是合格范例）
+	if got := sameCoreWords(groups, "开(门窗类)", "XXXX"); len(got) != 0 {
+		t.Errorf("两边都有括号区分点不应报警，got %v", got)
+	}
+	// 自己有括号、对方是裸释义 → 对方没区分度，报
+	if got := sameCoreWords(groups, "过（时间流逝）", "とおります"); len(got) != 1 || got[0] != "すぎます" {
+		t.Errorf("对方无括号应报警，got %v", got)
+	}
+	// 义项集合完全不同 → 不报
+	if got := sameCoreWords(groups, "迟到", "ちこく"); len(got) != 0 {
+		t.Errorf("无义项交集不应报警，got %v", got)
+	}
+	// 空释义不报
+	if got := sameCoreWords(groups, "", "x"); len(got) != 0 {
+		t.Errorf("空释义不应报警，got %v", got)
+	}
+	// 只含括号（主部为空）不报
+	if got := sameCoreWords(groups, "（仅注释）", "x"); len(got) != 0 {
+		t.Errorf("主部为空不应报警，got %v", got)
+	}
+}

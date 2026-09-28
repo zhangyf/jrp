@@ -27,6 +27,74 @@ func sameDefinitionWords(groups []WordGroup, def, exclude string) []string {
 	return out
 }
 
+// definitionCore 取释义的「主部」：第一个括号之前的部分，去掉尾部标点。
+// 「开(电器/灯)」→「开」、「浴室、洗澡（泡澡）」→「浴室、洗澡」。
+func definitionCore(def string) string {
+	if i := strings.IndexAny(def, "（("); i >= 0 {
+		def = def[:i]
+	}
+	return strings.TrimRight(strings.TrimSpace(def), "、,，;；/／ ")
+}
+
+// definitionTerms 把释义主部切成单个义项：「浴室、洗澡」→ [浴室 洗澡]、
+// 「通过，经过」→ [通过 经过]。义项是复习时真正被拿来比对的最小单位。
+func definitionTerms(def string) []string {
+	core := definitionCore(def)
+	if core == "" {
+		return nil
+	}
+	parts := strings.FieldsFunc(core, func(r rune) bool {
+		return r == '、' || r == '，' || r == ',' || r == '；' || r == ';' ||
+			r == '/' || r == '／'
+	})
+	var out []string
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func termsOverlap(a, b []string) bool {
+	for _, x := range a {
+		for _, y := range b {
+			if x == y {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// sameCoreWords 找出「义项撞车」的词：两个词的中文释义只要共享一个义项，
+// 复习时看中文就可能分不出该写哪个（2026-09-28 老师反馈：なかなか「相当，很，非常」
+// vs とても「非常」——不是一字不差，但照样没区分度；とおります「通过，经过」
+// vs すぎます「过」同理）。两边都写了括号区分点（开(门窗) / 开(电器/灯)）算合格，不报。
+func sameCoreWords(groups []WordGroup, def, exclude string) []string {
+	terms := definitionTerms(def)
+	if len(terms) == 0 {
+		return nil
+	}
+	hasNote := strings.ContainsAny(def, "（(")
+	var out []string
+	for _, g := range groups {
+		for _, w := range g.Words {
+			if w.Word == exclude {
+				continue
+			}
+			// 两边都写了括号区分点，说明已经处理过，不再点名
+			if hasNote && strings.ContainsAny(w.Definition, "（(") {
+				continue
+			}
+			if termsOverlap(terms, definitionTerms(w.Definition)) {
+				out = append(out, w.Word)
+			}
+		}
+	}
+	return out
+}
+
 func runAddWords(fs *flag.FlagSet, lang string) {
 	inputFile := fs.String("input", "", "JSON file with words to add (default: stdin)")
 	groupName := fs.String("group", "", "Override group name for all words")
@@ -110,6 +178,7 @@ func runAddWords(fs *flag.FlagSet, lang string) {
 	// 哪个（2026-09-24 老师反馈：だめ / いけません 都写成「不行，不可以」）。
 	// 不阻断导入，只在输出里点名，逼着把区分补进括号里。
 	var dupDefs []string
+	var dupCores []string
 
 	// Add words (skip duplicates already in archive)
 	added := 0
@@ -123,6 +192,9 @@ func runAddWords(fs *flag.FlagSet, lang string) {
 		if others := sameDefinitionWords(arc.Groups, w.Definition, ""); len(others) > 0 {
 			dupDefs = append(dupDefs, fmt.Sprintf("新词「%s」的释义与已有「%s」完全相同：%s —— 请加括号区分用法",
 				w.Word, strings.Join(others, "、"), w.Definition))
+		} else if others := sameCoreWords(arc.Groups, w.Definition, ""); len(others) > 0 {
+			dupCores = append(dupCores, fmt.Sprintf("新词「%s」的主释义「%s」与已有「%s」相同 —— 请在括号里写上区分点（用法/搭配/范围）",
+				w.Word, definitionCore(w.Definition), strings.Join(others, "、")))
 		}
 		targetGroup.Words = append(targetGroup.Words, Word{
 			Word:       w.Word,
@@ -173,6 +245,9 @@ func runAddWords(fs *flag.FlagSet, lang string) {
 	}
 	if len(dupDefs) > 0 {
 		out["dup_definitions"] = dupDefs
+	}
+	if len(dupCores) > 0 {
+		out["dup_core_definitions"] = dupCores
 	}
 	outputResult(out)
 }
