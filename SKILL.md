@@ -1,6 +1,6 @@
 ---
 title: "Language Review Planner (jrp)"
-summary: "Ebbinghaus-based vocabulary review system. Manages word archives, generates Excel review plans with sentence exercises, records review results, and tracks progress. Supports Japanese/English/French."
+summary: "Ebbinghaus-based vocabulary review system. Manages word archives, generates Excel review plans with sentence exercises, records review results, and tracks progress. Also ships a self-hosted web review UI (flashcard + handwriting + 活用练习). Supports Japanese/English/French."
 read_when:
   - User wants to review vocabulary words
   - User sends photos of textbook vocabulary sections
@@ -11,6 +11,8 @@ read_when:
   - User asks for learning statistics
   - User sends textbook photos for knowledge document creation
   - User mentions 日语/英语/法语 单词复习, 生词, 记忆曲线, 复习计划
+  - User asks about the web review UI / 网页版 / 活用练习（动词て形、形容词过去式等）
+  - User asks to build/update/deploy jrp to the server (部署、上线、服务器)
 ---
 
 # Language Review Planner (jrp)
@@ -967,6 +969,60 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
   `~/.workbuddy/cos-credentials/.env` 再执行。
 - **本机源码目录** `~/jrp`（Windows 那边是 `C:\Users\efrainzhang\jrp-src`，别混）。
 
+## Server Deployment（腾讯云）
+
+老师日常用的是**服务器上的 serve**，不是本机页。改完代码必须双端部署。
+
+| 项 | 值 |
+|---|---|
+| 机器 | `root@154.8.216.179`（已配免密 SSH 公钥，直接 ssh 即可） |
+| 对外地址 | `https://jrp.110105.xyz`（nginx TLS + Basic Auth） |
+| 证书 | `/etc/nginx/ssl/tencent/jrp_bundle.crt` + `jrp.key` |
+| 密码文件 | `/etc/nginx/.jrp_htpasswd` |
+| 反代 | `/etc/nginx/nginx.conf` 里的内联 server 块，`proxy_pass http://127.0.0.1:8080`（**没有** sites-enabled） |
+| 服务 | systemd `jrp.service`，`ExecStart=/usr/local/bin/jrp --lang ja serve --addr 127.0.0.1 --port 8080` |
+| 二进制 | `/usr/local/bin/jrp`（老师访问的就是这个文件） |
+
+### 部署流程（固化）
+
+```bash
+# 1) 本机交叉编译。CGO_ENABLED=0 必须——默认开 CGO 编出来的二进制依赖本机 glibc，服务器跑不起来
+cd ~/jrp
+export PATH="$HOME/.workbuddy/binaries/go/bin:$PATH"
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /tmp/jrp-linux-amd64 .
+
+# 2) 上传
+scp /tmp/jrp-linux-amd64 root@154.8.216.179:/tmp/jrp-new
+
+# 3) 停服 → 覆盖 → 启动（顺序不能反，见坑 1）
+ssh root@154.8.216.179 '
+  cp /usr/local/bin/jrp /usr/local/bin/jrp.bak_$(date +%Y%m%d_%H%M) 2>/dev/null || true
+  systemctl stop jrp
+  cp /tmp/jrp-new /usr/local/bin/jrp && chmod +x /usr/local/bin/jrp && rm -f /tmp/jrp-new
+  systemctl start jrp; sleep 2; systemctl is-active jrp
+'
+
+# 4) 验证——不能只看服务活着，要验「内嵌资源真的换了」
+ssh root@154.8.216.179 'strings /usr/local/bin/jrp | grep -c conj-input;
+  curl -s http://127.0.0.1:8080/ | grep -o "page-conj";
+  curl -s "http://127.0.0.1:8080/api/conjugation?type=verb&count=1"'
+```
+
+本机同时也要更新（命令行工具走的是它）：
+`cp /tmp/jrp-mac ~/.workbuddy/skills/jrp/bin/jrp`（先备份成 `jrp.bak_<日期>`）。
+
+### 踩过的坑
+
+1. **`Text file busy`** —— 服务在跑时直接 cp 覆盖二进制必失败；**先 `systemctl stop`**。
+2. **只更了中间产物忘了 `/usr/local/bin/jrp`** —— 老师访问的是这个路径，覆盖别处的副本不生效。
+3. **两端要分别构建** —— Mac 版（`~/.workbuddy/skills/jrp/bin/jrp`）和 Linux 版是两个文件，
+   容易只更一边。前端是 `go:embed` 打进去的，**改了任何 `web/` 下的文件两端都得重编**。
+4. **`systemctl is-active` 不能证明部署成功** —— 服务活着但跑旧二进制，
+   现象就是老师说的「刷新了网页还是老样子」。用 `strings` 查内嵌资源或直接 curl 接口。
+5. **本机自测用另一个端口**（如 `--port 8099`，`--addr 127.0.0.1` 无鉴权），测完 `pkill`，
+   别和本机常驻的 8080 打架。
+6. **ssh/scp 输出里会夹腾讯云扫码横幅**，取数据时 `2>/dev/null` 过滤，别当成错误。
+
 ## Language Codes
 
 | Code | Language | Archive Prefix | IMA Knowledge Base |
@@ -989,8 +1045,12 @@ All commands: `$JRP_BIN --lang <ja|en|fr> <command> [flags]`
 ## GitHub
 
 - Repo: https://github.com/zhangyf/jrp (public)
-- Always use GitHub MCP connector for code operations (read, push, create files)
-- Direct git push may fail with 502; MCP or API is more reliable
+- **写操作走命令行 + PAT**：token 存在 `~/.workbuddy/cos-credentials/github-token`，
+  git 已配 `credential.helper store`（`~/.git-credentials`，仅对 `github.com` 生效），
+  `git push` 直接可用（2026-09-28 实测通过）。**绝不要把 token 内容写进仓库、回复或日志**。
+- WorkBuddy 的 GitHub connector 是只读集成，创建/推送一律用 CLI。
+- 偶发 `unable to get credential storage lock in 1000 ms: File exists` 是
+  `~/.git-credentials.lock` 残留，`rm -f ~/.git-credentials.lock` 即可，不影响推送结果。
 
 ## Environment
 
@@ -1045,6 +1105,7 @@ for **active flashcard-style review** — one word at a time, answer by keyboard
 - `GET /api/plan?date=YYYY-MM-DD` — returns today's due-word plan (auto-inits v1.0 archive if
   the latest is from a previous day; uploads the plan JSON so `record` can resolve numbers)
 - `POST /api/record` — applies results (same logic as CLI `record`), bumps version, uploads archive
+- `GET /api/conjugation?type=verb|adj&count=N` — 活用练习题（见下节）
 - Frontend `web/index.html` + `web/kanji/` (KanjiCanvas, MIT). Handwriting recognizes
   **kanji + hiragana + katakana** (kana patterns were generated from KanjiCanvas XML and appended
   to `ref-patterns.js`). Recognition is per-character → user taps candidate → assembled into the word.
@@ -1054,3 +1115,27 @@ for **active flashcard-style review** — one word at a time, answer by keyboard
 
 Run: `jrp --lang ja serve --addr 0.0.0.0 --port 8080` to expose on a server; default `127.0.0.1:8080`.
 COS credentials load the same way as other commands (`.env.enc` or env vars).
+
+## 活用练习页（动词 / 形容词活用）
+
+`serve` 端有两个**只练不计档**的活用练习页（2026-09-28 新增）：给出档案里的原始词，
+老师自己写出活用形，比默写原词更能验规则是否内化。
+
+| 页 | 接口 | 题型 |
+|---|---|---|
+| 动词活用 | `GET /api/conjugation?type=verb&count=N` | 一卡**两空**：原形 + て形 |
+| 形容词活用 | `GET /api/conjugation?type=adj&count=N` | 一卡**三空**：过去式 / 否定形 / 过去否定形（都带 です） |
+
+- 词池 = 档案全部词条按词性表 `pos`/`sub` 过滤（当前 102 动词 / 88 形容词）。
+  `sub` 兼容「一类/二类/三类」「い形/な形」**和**数字 `1/2/3` 两种写法——
+  词性表实际用的是中文类别名，只认数字会让词池缩到个位数。
+- 判分复用 `grade.js`：答案里用 `/` 分隔的多个写法**都算对**
+  （ナ形否定 `じゃありません/ではありません/じゃないです/ではないです` 全认）。
+- 特殊形按规则判：`いい→よかった`、`かっこいい→かっこよかった`；
+  行く例外（`行って`）；特殊五段词干认 **い 结尾**
+  （`ください/なさい/いらっしゃい/おっしゃい/ござい`）——写成「ござ」会让 `ございます` 算成 `ござう`。
+- 跳过 `〜ています` 与寒暄固定说法；**纯前端作答，不写档案、不 bump 版本、不进统计**。
+- 单测在 `api_conjugation_test.go`（含 `かいます` 这类普通五段的反面保护，防被特殊规则误伤）：`go test -run TestConj ./...`
+
+⚠️ 改完 `api_conjugation.go` / `web/conjugation.js` 必须**重新交叉编译并部署服务器**，
+否则老师页面看不到变化（见下一节）。判断新旧最可靠的办法是 `strings <二进制> | grep conj-input`。
