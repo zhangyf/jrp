@@ -435,3 +435,33 @@ details[open] summary { margin-bottom: 10px; }
   background: var(--ink); color: #fff; padding: 8px 18px; border-radius: 8px;
   font-size: 14px; z-index: 50;
 }
+
+/* ---------------- 活用专项（动词原形/て形、形容词过去/否定） ---------------- */
+.conj-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.conj-card.bad { border-color: var(--bad); background: var(--bad-soft); }
+.conj-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.conj-word { font-size: 17px; font-weight: 600; }
+.conj-tasks { display: flex; gap: 10px; flex-wrap: wrap; }
+.conj-task {
+  display: flex; flex-direction: column; gap: 3px;
+  font-size: 12px; color: var(--muted);
+  flex: 1; min-width: 150px;
+}
+.conj-input {
+  font: inherit; padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: #fff; color: var(--ink);
+}
+.conj-input:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.conj-feedback { margin-top: 6px; font-size: 13px; }
+.conj-ok { color: var(--good); }
+.conj-no { color: var(--bad); }

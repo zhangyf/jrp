@@ -60,6 +60,7 @@ var app = {
     else if (page === 'hard') hard.load();
     else if (page === 'stats') stats.load();
     else if (page === 'lexicon') lexicon.load();
+    else if (page === 'conj') conj.load();
   },
 
   // api 统一走这里：带上 token，401 时弹 token 输入条。

@@ -14,6 +14,7 @@
     <button class="tab" data-page="practice">今日练习</button>
     <button class="tab" data-page="sentence">造句</button>
     <button class="tab" data-page="hard">钉子户</button>
+    <button class="tab" data-page="conj">活用专项</button>
     <button class="tab" data-page="offline">离线回填</button>
     <button class="tab" data-page="stats">统计</button>
     <button class="tab" data-page="lexicon">词汇总表</button>
@@ -149,6 +150,34 @@
     </div>
   </section>
 
+  <!-- 活用专项：给出原词，写活用形。纯自测，不回写档案。
+       动词 = 原形 + て形；形容词（い形/ナ形）= 过去式 / 否定形 / 过去否定形。 -->
+  <section id="page-conj" class="page hidden">
+    <div class="lexbar">
+      <label class="muted">类型
+        <select id="conjType">
+          <option value="verb" selected>动词（原形 / て形）</option>
+          <option value="adj">形容词（过去 / 否定 / 过去否定）</option>
+        </select>
+      </label>
+      <label class="muted">题量
+        <select id="conjCount">
+          <option value="10" selected>10 题</option>
+          <option value="15">15 题</option>
+          <option value="20">20 题</option>
+        </select>
+      </label>
+      <button id="conjReload">换一批</button>
+      <button id="conjGrade" class="primary">对答案</button>
+      <button id="conjClear" class="ghost">清空</button>
+      <span id="conjPool" class="muted"></span>
+    </div>
+    <div id="conjSummary" class="summary"></div>
+    <div id="conjBody"></div>
+    <div id="conjMsg" class="feedback"></div>
+    <p class="muted">这一页只练不记档：不写进复习档案、不影响正确率和到期安排。</p>
+  </section>
+
   <!-- 离线回填 -->
   <section id="page-offline" class="page hidden">
     <div class="card">
@@ -220,6 +249,7 @@
 <script src="chart.js"></script>
 <script src="stats.js"></script>
 <script src="lexicon.js"></script>
+<script src="conjugation.js"></script>
 <script>app.boot()</script>
 </body>
 </html>
