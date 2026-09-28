@@ -120,18 +120,21 @@ main { max-width: 860px; margin: 0 auto; padding: 18px; }
   border-radius: 8px;
   background: var(--bg);
   overflow: hidden;
+  display: flex; align-items: stretch;
 }
-.facts .f-row {
-  display: flex; align-items: baseline; gap: 12px;
+/* 左右并排：词性窄、备注宽。窄屏（手机）才退回上下两行 */
+.facts .f-cell {
+  display: flex; align-items: baseline; gap: 8px;
   padding: 7px 12px;
+  min-width: 0;
 }
-.facts .f-row + .f-row { border-top: 1px solid var(--line); }
+.facts .f-pos { flex: 0 0 34%; }
+.facts .f-note { flex: 1 1 auto; border-left: 1px solid var(--line); }
 .facts dt {
-  flex: 0 0 3em; margin: 0;
+  flex: 0 0 auto; margin: 0;
   color: var(--muted); font-size: 13px;
 }
-.facts dd { margin: 0; flex: 1; font-size: 14px; }
-.facts .f-note { line-height: 1.5; }
+.facts dd { margin: 0; flex: 1; min-width: 0; font-size: 14px; line-height: 1.5; }
 .facts .f-empty { color: #bfbfb5; }
 .pos-chip {
   display: inline-block; padding: 1px 10px; border-radius: 999px;
@@ -139,9 +142,13 @@ main { max-width: 860px; margin: 0 auto; padding: 18px; }
   font-size: 13px; font-weight: 600;
 }
 .word-item .facts { margin: 6px 0 0; }
-.word-item .facts .f-row { padding: 5px 10px; }
+.word-item .facts .f-cell { padding: 5px 10px; }
 .word-item .facts dd { font-size: 13px; }
-.word-item .facts dt { flex-basis: 2.6em; }
+@media (max-width: 560px) {
+  .facts { flex-direction: column; }
+  .facts .f-pos { flex: none; }
+  .facts .f-note { border-left: none; border-top: 1px solid var(--line); }
+}
 
 input[type=text] {
   width: 100%;

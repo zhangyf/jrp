@@ -136,8 +136,9 @@ var app = {
     return t;
   },
 
-  // 「词性 / 备注」两行。卡片模式、列表模式、今日练习、钉子户全都调这一个
-  // 函数 —— 同一件事不许画成两种样子（2026-09-23 老师定的规矩）。
+  // 「词性 / 备注」左右并排两格（2026-09-28 老师：上下放太占地）。
+  // 卡片模式、列表模式、今日练习、钉子户全都调这一个函数 ——
+  // 同一件事不许画成两种样子（2026-09-23 老师定的规矩）。
   //   w         词条目（pos/sub/note）
   //   extraNote 兜底备注：释义括号里拆出来的那截。词表里手写了 note 就以
   //             手写的为准（那是老师亲自校准过的区分点）。
@@ -146,11 +147,11 @@ var app = {
     var pos = this.posText(w);
     var note = String(w.note || '').trim() || String(extraNote || '').trim();
     return '<dl class="facts">' +
-      '<div class="f-row"><dt>词性</dt><dd>' +
+      '<div class="f-cell f-pos"><dt>词性</dt><dd>' +
         (pos ? '<span class="pos-chip">' + esc(pos) + '</span>'
              : '<span class="f-empty">—</span>') +
       '</dd></div>' +
-      '<div class="f-row"><dt>备注</dt><dd class="f-note">' +
+      '<div class="f-cell f-note"><dt>备注</dt><dd>' +
         (note ? esc(note) : '<span class="f-empty">—</span>') +
       '</dd></div>' +
       '</dl>';
