@@ -239,7 +239,14 @@ Knowledge base IDs:
    日语里一词多义很常见，但复习义项只能有一个，否则老师看中文不知道该写哪个。
    `add-words` / `update-def` 会自动检测并输出 `dup_definitions` / `same_def_as`
    （一字不差）以及 `dup_core_definitions` / `same_core_as`（共享义项）——
-   看到警告就必须补区分，不能无视。Create a JSON file:
+   看到警告就必须补区分，不能无视。
+   **⚠️ 录完还要核「假名↔汉字」读音（2026-09-29 事故）**：第16课把「黒い」的假名
+   标成 くらい，生成了不存在的词形 `くらい(黒い)`「黑，黑色」，跟已有的
+   `くろい(黒い)`「黑色的」重复 —— 老师练习时写 くろい 被判错才发现。体检办法：
+   拉 `/api/lexicon`，按 kanji 分组找「同一汉字多种假名」（正常只剩 家 いえ/うち、
+   降ります おり/ふり 这种真两读）。发现同一个词有两个词形（其中一个错音）→
+   用 `merge-words` 合并，**不能**用 `update-word`（new_word 已存在会中止）；
+   合并后记得删 `word_meta.json` 里那条废弃词形的 pos 条目。Create a JSON file:
 
 ```json
 {
