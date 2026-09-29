@@ -1023,7 +1023,19 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
   `git fetch --depth 1` 正常。首次获取源码的可靠方式：codeload tarball
   （`https://codeload.github.com/zhangyf/jrp/tar.gz/refs/heads/main`），或 `git init` +
   `git remote add origin https://github.com/zhangyf/jrp.git` + `git fetch --depth 1 origin main`
-  + `git reset --hard origin/main`。
+  +   `git reset --hard origin/main`。
+- **`git pull` 报 `LibreSSL SSL_connect: SSL_ERROR_SYSCALL` 时，别反复重试网络**：本机代理
+  不稳，`pull` 会挂但 `git fetch origin` 通常能成。改成「先 fetch、再用本地引用快进」：
+  ```bash
+  git fetch origin && git merge --ff-only origin/main
+  ```
+- **merge 被 untracked 同名文件挡住**（`The following untracked working tree files would be
+  overwritten by merge`）：`git fetch` 之后工作区里可能已经出现了和远端同名的新文件。
+  **不要直接删** —— 先备份再逐字节比对，一致才删：
+  ```bash
+  cp api_judge.go /tmp/jrp_backup/ && git show origin/main:api_judge.go | diff api_judge.go - && rm api_judge.go
+  ```
+  比对不一致说明本地有独立改动，必须先问老师怎么处理。
 - **After editing `~/jrp/SKILL.md`, copy it to `~/.workbuddy/skills/jrp/SKILL.md`** — the two
   must stay in sync（与 Windows 同理）。
 - **⚠️ 拉到 2026-09-20 之后的构建，第一次跑之前先重加密**（Windows 那边改了密钥种子的
