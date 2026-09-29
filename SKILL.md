@@ -834,14 +834,28 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
 **开关与配置**（服务端环境变量，**密钥只在服务器，前端永远拿不到**）：
 
 ```bash
-JRP_LLM_ENDPOINT=https://api.deepseek.com/v1/chat/completions  # OpenAI 兼容的 chat/completions
+JRP_LLM_ENDPOINT=https://tokenhub.tencentmaas.com/v1/chat/completions  # OpenAI 兼容的 chat/completions
 JRP_LLM_API_KEY=sk-...
-JRP_LLM_MODEL=deepseek-chat   # 可选
-JRP_LLM_TIMEOUT=8             # 可选，秒，上限 60
+JRP_LLM_MODEL=deepseek-v4-flash-0731   # 可选
+JRP_LLM_TIMEOUT=8                      # 可选，秒，上限 60
 ```
 
 任一为空 → `/api/judge-sentence` 返回 `{"enabled": false}`，前端关掉开关，
 造句跟以前一模一样。**没配密钥时部署上去是安全的**。
+
+**实际在用的模型（2026-09-29 老师给的）**：腾讯 TokenHub 上的
+`deepseek-v4-flash-0731`，endpoint `https://tokenhub.tencentmaas.com/v1/chat/completions`，
+`Authorization: Bearer <key>` —— 标准 OpenAI 兼容格式，`callLLM` 直接支持，
+不用改代码，只填环境变量。
+
+**⚠️ 请求体必须带 `"stream": false`**（`buildLLMRequest`，有单测盯着）：
+不写这条，tokenhub 这类网关可能按 SSE 流式返回，`choices[0].message.content`
+会拿不到东西，判定全线失败。
+
+**密钥别在对话里传**：聊天层会脱敏/改写 token 样式的字符串，我这边拿到的
+可能已经是另一个值（2026-09-29 实测拿到的是无效 key，401。同样的坑在 GitHub
+PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp.env`**（权限 600），
+或者放到本地一个文件里告诉我路径，我读文件，不走对话。
 
 **老师的取舍（2026-09-29 明确选的）**：模型判「意思成立」但字面不同的句子
 **算过**，不进错句本；界面上写明「模型判定，与原句写法不同」并提示

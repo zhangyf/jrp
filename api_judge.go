@@ -113,14 +113,23 @@ func parseJudgeReply(reply string) (judgeResult, error) {
 
 // ---------- 调用 ----------
 
-func callLLM(cfg llmConfig, prompt string) (string, error) {
-	body, err := json.Marshal(map[string]interface{}{
+// buildLLMRequest 造请求体。抽出来是为了能单测 —— 「stream:false」这条
+// 一旦被删，网关可能改走 SSE，判定会全线失败（2026-09-29）。
+func buildLLMRequest(cfg llmConfig, prompt string) ([]byte, error) {
+	// 显式 stream:false —— 有些网关（腾讯云 tokenhub 这类）不写这条就按 SSE
+	// 流式返回，choices[0].message.content 会拿不到东西，判定直接失败。
+	return json.Marshal(map[string]interface{}{
 		"model":       cfg.Model,
 		"temperature": 0,
+		"stream":      false,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
 	})
+}
+
+func callLLM(cfg llmConfig, prompt string) (string, error) {
+	body, err := buildLLMRequest(cfg, prompt)
 	if err != nil {
 		return "", err
 	}

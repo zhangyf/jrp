@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -102,5 +103,38 @@ func TestJudgePromptKeepsConservativeRules(t *testing.T) {
 		if !strings.Contains(p, must) {
 			t.Errorf("prompt 缺少规则/内容 %q", must)
 		}
+	}
+}
+
+// 请求体必须显式 stream:false —— tokenhub 这类网关不写就按 SSE 返回，
+// 判定会全线拿不到内容。
+func TestBuildLLMRequestNonStreaming(t *testing.T) {
+	cfg := llmConfig{Endpoint: "https://tokenhub.tencentmaas.com/v1/chat/completions",
+		APIKey: "sk-x", Model: "deepseek-v4-flash-0731"}
+	b, err := buildLLMRequest(cfg, "判定一下")
+	if err != nil {
+		t.Fatalf("buildLLMRequest: %v", err)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatalf("请求体不是合法 JSON: %v", err)
+	}
+	if v, ok := m["stream"]; !ok || v != false {
+		t.Errorf("stream 必须是 false，got %#v（缺了它网关会走 SSE）", m["stream"])
+	}
+	if m["model"] != "deepseek-v4-flash-0731" {
+		t.Errorf("model 不对: %#v", m["model"])
+	}
+	msgs, ok := m["messages"].([]interface{})
+	if !ok || len(msgs) != 1 {
+		t.Fatalf("messages 应为 1 条，got %#v", m["messages"])
+	}
+	msg := msgs[0].(map[string]interface{})
+	if msg["role"] != "user" || !strings.Contains(msg["content"].(string), "判定一下") {
+		t.Errorf("messages[0] 内容不对: %#v", msg)
+	}
+	// 密钥绝不能出现在请求体里
+	if strings.Contains(string(b), cfg.APIKey) {
+		t.Errorf("请求体里不该出现密钥: %s", b)
 	}
 }
