@@ -22,11 +22,22 @@ type Draft struct {
 	Items     []DraftItem `json:"items"`
 }
 
+// DraftJudge 一句的模型判定结论。
+type DraftJudge struct {
+	Correct bool   `json:"correct"`
+	Reason  string `json:"reason,omitempty"`
+}
+
 type DraftItem struct {
 	Number  int    `json:"number"`
 	Answer  string `json:"answer"`
 	Unknown bool   `json:"unknown"`
 	Manual  bool   `json:"manual"`
+	// Judge 模型判定结果（造句用）。没问过模型就是 null。
+	//
+	// 存它的理由是「判定不能漂移」：同一句刷新一次换个结论，比没模型更糟。
+	// 恢复时只有写的句子跟草稿里的一字不差（归一化后）才认，改过字重新判。
+	Judge *DraftJudge `json:"judge,omitempty"`
 	// Prompt 题目原文：造句存原句，单词存词形。恢复时用来核对。
 	//
 	// 造句的 number 只是当天的 1..N 位置号，不是句子的身份。万一同一天

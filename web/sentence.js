@@ -24,7 +24,8 @@ var sentence = {
       self.date = d.date;
       self.items = (d.sentences || []).map(function (s) {
         return { number: s.number, chinese: s.chinese, answer: s.answer,
-                 input: '', correct: null, unknown: false, manual: false };
+                 input: '', correct: null, unknown: false, manual: false,
+                 llm: false, llmReason: '', judging: false };
       });
       if (!self.items.length) {
         el('sentenceSummary').innerHTML = '<span class="chip warn">句库没建或为空</span>';
@@ -61,8 +62,11 @@ var sentence = {
             UNK.set(s, false);
             self.renderItem(i);
           }
-          // 已经判过再改字：当场重判，别留着旧结论
+          // 已经判过再改字：当场按字面重判，别留着旧结论。
+          // 模型结论一律作废（想再问模型就再敲一次回车）—— 打字过程中
+          // 每敲一个字都去问模型既不必要也费钱。
           if (!s.unknown && s.correct !== null && s.input) {
+            s.llm = false; s.llmReason = ''; s.judging = false;
             s.correct = normSentence(s.input) === normSentence(s.answer);
             self.renderItem(i);
           }
@@ -82,16 +86,66 @@ var sentence = {
   },
 
   grade: function (i) {
+    var self = this;
     var s = this.items[i];
     var inp = el('sentenceList').querySelector('input[data-i="' + i + '"]');
     s.input = inp.value.trim();
     if (!s.input) return;
     if (s.unknown) return;                 // 「不会」就是错，别再按写的重判
+    // 重新提交 = 上一次的模型结论作废（改过字、或想再判一次）
+    s.llm = false; s.llmReason = ''; s.judging = false;
     s.correct = normSentence(s.input) === normSentence(s.answer);
     this.renderItem(i);
+    // 字面一致就到此为止：0 延迟、不依赖外网，绝大多数句子走这条路。
+    // 只有字面不一致才问模型 —— 每天最多 20 次，成本和延迟都无所谓。
+    if (!s.correct && app.llmEnabled !== false) self.askJudge(i);
     // 自动跳到下一题
     var next = el('sentenceList').querySelector('input[data-i="' + (i + 1) + '"]');
     if (next) next.focus();
+  },
+
+  // 问模型：这句意思成立吗。只判意思，不判语法（规则写在后端 prompt 里）。
+  //
+  // 三条铁律：
+  //  1. 模型挂了 / 没配密钥 → 退回字面判定，界面上多一行说明，练习照走。
+  //  2. 结论回来了但句子已经被改过 → 丢弃，绝不把旧结论糊到新句子上。
+  //  3. 结论存进草稿，刷新回来还是同一个结论（判定不漂移）。
+  askJudge: function (i) {
+    var self = this;
+    var s = self.items[i];
+    if (!s) return;
+    var snapshot = s.input;      // 发出去时写的句子，回来时核对
+    var answer = s.answer;
+    s.judging = true;
+    self.renderItem(i);
+
+    app.api('/api/judge-sentence', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answer: s.answer, chinese: s.chinese, input: snapshot })
+    }).then(function (d) {
+      if (d && d.enabled === false) {
+        app.llmEnabled = false;            // 服务端没配，这个会话不再问
+        var c0 = self.items[i];
+        if (c0) { c0.judging = false; self.renderItem(i); }
+        return;
+      }
+      var cur = self.items[i];
+      if (!cur || cur.answer !== answer || cur.input !== snapshot) return;  // 换了题/改了字
+      cur.judging = false;
+      if (d && d.by === 'llm') {
+        cur.llm = true;
+        cur.llmReason = String(d.reason || '').trim();
+        cur.correct = !!d.correct;
+      }
+      self.renderItem(i);
+      self.scheduleDraft();
+    }).catch(function () {
+      var cur = self.items[i];
+      if (!cur) return;
+      cur.judging = false;                 // 网络问题：按字面判定继续练
+      self.renderItem(i);
+    });
   },
 
   // 「不会」= 答错，跟写错一模一样。点了立刻显示正确答案。
@@ -124,8 +178,24 @@ var sentence = {
     }
     if (s.correct === null) { ans.innerHTML = ''; return; }
 
+    var judgeLine = '';
+    if (s.judging) {
+      judgeLine = '<div class="llm-note muted">模型判定中…（不影响提交，判不出来就按字面算）</div>';
+    } else if (s.llm) {
+      // 模型判对但字面不同：说清是模型判的、跟原句写法不一样，
+      // 并且点明可以自己勾「不会」—— 免得真没掌握的被模型放过去。
+      judgeLine = '<div class="llm-note">' +
+        (s.correct
+          ? '<span class="ok">意思成立</span>（模型判定，与原句写法不同）'
+          : '<span class="no">意思不对</span>（模型判定）') +
+        (s.llmReason ? '：' + esc(s.llmReason) : '') +
+        (s.correct ? '　<span class="muted">还是没把握就点「不会」</span>' : '') +
+        '</div>';
+    }
+
     ans.innerHTML =
       '<div>你写的：<span class="' + (s.correct ? 'ok' : 'no') + '">' + esc(s.input) + '</span></div>' +
+      judgeLine +
       '<div>正确答案：' + esc(s.answer) + '</div>' +
       '<div class="row"><label><input type="checkbox" data-i="' + i + '" ' +
       (s.manual ? 'checked' : '') + '> 算对</label>' +
@@ -140,7 +210,8 @@ var sentence = {
         s.correct = true;
         s.manual = true;       // 老师手改，草稿恢复/重判时不覆盖
       } else {
-        s.manual = false;      // 取消手改，退回按写的自动判定
+        s.manual = false;      // 取消手改，退回按写的自动判定（模型结论也不算数了）
+        s.llm = false; s.llmReason = '';
         s.correct = s.input ? normSentence(s.input) === normSentence(s.answer) : null;
       }
       box.classList.toggle('graded-ok', s.correct === true && !s.unknown);
@@ -175,13 +246,16 @@ var sentence = {
         mode: 'sentences',
         grade_mode: app.mode(),
         items: self.items.map(function (s) {
-          return {
+          var it = {
             number: s.number,
             answer: s.input || '',
             unknown: !!s.unknown,
             manual: !!s.manual,
             prompt: s.answer        // 原句指纹：恢复时核对，防止串到换过的题上
           };
+          // 模型结论跟着草稿走：刷新、换设备回来还是同一个结论
+          if (s.llm) it.judge = { correct: !!s.correct, reason: s.llmReason || '' };
+          return it;
         })
       })
     }).catch(function () {   // 草稿存不上不该打断练习
@@ -218,6 +292,11 @@ var sentence = {
           else {
             if (x.answer) s.input = x.answer;
             if (x.manual) { s.manual = true; s.correct = true; }
+            // 草稿里存过模型结论、且写的句子没变 → 直接复用，不再问一次
+            else if (x.judge && s.input && normSentence(s.input) === normSentence(x.answer)) {
+              s.llm = true; s.llmReason = String(x.judge.reason || '');
+              s.correct = !!x.judge.correct;
+            }
             else if (s.input) s.correct = normSentence(s.input) === normSentence(s.answer);
           }
           hit++;
@@ -250,6 +329,7 @@ var sentence = {
     bar.querySelector('button').addEventListener('click', function () {
       self.items.forEach(function (s, i) {
         s.input = ''; s.unknown = false; s.manual = false; s.correct = null;
+        s.llm = false; s.llmReason = ''; s.judging = false;
         var inp = el('sentenceList').querySelector('input[data-i="' + i + '"]');
         if (inp) inp.value = '';
         self.renderItem(i);

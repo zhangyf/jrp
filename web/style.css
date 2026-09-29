@@ -195,6 +195,9 @@ button:disabled { opacity: .5; cursor: default; }
 .sentence-item .row { margin-top: 6px; }
 .sentence-item input[type=text] { font-size: 16px; padding: 6px 10px; }
 .sentence-item .ans { font-size: 14px; margin-top: 6px; word-break: break-all; }
+/* 模型判定那一行：比正文小一号，跟「你写的 / 正确答案」区分开 */
+.sentence-item .llm-note { margin: 3px 0; font-size: 13px; line-height: 1.5; }
+.sentence-item .llm-note .muted { font-size: 12px; }
 .sentence-item.graded-ok { border-left: 3px solid var(--good); }
 .sentence-item.graded-no { border-left: 3px solid var(--bad); }
 /* 「不会」要压在 graded-no 后面才能覆盖红条 */

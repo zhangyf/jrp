@@ -813,6 +813,46 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
 4. Run: `jrp --lang ja save-lesson --file /tmp/lesson.md --name 第N课知识点.md`
 5. Report: document saved to COS
 
+## 造句的语义判定（大模型，2026-09-29 起，默认关闭）
+
+**为什么需要**：判分一直是**前端纯字面比对** —— `normSentence(我写的) === normSentence(原句)`，
+归一化只折全角半角、删空白和标点。换说法、换词序、换同义词一律判错。
+大模型只用来补这一块：**字面不一致时判断「意思成不成立」**。
+
+**四条底线（改这里之前先读）**：
+
+1. **字面一致永远直接判对**，一次模型都不调 —— 0 延迟、0 成本、不依赖外网。
+2. **只判意思，不判语法**。prompt 里的规则写死在 `api_judge.go` 的 `judgePrompt`：
+   汉字↔假名、全角半角、标点、空格、助词省略/添加、词序微调、同义词、敬体简体差异
+   一律算对；只有主体/动作/对象/时态/肯定否定错了才判错；**拿不准就判对**。
+   这条不能删 —— 删了模型就变成语法警察，会判一堆老师本来会的句子是错的。
+3. **模型不可用（没配密钥 / 超时 / 报错 / 返回 `by:"literal"`）就退回字面判定**，
+   练习绝不卡住，也不许把字面结论标成模型结论。
+4. **判定不漂移**：结论按 (原句, 写的句子) 缓存在进程里，并随草稿存 COS ——
+   刷新、换设备回来必须是同一个结论。改过字则作废重判。
+
+**开关与配置**（服务端环境变量，**密钥只在服务器，前端永远拿不到**）：
+
+```bash
+JRP_LLM_ENDPOINT=https://api.deepseek.com/v1/chat/completions  # OpenAI 兼容的 chat/completions
+JRP_LLM_API_KEY=sk-...
+JRP_LLM_MODEL=deepseek-chat   # 可选
+JRP_LLM_TIMEOUT=8             # 可选，秒，上限 60
+```
+
+任一为空 → `/api/judge-sentence` 返回 `{"enabled": false}`，前端关掉开关，
+造句跟以前一模一样。**没配密钥时部署上去是安全的**。
+
+**老师的取舍（2026-09-29 明确选的）**：模型判「意思成立」但字面不同的句子
+**算过**，不进错句本；界面上写明「模型判定，与原句写法不同」并提示
+「还是没把握就点『不会』」—— 真没掌握的由老师自己勾，不会漏。
+
+**测试**：后端 `TestParseJudgeReply`（含 ```json 围栏、前后废话、缺 correct 报错）
++ `TestLoadLLMConfig*`（没配就不启用）+ `TestJudgeCacheKeyFoldsWidth`
++ `TestJudgePromptKeepsConservativeRules`（prompt 规则不许被删）；
+前端 `outputs/sentence_judge_test.js` 21 项（含「写对了不调模型」「关掉后不再问」
+「模型挂了不冒充」「改字后旧结论作废」）。
+
 ## Critical Rules
 
 1. **Never manually edit archive markdown** — always use the Go CLI for archive operations
