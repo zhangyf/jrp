@@ -23,9 +23,14 @@ type Draft struct {
 }
 
 // DraftJudge 一句的模型判定结论。
+//
+// V 是判定规则版本：prompt 改了（判得松/紧变了），旧规则算出的结论就不该
+// 再被复用 —— 恢复草稿时只认 V 等于当前版本的结论，旧的重新问模型。
+// 2026-09-29 起为 2（v1 没有版本号，恢复时一律作废）。
 type DraftJudge struct {
-	Correct bool   `json:"correct"`
-	Reason  string `json:"reason,omitempty"`
+	V      int    `json:"v,omitempty"`
+	Correct bool  `json:"correct"`
+	Reason string `json:"reason,omitempty"`
 }
 
 type DraftItem struct {

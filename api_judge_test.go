@@ -96,6 +96,7 @@ func TestJudgePromptKeepsConservativeRules(t *testing.T) {
 		"只判断意思是否成立",
 		"汉字与假名",
 		"助词的省略或添加",
+		"感叹词、语气词、开场填充词",
 		"拿不准就判正确",
 		"参考答案：明日、京都へ行きます",
 		"学生写的：あした京都に行く",

@@ -254,7 +254,7 @@ var sentence = {
             prompt: s.answer        // 原句指纹：恢复时核对，防止串到换过的题上
           };
           // 模型结论跟着草稿走：刷新、换设备回来还是同一个结论
-          if (s.llm) it.judge = { correct: !!s.correct, reason: s.llmReason || '' };
+          if (s.llm) it.judge = { v: 2, correct: !!s.correct, reason: s.llmReason || '' };
           return it;
         })
       })
@@ -292,8 +292,9 @@ var sentence = {
           else {
             if (x.answer) s.input = x.answer;
             if (x.manual) { s.manual = true; s.correct = true; }
-            // 草稿里存过模型结论、且写的句子没变 → 直接复用，不再问一次
-            else if (x.judge && s.input && normSentence(s.input) === normSentence(x.answer)) {
+            // 草稿里存过模型结论、且是当前规则版本（v2）→ 直接复用，不再问一次。
+            // 旧版本结论（prompt 改过松紧）一律作废，恢复后重新问模型。
+            else if (x.judge && x.judge.v === 2 && s.input) {
               s.llm = true; s.llmReason = String(x.judge.reason || '');
               s.correct = !!x.judge.correct;
             }
