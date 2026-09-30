@@ -193,6 +193,24 @@ type LessonCount struct {
 	Count  int    `json:"count"`
 }
 
+// JlptProgress 日语能力考（JLPT）等级目标进度。
+//
+// 门槛值是常用的参考口径而不是官方标准：N5 约 800 词、语法到标日初级第 22 课；
+// N4 约 1500 词、语法到标日初级下册第 48 课。放在后端算，是为了让 CLI 和网站
+// 共用同一个口径，改门槛只改一处。
+type JlptProgress struct {
+	VocabTotal int        `json:"vocab_total"` // 词库总量
+	VocabFirm  int        `json:"vocab_firm"`  // 熟练词：正确率 ≥80% 且复习过
+	Lesson     int        `json:"lesson"`      // 当前课次，从分组名里解析出的最大课号
+	N5         JlptLevel  `json:"n5"`
+	N4         JlptLevel  `json:"n4"`
+}
+
+type JlptLevel struct {
+	Vocab  int `json:"vocab"`
+	Lesson int `json:"lesson"`
+}
+
 type HardWordCounts struct {
 	Severe   int `json:"severe"`
 	Moderate int `json:"moderate"`

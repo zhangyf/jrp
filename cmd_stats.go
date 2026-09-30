@@ -5,7 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
+	"strconv"
 	"time"
 )
 
@@ -14,6 +16,54 @@ type StatsResult struct {
 	Snapshots []StatsSnapshot   `json:"snapshots"`
 	Changes   map[string]string `json:"changes"`
 	Detail    *StatsDetail      `json:"detail"`
+	Jlpt      *JlptProgress     `json:"jlpt"`
+}
+
+// JLPT 等级门槛（参考口径，见 JlptProgress 注释）。
+const (
+	jlptN5Vocab  = 800
+	jlptN5Lesson = 22
+	jlptN4Vocab  = 1500
+	jlptN4Lesson = 48
+)
+
+// buildJlptProgress 用最新档案算 JLPT 进度。课号从分组名（如「第16课 生词表」）
+// 里正则取出，取最大值 —— 老师学到哪课，就由最新的生词表分组决定。
+func buildJlptProgress(groups []WordGroup) *JlptProgress {
+	words := AllWords(groups)
+
+	firm := 0
+	for _, w := range words {
+		if acc, ok := Accuracy(w); ok && acc >= 0.8 {
+			firm++
+		}
+	}
+
+	return &JlptProgress{
+		VocabTotal: len(words),
+		VocabFirm:  firm,
+		Lesson:     maxLesson(words),
+		N5:         JlptLevel{Vocab: jlptN5Vocab, Lesson: jlptN5Lesson},
+		N4:         JlptLevel{Vocab: jlptN4Vocab, Lesson: jlptN4Lesson},
+	}
+}
+
+var lessonRe = regexp.MustCompile(`第(\d+)课`)
+
+// maxLesson 返回单词分组名里最大的课号（跟 StatsDetail.ByLesson 同一口径），
+// 解析不出返回 0。
+func maxLesson(words []Word) int {
+	max := 0
+	for _, w := range words {
+		m := lessonRe.FindStringSubmatch(w.Group)
+		if m == nil {
+			continue
+		}
+		if n, err := strconv.Atoi(m[1]); err == nil && n > max {
+			max = n
+		}
+	}
+	return max
 }
 
 // ComputeStats 统计最近 days 天。CLI 与 HTTP handler 共用，两边都只读。
@@ -142,8 +192,13 @@ func computeStats(ctx context.Context, storage *Storage, lang string, days int) 
 
 	// Build detail from the last successfully parsed archive (reuse, no second download)
 	var detail *StatsDetail
+	var jlpt *JlptProgress
 	if lastArchive != nil {
 		detail = buildStatsDetail(lastArchive.Groups)
+		// JLPT 门槛是日语专属口径，其他语言不给，避免前端画出无意义的进度条
+		if lang == "ja" {
+			jlpt = buildJlptProgress(lastArchive.Groups)
+		}
 	}
 
 	// Calculate changes
@@ -160,7 +215,7 @@ func computeStats(ctx context.Context, storage *Storage, lang string, days int) 
 		changes["period"] = fmt.Sprintf("%s ~ %s", first.Date, last.Date)
 	}
 
-	return &StatsResult{Snapshots: snapshots, Changes: changes, Detail: detail}, nil
+	return &StatsResult{Snapshots: snapshots, Changes: changes, Detail: detail, Jlpt: jlpt}, nil
 }
 
 func lastIndexOf(s, substr string) int {

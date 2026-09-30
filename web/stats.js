@@ -20,6 +20,7 @@ var stats = {
 
     app.api('/api/stats?days=' + encodeURIComponent(days)).then(function (d) {
       el('statsBody').innerHTML =
+        stJlpt(d.jlpt) +
         stKpi(d.snapshots || []) +
         stShare(d.snapshots || []) +
         stTrend(d.snapshots || []) +
@@ -34,6 +35,76 @@ var stats = {
     });
   }
 };
+
+// JLPT 等级进度条：满格 = N4 目标，虚线 = N5 门槛。
+// 门槛值和当前值都由后端 /api/stats 的 jlpt 段给，这里一个数字都不写死，
+// 词库涨了、课次推进了，图自己跟着变。
+// 颜色是「过了 N5 没有」的信号：琥珀=还在 N5 线以下，绿色=已越过 N5 在冲 N4。
+function stJlpt(p) {
+  if (!p || !p.n4 || !p.n4.vocab || !p.n4.lesson) return '';
+
+  var rows = [
+    { label: '词汇量', sub: p.vocab_total + ' 词', cur: p.vocab_total, n5: p.n5.vocab, n4: p.n4.vocab },
+    { label: '熟练词汇', sub: p.vocab_firm + ' 词 · 正确率≥80%', cur: p.vocab_firm, n5: p.n5.vocab, n4: p.n4.vocab },
+    { label: '语法进度', sub: '第' + p.lesson + '课', cur: p.lesson, n5: p.n5.lesson, n4: p.n4.lesson }
+  ];
+
+  var X0 = 170, W = 390, H = 296;
+  var s = '<svg viewBox="0 0 680 ' + H + '" width="100%" role="img" ' +
+    'aria-label="JLPT N5 与 N4 等级目标的达成进度">';
+
+  s += '<text x="40" y="28" font-size="12" fill="var(--color-text-secondary)">' +
+    '满格 = N4（' + p.n4.vocab + ' 词 / 第' + p.n4.lesson + '课）　虚线 = N5（' +
+    p.n5.vocab + ' 词 / 第' + p.n5.lesson + '课）</text>';
+
+  rows.forEach(function (r, i) {
+    var cy = 62 + i * 62;
+    var n5w = W * Math.min(1, r.n5 / r.n4);
+    var curW = W * Math.min(1, r.cur / r.n4);
+    var below = Math.min(curW, n5w);
+    var above = Math.max(0, curW - n5w);
+
+    s += '<text x="40" y="' + (cy - 8) + '" font-size="13" font-weight="500" ' +
+      'fill="var(--color-text-primary)" dominant-baseline="central">' + esc(r.label) + '</text>';
+    s += '<text x="40" y="' + (cy + 11) + '" font-size="12" ' +
+      'fill="var(--color-text-secondary)" dominant-baseline="central">' + esc(r.sub) + '</text>';
+
+    s += '<rect x="' + X0 + '" y="' + (cy - 10) + '" width="' + W +
+      '" height="20" rx="10" fill="' + chart.PALETTE.line + '"/>';
+    if (below > 0) {
+      s += '<rect x="' + X0 + '" y="' + (cy - 10) + '" width="' + below.toFixed(1) +
+        '" height="20" rx="10" fill="' + chart.PALETTE.warn + '"/>';
+    }
+    if (above > 0) {
+      s += '<rect x="' + (X0 + n5w).toFixed(1) + '" y="' + (cy - 10) + '" width="' + above.toFixed(1) +
+        '" height="20" rx="10" fill="' + chart.PALETTE.accent + '"/>';
+    }
+
+    s += '<line x1="' + (X0 + n5w).toFixed(1) + '" y1="' + (cy - 16) + '" x2="' + (X0 + n5w).toFixed(1) +
+      '" y2="' + (cy + 16) + '" stroke="' + chart.PALETTE.muted + '" stroke-width="1" stroke-dasharray="3 3"/>';
+
+    s += '<text x="580" y="' + cy + '" font-size="13" font-weight="500" ' +
+      'fill="var(--color-text-primary)" dominant-baseline="central">' +
+      Math.round(Math.min(1, r.cur / r.n4) * 100) + '%</text>';
+  });
+
+  var gapFirm = Math.max(0, p.n5.vocab - p.vocab_firm);
+  var gapLesson = Math.max(0, p.n5.lesson - p.lesson);
+  var head = (!gapFirm && !gapLesson)
+    ? 'N5 门槛已达成，正冲 N4'
+    : '距 N5 还差：熟练词汇 +' + gapFirm + ' 词、语法 +' + gapLesson + ' 课';
+
+  s += '<rect x="40" y="216" width="600" height="60" rx="12" ' +
+    'fill="var(--color-background-secondary)" stroke="var(--color-border-tertiary)" stroke-width="0.5"/>';
+  s += '<text x="60" y="238" font-size="14" font-weight="500" ' +
+    'fill="var(--color-text-primary)" dominant-baseline="central">' + esc(head) + '</text>';
+  s += '<text x="60" y="260" font-size="12" fill="var(--color-text-secondary)" ' +
+    'dominant-baseline="central">词汇量 ' + p.vocab_total + ' / ' + p.n5.vocab +
+    '　熟练 ' + p.vocab_firm + ' / ' + p.n5.vocab +
+    '　语法 第' + p.lesson + ' / ' + p.n5.lesson + '课</text>';
+
+  return stCardWide('JLPT 进度', '满格 = N4 目标，虚线 = N5 门槛', s + '</svg>');
+}
 
 // 一张卡片。sub 是标题右侧的灰色小字说明
 function stCard(title, sub, body) {

@@ -31,5 +31,6 @@ func (s *server) handleStats(w http.ResponseWriter, r *http.Request) {
 		"snapshots": res.Snapshots,
 		"changes":   res.Changes,
 		"detail":    res.Detail,
+		"jlpt":      res.Jlpt,
 	})
 }
