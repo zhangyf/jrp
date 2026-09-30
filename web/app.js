@@ -131,10 +131,30 @@ var app = {
     return { main: main, note: note };
   },
 
-  posText: function (w) {
-    var t = (w && w.pos) ? String(w.pos) : '';
-    if (w && w.sub) t += '·' + w.sub;
+  // hideSub=true 只给大类（「动词」「形容词」），不暴露一类/二类这种小类 ——
+  // 活用专项答题前用：小类一写出来，て形怎么变就等于告诉你了（2026-09-30 老师）。
+  // 对答案之后才把小类补上，见 conjugation.js 的 grade()。
+  // 词性表里混着两套写法（老数据「动/1」，新数据「动词/一类」），显示层统一成中文。
+  // 只影响显示，不动数据。挂 app 上，避免污染全局（全局重名踩过整站白屏）。
+  POS_ALIAS: { '动': '动词', '形': '形容词', '名': '名词', '副': '副词' },
+  VERB_SUB: { '1': '一类', '2': '二类', '3': '三类' },
+  ADJ_SUB: { '1': 'い形', '2': 'な形' },
+
+  posText: function (w, hideSub) {
+    if (!w) return '';
+    var t = this.POS_ALIAS[String(w.pos || '')] || String(w.pos || '');
+    if (w.sub && !hideSub) t += '·' + this.subText(w);
     return t;
+  },
+
+  // 小类的显示名。词性表里混着两套写法（老数据用「动/1」，新数据用「动词/一类」），
+  // 显示层统一成中文写法，不然活用页揭开会显示成「动·1」。
+  subText: function (w) {
+    var s = String((w && w.sub) || '');
+    var p = this.POS_ALIAS[String((w && w.pos) || '')] || String((w && w.pos) || '');
+    if (p === '动词') return this.VERB_SUB[s] || s;
+    if (p === '形容词') return this.ADJ_SUB[s] || s;
+    return s;
   },
 
   // 「词性 / 备注」左右并排两格（2026-09-28 老师：上下放太占地）。
