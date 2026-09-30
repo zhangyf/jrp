@@ -53,7 +53,7 @@ function stJlpt(p) {
   var s = '<svg viewBox="0 0 680 ' + H + '" width="100%" role="img" ' +
     'aria-label="JLPT N5 与 N4 等级目标的达成进度">';
 
-  s += '<text x="40" y="28" font-size="12" fill="var(--color-text-secondary)">' +
+  s += '<text x="40" y="28" font-size="12" fill="var(--muted)">' +
     '满格 = N4（' + p.n4.vocab + ' 词 / 第' + p.n4.lesson + '课）　虚线 = N5（' +
     p.n5.vocab + ' 词 / 第' + p.n5.lesson + '课）</text>';
 
@@ -65,9 +65,9 @@ function stJlpt(p) {
     var above = Math.max(0, curW - n5w);
 
     s += '<text x="40" y="' + (cy - 8) + '" font-size="13" font-weight="500" ' +
-      'fill="var(--color-text-primary)" dominant-baseline="central">' + esc(r.label) + '</text>';
+      'fill="var(--ink)" dominant-baseline="central">' + esc(r.label) + '</text>';
     s += '<text x="40" y="' + (cy + 11) + '" font-size="12" ' +
-      'fill="var(--color-text-secondary)" dominant-baseline="central">' + esc(r.sub) + '</text>';
+      'fill="var(--muted)" dominant-baseline="central">' + esc(r.sub) + '</text>';
 
     s += '<rect x="' + X0 + '" y="' + (cy - 10) + '" width="' + W +
       '" height="20" rx="10" fill="' + chart.PALETTE.line + '"/>';
@@ -84,7 +84,7 @@ function stJlpt(p) {
       '" y2="' + (cy + 16) + '" stroke="' + chart.PALETTE.muted + '" stroke-width="1" stroke-dasharray="3 3"/>';
 
     s += '<text x="580" y="' + cy + '" font-size="13" font-weight="500" ' +
-      'fill="var(--color-text-primary)" dominant-baseline="central">' +
+      'fill="var(--ink)" dominant-baseline="central">' +
       Math.round(Math.min(1, r.cur / r.n4) * 100) + '%</text>';
   });
 
@@ -95,10 +95,10 @@ function stJlpt(p) {
     : '距 N5 还差：熟练词汇 +' + gapFirm + ' 词、语法 +' + gapLesson + ' 课';
 
   s += '<rect x="40" y="216" width="600" height="60" rx="12" ' +
-    'fill="var(--color-background-secondary)" stroke="var(--color-border-tertiary)" stroke-width="0.5"/>';
+    'fill="var(--accent-soft)" stroke="var(--line)" stroke-width="0.5"/>';
   s += '<text x="60" y="238" font-size="14" font-weight="500" ' +
-    'fill="var(--color-text-primary)" dominant-baseline="central">' + esc(head) + '</text>';
-  s += '<text x="60" y="260" font-size="12" fill="var(--color-text-secondary)" ' +
+    'fill="var(--ink)" dominant-baseline="central">' + esc(head) + '</text>';
+  s += '<text x="60" y="260" font-size="12" fill="var(--muted)" ' +
     'dominant-baseline="central">词汇量 ' + p.vocab_total + ' / ' + p.n5.vocab +
     '　熟练 ' + p.vocab_firm + ' / ' + p.n5.vocab +
     '　语法 第' + p.lesson + ' / ' + p.n5.lesson + '课</text>';
