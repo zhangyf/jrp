@@ -113,7 +113,8 @@ var lexicon = {
 
     var head = [
       ['number', '#'], ['kana', '假名'], ['kanji', '汉字'], ['def', '中文释义'],
-      ['pos', '词性'], ['status', '阶段'], ['reviews', '复习'], ['errors', '错']
+      ['pos', '词性'], ['status', '阶段'], ['reviews', '复习'], ['errors', '错'],
+      ['word_note', '备注']
     ];
     var self = this;
     var th = head.map(function (h) {
@@ -133,6 +134,7 @@ var lexicon = {
         '<td class="st">' + esc(it.status || '') + '</td>' +
         '<td class="num">' + it.reviews + '</td>' +
         '<td class="num' + (it.errors > 0 ? ' bad' : '') + '">' + (it.errors || '·') + '</td>' +
+        '<td class="note">' + (it.word_note ? esc(it.word_note) : '<span class="muted">·</span>') + '</td>' +
         '</tr>';
     }).join('');
 

@@ -16,8 +16,9 @@ type LexiconItem struct {
 	Word    string `json:"word"`    // 原始词形，做键用
 	Kana    string `json:"kana"`    // 假名（括号前）
 	Kanji   string `json:"kanji"`   // 汉字（半角括号里）
-	Note    string `json:"note"`    // 语法注释（全角括号里，如「敬称」「主题助词」）
-	Def     string `json:"def"`     // 中文释义
+	Note     string `json:"note"`      // 语法注释（全角括号里，如「敬称」「主题助词」）
+	WordNote string `json:"word_note"` // 近义区分备注（word_meta.json 的 note，跟练习卡片同一份）
+	Def      string `json:"def"`       // 中文释义
 	Pos     string `json:"pos"`     // 词性大类
 	Sub     string `json:"sub"`     // 细分：一类/二类/三类、い形/な形
 	Status  string `json:"status"`  // 🟢已掌握 / 🟡基本掌握 / 🔴待巩固 ...
@@ -94,19 +95,20 @@ func (s *server) handleLexicon(w http.ResponseWriter, r *http.Request) {
 		kana, kanji, note := splitLexiconWord(w.Word)
 		pos := meta.Items[w.Word]
 		it := LexiconItem{
-			Number:  i + 1,
-			Word:    w.Word,
-			Kana:    kana,
-			Kanji:   kanji,
-			Note:    note,
-			Def:     w.Definition,
-			Pos:     pos.Pos,
-			Sub:     pos.Sub,
-			Status:  w.Status,
-			Group:   w.Group,
-			Reviews: w.ReviewCount,
-			Errors:  w.ErrorCount,
-			Last:    w.LastReview,
+			Number:   i + 1,
+			Word:     w.Word,
+			Kana:     kana,
+			Kanji:    kanji,
+			Note:     note,
+			WordNote: pos.Note,
+			Def:      w.Definition,
+			Pos:      pos.Pos,
+			Sub:      pos.Sub,
+			Status:   w.Status,
+			Group:    w.Group,
+			Reviews:  w.ReviewCount,
+			Errors:   w.ErrorCount,
+			Last:     w.LastReview,
 		}
 		items = append(items, it)
 
