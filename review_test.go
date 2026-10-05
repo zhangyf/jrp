@@ -93,3 +93,51 @@ func TestMergeReviewPartialCommit(t *testing.T) {
 		t.Errorf("order wrong: %+v", merged)
 	}
 }
+
+// 老师中途刷新页面（客户端状态清零）后整批重发，早前批次已答的词在
+// 新批次里全成了 blank —— blank 不能把已答条目（尤其错词）覆盖掉。
+// 2026-10-05 事故：当天 10 个错词被抹得只剩 7 个。
+func TestMergeReviewBlankDoesNotClobberAnswered(t *testing.T) {
+	old := []ReviewItem{
+		{Number: 1, Word: "a", Correct: false, Answer: "あけみ", Status: "🔴待巩固"},
+		{Number: 2, Word: "b", Correct: true},
+		{Number: 3, Word: "c", Blank: true},
+	}
+	// 刷新后的整批重发：#1 #2 变 blank，#3 照旧 blank，#4 是新练的
+	newer := []ReviewItem{
+		{Number: 1, Word: "a", Blank: true},
+		{Number: 2, Word: "b", Blank: true},
+		{Number: 3, Word: "c", Blank: true},
+		{Number: 4, Word: "d", Correct: false, Answer: "で"},
+	}
+	got := mergeReview(newer, old)
+
+	if len(got) != 4 {
+		t.Fatalf("merged len = %d, want 4", len(got))
+	}
+	if got[0].Number != 1 || got[0].Blank || got[0].Correct || got[0].Answer != "あけみ" {
+		t.Errorf("#1 blank 不该覆盖已答错词: %+v", got[0])
+	}
+	if got[1].Number != 2 || got[1].Blank || !got[1].Correct {
+		t.Errorf("#2 blank 不该覆盖已答对词: %+v", got[1])
+	}
+	if got[2].Number != 3 || !got[2].Blank {
+		t.Errorf("#3 双方都是 blank，取新: %+v", got[2])
+	}
+	if got[3].Number != 4 || got[3].Blank {
+		t.Errorf("#4 新练的照常追加: %+v", got[3])
+	}
+}
+
+// 反向：刷新后老师把之前空着的词练了（非 blank）→ 正常覆盖。
+func TestMergeReviewAnsweredClobbersBlank(t *testing.T) {
+	old := []ReviewItem{
+		{Number: 1, Word: "a", Blank: true},
+	}
+	got := mergeReview([]ReviewItem{
+		{Number: 1, Word: "a", Correct: false, Answer: "みせ"},
+	}, old)
+	if got[0].Blank || got[0].Correct || got[0].Answer != "みせ" {
+		t.Errorf("非 blank 该覆盖 blank: %+v", got[0])
+	}
+}

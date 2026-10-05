@@ -72,6 +72,11 @@ func (s *Storage) UploadReview(ctx context.Context, snap *ReviewSnapshot) error 
 
 // mergeReview 按 Number 合并，newer 覆盖 old，并保持 old 的相对顺序、
 // 把 old 里没有的新词追加在后面。
+//
+// 例外：newer 是空条目（blank，没练也没标「不会」）而 old 已经有作答内容时，
+// 保留 old。老师中途刷新页面后客户端状态清零，再提交会把整批都发上来，
+// 里面早前批次已答的词全变成 blank —— 直接覆盖会把当天已回写的错词抹掉
+// （2026-10-05 事故：当天 10 个错词只剩 7 个）。空条目没有信息量，不该覆盖。
 func mergeReview(newer, old []ReviewItem) []ReviewItem {
 	if len(old) == 0 {
 		return newer
@@ -87,12 +92,17 @@ func mergeReview(newer, old []ReviewItem) []ReviewItem {
 
 	out := make([]ReviewItem, 0, len(old)+len(newer))
 	for _, it := range old {
-		if n, ok := byNum[it.Number]; ok {
-			out = append(out, n)
-			delete(byNum, it.Number)
-		} else {
+		n, ok := byNum[it.Number]
+		if !ok {
 			out = append(out, it)
+			continue
 		}
+		delete(byNum, it.Number)
+		if n.Blank && !it.Blank {
+			out = append(out, it) // 空条目不覆盖已答条目
+			continue
+		}
+		out = append(out, n)
 	}
 	// 剩下的是这一批新出现的词，按它们在本批里的顺序追加
 	for _, n := range order {
