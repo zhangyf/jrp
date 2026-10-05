@@ -393,12 +393,31 @@ function ListPractice(opts) {
       // 改成整份列表原地变只读回看，错词巩固交给回看卡上的「再练这 N 个错词」。
       self.savedAt = nowStamp();   // 刚回写的，卡标题上写这一刻
       self.enterReview();
+      self.mergeServerReview();    // 把当天前面几批的错词也并进来（异步重画）
       app.toast('已回写');
     }).catch(function (e) {
       o.commitBtn.disabled = false;
       o.msg.className = 'feedback no';
       o.msg.textContent = '回写失败：' + e.message;
     });
+  };
+
+  // 一天分几次提交时，回看要显示「当天所有批次」的错词，而不是只剩刚提交这批。
+  // 服务端快照按题号 merge 过（storage_review.go 的 mergeReview），拉回来整体重画。
+  self.mergeServerReview = function () {
+    var self = this;
+    var mode = self.o.hard ? 'hard' : 'words';
+    app.api('/api/review?mode=' + mode).then(function (rd) {
+      var r = rd && rd.review;
+      if (!r || !r.items || !r.items.length) return;
+      var local = {};
+      self.reviewItems().forEach(function (x) { local[x.number] = x; });
+      // 本地刚判过的优先，其余用服务端快照（前面几批提交的词）
+      var items = r.items.map(function (x) { return local[x.number] || x; });
+      self.setReview(r.date || self.date, items);
+      self.savedAt = r.saved_at || self.savedAt;
+      self.render();
+    }).catch(function () { /* 回看是锦上添花，拉不到就保持本地这份 */ });
   };
 
   // --- 只读回看 ---

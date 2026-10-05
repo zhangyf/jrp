@@ -12,6 +12,7 @@ var hard = {
   pos: 0,
   results: {},
   unknowns: {},  // number -> true（老师点了「不会」；提交时仍是 correct:false）
+  answers: {},   // number -> 老师写的答案（首次），回看要显示「你写的」
   submitted: {}, // number -> true（已回写过；部分提交后再练再提交时只发没回写过的）
   date: '',
 
@@ -85,6 +86,7 @@ var hard = {
       self.date = d.date;
       self.words = d.words || [];
       self.submitted = {};   // 新一轮，回写记录清零
+      self.answers = {};
       if (!self.words.length) {
         el('hardSummary').innerHTML =
           '<span class="chip">没有钉子户（正确率 &lt; ' + d.min_accuracy +
@@ -145,11 +147,13 @@ var hard = {
       el('hInput').focus();
       return;
     }
-    var ok = gradeAnswer(el('hInput').value, w.word, app.mode());
+    var typed = String(el('hInput').value).trim();
+    var ok = gradeAnswer(typed, w.word, app.mode());
     if (!(w.number in this.results)) {
       this.results[w.number] = ok;
       if (ok) delete this.unknowns[w.number];
     }
+    if (!(w.number in this.answers)) this.answers[w.number] = typed;
 
     var fb = el('hFeedback');
     if (ok) {
@@ -173,6 +177,7 @@ var hard = {
     var w = this.words[this.queue[this.pos]];
     if (!(w.number in this.results)) this.results[w.number] = false;
     this.unknowns[w.number] = true;
+    this.answers[w.number] = '';   // 没写答案，回看显示「不会」
 
     var fb = el('hFeedback');
     fb.className = 'feedback unknown-fb';
@@ -252,6 +257,37 @@ var hard = {
     });
   },
 
+  // 交给服务端存当天快照的详情。只发本批这些词，服务端按题号 merge，
+  // 前面几批提交的错词会保留 —— 一天分几次提交时错词要能累积。
+  cardReviewItems: function () {
+    var self = this;
+    return self.words.map(function (w) {
+      var n = w.number;
+      var done = (n in self.results);
+      return {
+        number: n, word: w.word, definition: w.definition || '',
+        group: w.group || '', status: w.status || '',
+        answer: self.answers[n] || '',
+        correct: done ? !!self.results[n] : false,
+        unknown: !!self.unknowns[n],
+        blank: !done
+      };
+    });
+  },
+
+  // 回写成功后刷新回看：拉服务端合并后的当天快照，
+  // 分几次提交时每次都能看到累积起来的全部错词（不是只剩最后一批）。
+  reloadCardReview: function () {
+    var self = this;
+    app.api('/api/review?mode=hard').then(function (d) {
+      var r = d && d.review;
+      if (r && r.items && r.items.length) {
+        // 钉子户卡片模式没有巩固轮实现，这里只摆错词、不给「再练」按钮
+        renderReviewCard(el('hardListReview'), r.items, { saved_at: r.saved_at });
+      }
+    }).catch(function () { /* 回看是锦上添花 */ });
+  },
+
   sendCard: function (wr) {
     var self = this;
     var btn = el('hardCommitCard');
@@ -263,7 +299,8 @@ var hard = {
         plan_date: self.date,
         hard: true,          // 号码按钉子户 plan 解析，少了这个会全部 not_found
         word_results: wr,
-        sentence_results: []
+        sentence_results: [],
+        review_items: self.cardReviewItems()   // 当天快照，供回看
       })
     }).then(function (d) {
       btn.disabled = false;
@@ -276,6 +313,7 @@ var hard = {
         (w.not_found ? '，未匹配 ' + w.not_found : '') +
         '，档案 ' + (w.version || '') +
         (left > 0 ? '　还剩 ' + left + ' 个没练，接着练完再点一次提交即可' : '');
+      self.reloadCardReview();
       app.toast('钉子户结果已回写');
     }).catch(function (e) {
       btn.disabled = false;

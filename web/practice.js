@@ -14,6 +14,7 @@ var practice = {
   pos: 0,
   results: {},   // number -> correct（只记首次作答）
   unknowns: {},  // number -> true（老师点了「不会」；提交时仍是 correct:false）
+  answers: {},   // number -> 老师写的答案（首次），回看要显示「你写的」
   submitted: {}, // number -> true（已回写过；部分提交后再练再提交时只发没回写过的）
   date: '',
 
@@ -78,6 +79,16 @@ var practice = {
     }).catch(function () { empty(); });
   },
 
+  // 回写成功后刷新回看卡：拉服务端合并后的当天快照。
+  // 一天分几次提交时，每次提交后都能看到累积起来的全部错词。
+  reloadCardReview: function () {
+    var self = this;
+    app.api('/api/review?mode=words').then(function (d) {
+      var r = d && d.review;
+      if (r && r.items && r.items.length) self.showCardReview(r);
+    }).catch(function () { /* 回看是锦上添花，拉不到就算了 */ });
+  },
+
   // 卡片模式的回看：把今天的错题摆出来，给个「再练一遍」的入口。
   // 只列错的（含主动点「不会」的），全对就不给按钮。
   showCardReview: function (r) {
@@ -127,6 +138,7 @@ var practice = {
         self.words = self.words.filter(function (w) { return w.status === '☠️钉子户'; });
       }
       self.submitted = {};   // 新一轮，回写记录清零
+      self.answers = {};
       if (!self.words.length) {
         // 今天已经练完（回写后到期日被推到未来）→ 拉当天快照只读回看，
         // 否则老师练完就再也看不到自己写了什么。
@@ -192,13 +204,16 @@ var practice = {
       el('wInput').focus();
       return;
     }
-    var ok = gradeAnswer(el('wInput').value, w.word, app.mode());
+    var typed = String(el('wInput').value).trim();
+    var ok = gradeAnswer(typed, w.word, app.mode());
 
     // 只记首次作答
     if (!(w.number in this.results)) {
       this.results[w.number] = ok;
       if (ok) delete this.unknowns[w.number];
     }
+    // 答案也只留首次写的：答错会重新入队再练一次，回看要看的是第一次写了什么
+    if (!(w.number in this.answers)) this.answers[w.number] = typed;
 
     var fb = el('wFeedback');
     if (ok) {
@@ -223,6 +238,7 @@ var practice = {
     var w = this.words[this.queue[this.pos]];
     if (!(w.number in this.results)) this.results[w.number] = false;
     this.unknowns[w.number] = true;
+    this.answers[w.number] = '';   // 没写答案，回看显示「不会」
 
     var fb = el('wFeedback');
     fb.className = 'feedback unknown-fb';
@@ -319,6 +335,24 @@ var practice = {
     });
   },
 
+  // 交给服务端存当天快照的详情。
+  // 只发「本批这些词」就够了：服务端按题号 merge，前面几批提交的错词会保留。
+  cardReviewItems: function () {
+    var self = this;
+    return self.words.map(function (w) {
+      var n = w.number;
+      var done = (n in self.results);
+      return {
+        number: n, word: w.word, definition: w.definition || '',
+        group: w.group || '', status: w.status || '',
+        answer: self.answers[n] || '',
+        correct: done ? !!self.results[n] : false,
+        unknown: !!self.unknowns[n],
+        blank: !done
+      };
+    });
+  },
+
   sendCard: function (wr) {
     var self = this;
     var btn = el('practiceCommitCard');
@@ -330,7 +364,8 @@ var practice = {
         plan_date: self.date,
         hard: false,
         word_results: wr,
-        sentence_results: []
+        sentence_results: [],
+        review_items: self.cardReviewItems()   // 当天快照，供回看
       })
     }).then(function (d) {
       btn.disabled = false;
@@ -343,6 +378,9 @@ var practice = {
       el('commitResult').className = 'feedback ok';
       el('commitResult').textContent = msg;
       renderTomorrow(el('tomorrowBoxCard'), d.tomorrow);
+      // 回看要显示「当天所有批次的错词」，不是只剩刚提交这批 ——
+      // 服务端按题号合并过，拉回来重画即可。
+      self.reloadCardReview();
       app.toast('已回写');
     }).catch(function (e) {
       btn.disabled = false;
