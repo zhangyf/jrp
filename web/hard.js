@@ -12,6 +12,7 @@ var hard = {
   pos: 0,
   results: {},
   unknowns: {},  // number -> true（老师点了「不会」；提交时仍是 correct:false）
+  submitted: {}, // number -> true（已回写过；部分提交后再练再提交时只发没回写过的）
   date: '',
 
   // --- 列表模式 ---
@@ -83,6 +84,7 @@ var hard = {
       if (!d) return;
       self.date = d.date;
       self.words = d.words || [];
+      self.submitted = {};   // 新一轮，回写记录清零
       if (!self.words.length) {
         el('hardSummary').innerHTML =
           '<span class="chip">没有钉子户（正确率 &lt; ' + d.min_accuracy +
@@ -209,29 +211,35 @@ var hard = {
 
   commitCard: function () {
     var self = this;
+    // 只发「练过但还没回写」的（部分提交后再提交时不重复计数，见 practice.js 同款注释）
     var build = function () {
       var wr = [];
-      for (var k in self.results) wr.push({ number: parseInt(k, 10), correct: self.results[k] });
+      for (var k in self.results) {
+        if (self.submitted[k]) continue;
+        wr.push({ number: parseInt(k, 10), correct: self.results[k] });
+      }
       return wr;
     };
     var go = function () {
       var wr = build();
-      if (!wr.length) { app.toast('没有可回写的结果'); return; }
+      if (!wr.length) { app.toast('没有新的结果可回写'); return; }
       self.sendCard(wr);
     };
 
     var pend = this.words.length - Object.keys(this.results).length;
     if (!pend) { go(); return; }
+    var done = Object.keys(this.results).length;
     UNK.ask({
-      title: '还有 ' + pend + ' 个词没练也没标「不会」',
+      title: '还有 ' + pend + ' 个词没练',
       lines: [
-        '这些词不判分、不进档案。',
-        '点「全部标记为不会」会把这 ' + pend + ' 个词各记一次错（明天会再出现）。'
+        '已练的 ' + done + ' 个照常回写；没练的 ' + pend + ' 个不判分、不进档案，下次打开还在。',
+        '想让它们明天一定再出现，才点「标记为不会」——那会给每个词记一次错。'
       ],
-      skipText: '跳过',
-      allText: '全部标记为不会',
-      onSkip: go,
-      onMarkAll: function () {
+      mainText: '只提交已练的 ' + done + ' 个',
+      subText: '剩下的 ' + pend + ' 个标记为不会',
+      cancelText: '返回继续练',
+      onMain: go,
+      onSub: function () {
         self.words.forEach(function (w) {
           if (!(w.number in self.results)) {
             self.results[w.number] = false;
@@ -239,7 +247,8 @@ var hard = {
           }
         });
         go();
-      }
+      },
+      onCancel: function () { app.toast('没提交，接着练'); }
     });
   },
 
@@ -258,12 +267,15 @@ var hard = {
       })
     }).then(function (d) {
       btn.disabled = false;
+      wr.forEach(function (r) { self.submitted[r.number] = true; });
       var w = d.words || {};
+      var left = self.words.length - Object.keys(self.submitted).length;
       el('hardCommitResult').className = 'feedback ok';
       el('hardCommitResult').textContent =
         '已回写：正确 ' + (w.correct || 0) + '，错误 ' + (w.wrong || 0) +
         (w.not_found ? '，未匹配 ' + w.not_found : '') +
-        '，档案 ' + (w.version || '');
+        '，档案 ' + (w.version || '') +
+        (left > 0 ? '　还剩 ' + left + ' 个没练，接着练完再点一次提交即可' : '');
       app.toast('钉子户结果已回写');
     }).catch(function (e) {
       btn.disabled = false;

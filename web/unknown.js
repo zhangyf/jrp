@@ -59,29 +59,39 @@ var UNK = {
   },
 
   // 提交前确认弹窗。不用 confirm()：它只有确定/取消，按钮文案改不了，老师会点错。
-  // opts: { title, lines[], skipText, allText, onSkip, onMarkAll }
+  //
+  // ⚠️ 主按钮必须是「只提交已练的」（部分提交）—— 老师当天没练完是常态，
+  // 旧版把高亮给了「全部标记为不会」，结果没练的词被各记一次错。
+  // opts: { title, lines[], mainText, onMain, subText, onSub, cancelText, onCancel }
+  //   main   = 部分提交（primary，默认动作）
+  //   sub    = 把没练的按「不会」提交（ghost，会记错，非必要别点）
+  //   cancel = 关掉弹窗回去接着练（ghost，不提交任何东西）
   ask: function (o) {
     UNK.close();
     var mask = document.createElement('div');
     mask.className = 'modal-mask';
+    var btns =
+      '<button class="primary" data-act="main">' + esc(o.mainText) + '</button>' +
+      (o.subText ? '<button class="ghost" data-act="sub">' + esc(o.subText) + '</button>' : '') +
+      (o.cancelText ? '<button class="ghost" data-act="cancel">' + esc(o.cancelText) + '</button>' : '');
     mask.innerHTML =
       '<div class="modal">' +
       '<h4>' + esc(o.title) + '</h4>' +
       '<p class="muted">' + (o.lines || []).map(function (s) { return esc(s); }).join('<br>') + '</p>' +
-      '<div class="row">' +
-      '<button class="ghost" data-act="skip">' + esc(o.skipText) + '</button>' +
-      '<button class="primary" data-act="all">' + esc(o.allText) + '</button>' +
-      '</div></div>';
+      '<div class="row">' + btns + '</div></div>';
     document.body.appendChild(mask);
     UNK._mask = mask;
-    mask.querySelector('[data-act=skip]').addEventListener('click', function () {
-      UNK.close();
-      o.onSkip();
-    });
-    mask.querySelector('[data-act=all]').addEventListener('click', function () {
-      UNK.close();
-      o.onMarkAll();
-    });
+    var bind = function (act, fn) {
+      var b = mask.querySelector('[data-act=' + act + ']');
+      if (!b) return;
+      b.addEventListener('click', function () {
+        UNK.close();
+        if (fn) fn();
+      });
+    };
+    bind('main', o.onMain);
+    bind('sub', o.onSub);
+    bind('cancel', o.onCancel);
   },
 
   close: function () {

@@ -14,6 +14,7 @@ var practice = {
   pos: 0,
   results: {},   // number -> correct（只记首次作答）
   unknowns: {},  // number -> true（老师点了「不会」；提交时仍是 correct:false）
+  submitted: {}, // number -> true（已回写过；部分提交后再练再提交时只发没回写过的）
   date: '',
 
   // --- 列表模式 ---
@@ -125,6 +126,7 @@ var practice = {
       if (el('nailsOnly').checked) {
         self.words = self.words.filter(function (w) { return w.status === '☠️钉子户'; });
       }
+      self.submitted = {};   // 新一轮，回写记录清零
       if (!self.words.length) {
         // 今天已经练完（回写后到期日被推到未来）→ 拉当天快照只读回看，
         // 否则老师练完就再也看不到自己写了什么。
@@ -275,29 +277,36 @@ var practice = {
   commitCard: function () {
     var self = this;
     if (self.cardRequeue) { app.toast('这是错词巩固轮，不计入档案'); return; }
+    // 只发「练过但还没回写」的 —— 部分提交后接着练、再点一次提交时，
+    // 上一次已经回写过的词不能重复发（否则复习数、正确数各多记一遍）。
     var build = function () {
       var wr = [];
-      for (var k in self.results) wr.push({ number: parseInt(k, 10), correct: self.results[k] });
+      for (var k in self.results) {
+        if (self.submitted[k]) continue;
+        wr.push({ number: parseInt(k, 10), correct: self.results[k] });
+      }
       return wr;
     };
     var go = function () {
       var wr = build();
-      if (!wr.length) { app.toast('没有可回写的结果'); return; }
+      if (!wr.length) { app.toast('没有新的结果可回写'); return; }
       self.sendCard(wr);
     };
 
     var pend = this.words.length - Object.keys(this.results).length;
     if (!pend) { go(); return; }
+    var done = Object.keys(this.results).length;
     UNK.ask({
-      title: '还有 ' + pend + ' 个词没练也没标「不会」',
+      title: '还有 ' + pend + ' 个词没练',
       lines: [
-        '这些词不判分、不进档案。',
-        '点「全部标记为不会」会把这 ' + pend + ' 个词各记一次错（明天会再出现）。'
+        '已练的 ' + done + ' 个照常回写；没练的 ' + pend + ' 个不判分、不进档案，下次打开还在。',
+        '想让它们明天一定再出现，才点「标记为不会」——那会给每个词记一次错。'
       ],
-      skipText: '跳过',
-      allText: '全部标记为不会',
-      onSkip: go,
-      onMarkAll: function () {
+      mainText: '只提交已练的 ' + done + ' 个',
+      subText: '剩下的 ' + pend + ' 个标记为不会',
+      cancelText: '返回继续练',
+      onMain: go,
+      onSub: function () {
         self.words.forEach(function (w) {
           if (!(w.number in self.results)) {
             self.results[w.number] = false;
@@ -305,7 +314,8 @@ var practice = {
           }
         });
         go();
-      }
+      },
+      onCancel: function () { app.toast('没提交，接着练'); }
     });
   },
 
@@ -324,9 +334,12 @@ var practice = {
       })
     }).then(function (d) {
       btn.disabled = false;
+      wr.forEach(function (r) { self.submitted[r.number] = true; });
       var w = d.words || {};
+      var left = self.words.length - Object.keys(self.submitted).length;
       var msg = '已回写：正确 ' + (w.correct || 0) + '，错误 ' + (w.wrong || 0) +
         '，档案 ' + (w.version || '') + '（原 ' + (w.old_filename || '') + '）';
+      if (left > 0) msg += '　还剩 ' + left + ' 个没练，接着练完再点一次提交即可';
       el('commitResult').className = 'feedback ok';
       el('commitResult').textContent = msg;
       renderTomorrow(el('tomorrowBoxCard'), d.tomorrow);

@@ -369,22 +369,25 @@ var sentence = {
 
     var pend = UNK.pending(this.items);
     if (!pend) { go(); return; }
+    var done = build().length;
     UNK.ask({
-      title: '还有 ' + pend + ' 句既没写也没标「不会」',
+      title: '还有 ' + pend + ' 句没写',
       lines: [
-        '这些句不判分、不进档案。',
-        '点「全部标记为不会」会把这 ' + pend + ' 句各记一次错（会按 3/7/14 天重出）。'
+        '已判的 ' + done + ' 句照常回写；没写的 ' + pend + ' 句不判分、不进档案，下次还会再轮到。',
+        '想让它们必定重出，才点「标记为不会」——那会各记一次错（3/7/14 天重出）。'
       ],
-      skipText: '跳过',
-      allText: '全部标记为不会',
-      onSkip: go,
-      onMarkAll: function () {
+      mainText: '只提交已判的 ' + done + ' 句',
+      subText: '剩下的 ' + pend + ' 句标记为不会',
+      cancelText: '返回继续写',
+      onMain: go,
+      onSub: function () {
         self.items.forEach(function (s) {
           if (!s.unknown && !String(s.input || '').trim()) UNK.set(s, true);
         });
         self.items.forEach(function (_, i) { self.renderItem(i); });
         go();
-      }
+      },
+      onCancel: function () { app.toast('没提交，接着写'); }
     });
   },
 
@@ -404,9 +407,11 @@ var sentence = {
       el('sentenceCommit').disabled = false;
       var s = d.sentences || {};
       el('sentenceCommitResult').className = 'feedback ok';
+      var left = self.items.length - rs.length;
       el('sentenceCommitResult').textContent =
         '已回写：正确 ' + (s.correct || 0) + '，错误 ' + (s.wrong || 0) +
-        '（错句会按 3/7/14 天重出）';
+        '（错句会按 3/7/14 天重出）' +
+        (left > 0 ? '　另 ' + left + ' 句没写，不记分，下次还会轮到' : '');
       // 这批已经归档，草稿没用了；后端同时清掉了当天锁定的 plan，
       // 所以下一次装载才是新的一批 —— 换题发生在提交之后，不是刷新之后。
       self.dropDraftBar();

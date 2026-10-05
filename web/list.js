@@ -320,6 +320,7 @@ function ListPractice(opts) {
   // --- 回写 ---
   self.commit = function () {
     var pend = UNK.pending(self.items);
+    self.pendLeft = 0;
     var go = function () {
       var wr = self.collect();
       if (!wr.length) { app.toast('没有可回写的结果'); return; }
@@ -327,22 +328,26 @@ function ListPractice(opts) {
     };
     if (!pend) { go(); return; }
 
+    var done = self.collect().length;
+    self.pendLeft = pend;   // 提交后提示「还剩几个没练」用
     UNK.ask({
-      title: '还有 ' + pend + ' 个词既没写也没标「不会」',
+      title: '还有 ' + pend + ' 个词没写',
       lines: [
-        '这些词不判分、不进档案、也不进巩固轮。',
-        '点「全部标记为不会」会把这 ' + pend + ' 个词各记一次错（明天会再出现）。'
+        '已写的 ' + done + ' 个照常回写；没写的 ' + pend + ' 个不判分、不进档案，下次打开还在。',
+        '想让它们明天一定再出现，才点「标记为不会」——那会给每个词记一次错。'
       ],
-      skipText: '跳过',
-      allText: '全部标记为不会',
-      onSkip: go,
-      onMarkAll: function () {
+      mainText: '只提交已写的 ' + done + ' 个',
+      subText: '剩下的 ' + pend + ' 个标记为不会',
+      cancelText: '返回继续练',
+      onMain: go,
+      onSub: function () {
         self.items.forEach(function (it) {
           if (!it.unknown && !String(it.input || '').trim()) UNK.set(it, true);
         });
         self.gradeAll();
         go();
-      }
+      },
+      onCancel: function () { app.toast('没提交，接着练'); }
     });
   };
 
@@ -368,9 +373,21 @@ function ListPractice(opts) {
       var w = d.words || {};
       var line = '已回写：正确 ' + (w.correct || 0) + '，错误 ' + (w.wrong || 0) +
         (w.not_found ? '，未匹配 ' + w.not_found : '') + '，档案 ' + (w.version || '');
+      var left = self.pendLeft || 0;
       o.msg.className = 'feedback ok';
-      o.msg.textContent = line;
+      o.msg.textContent = line + (left ? '　还剩 ' + left + ' 个没写' : '');
       renderTomorrow(o.tomorrow, d.tomorrow);
+
+      // 部分提交后想接着把剩下的练完：回到本页重新拉 plan。
+      // 没回写的词到期日没动，还在 plan 里；已回写的被推到未来，不会再冒出来。
+      if (left) {
+        var cont = document.createElement('button');
+        cont.className = 'ghost';
+        cont.style.marginLeft = '8px';
+        cont.textContent = '继续练剩下的 ' + left + ' 个';
+        cont.addEventListener('click', function () { app.go(o.hard ? 'hard' : 'practice'); });
+        o.msg.appendChild(cont);
+      }
 
       // 不再自动切进第二轮：那样答对的词当场就消失了，老师连自己写了什么都看不到。
       // 改成整份列表原地变只读回看，错词巩固交给回看卡上的「再练这 N 个错词」。

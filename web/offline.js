@@ -188,16 +188,18 @@ var offline = {
 
     var pend = UNK.pending(this.words) + UNK.pending(this.sentences);
     if (!pend) { go(); return; }
+    var done = this.words.length + this.sentences.length - pend;
     UNK.ask({
-      title: '还有 ' + pend + ' 项既没写也没勾「不会」',
+      title: '还有 ' + pend + ' 项没写',
       lines: [
-        '这些项不判分、不进档案。',
-        '点「全部标记为不会」会把这 ' + pend + ' 项各记一次错（明天会再出现）。'
+        '已写的 ' + done + ' 项照常回写；没写的 ' + pend + ' 项不判分、不进档案。',
+        '想让它们明天一定再出现，才点「标记为不会」——那会给每项记一次错。'
       ],
-      skipText: '跳过',
-      allText: '全部标记为不会',
-      onSkip: go,
-      onMarkAll: function () {
+      mainText: '只提交已写的 ' + done + ' 项',
+      subText: '剩下的 ' + pend + ' 项标记为不会',
+      cancelText: '返回继续写',
+      onMain: go,
+      onSub: function () {
         self.words.forEach(function (w) {
           if (!w.unknown && !String(w.input || '').trim()) UNK.set(w, true);
         });
@@ -206,7 +208,8 @@ var offline = {
         });
         self.render();
         go();
-      }
+      },
+      onCancel: function () { app.toast('没提交，接着写'); }
     });
   },
 
