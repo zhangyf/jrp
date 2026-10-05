@@ -46,7 +46,7 @@ func TestMergeReview(t *testing.T) {
 		{Number: 3, Word: "c", Correct: true},
 	}
 
-	// 覆盖旧的 + 追加新的，且保持旧的顺序
+	// 覆盖旧的 + 追加新的，且保持旧的顺序（号码合并后重排成 1..N 连续）
 	got := mergeReview([]ReviewItem{
 		{Number: 2, Word: "b", Correct: true, Manual: true},
 		{Number: 9, Word: "i", Correct: false},
@@ -57,7 +57,7 @@ func TestMergeReview(t *testing.T) {
 		{Number: 1, Word: "a", Correct: false},
 		{Number: 2, Word: "b", Correct: true, Manual: true},
 		{Number: 3, Word: "c", Correct: true},
-		{Number: 9, Word: "i", Correct: false},
+		{Number: 4, Word: "i", Correct: false},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("mergeReview =\n%+v\nwant\n%+v", got, want)
@@ -139,5 +139,83 @@ func TestMergeReviewAnsweredClobbersBlank(t *testing.T) {
 	}, old)
 	if got[0].Blank || got[0].Correct || got[0].Answer != "みせ" {
 		t.Errorf("非 blank 该覆盖 blank: %+v", got[0])
+	}
+}
+
+// 一天里会出好几批 plan（回写成功 → plan 清 → 新一批），**每批题号都从 1 重新编**。
+// 按号码合并的话，后一批的 #1 会盖掉前一批的 #1 —— 前几批练过的词全丢。
+// 2026-10-05 事故：当天档案里 83 个词的 LastReview 是当天，快照只剩 44 个词，
+// 老师看到的「共 75 / 对 62 / 错 9」全是虚的。
+func TestMergeReviewNewBatchKeepsEarlierWords(t *testing.T) {
+	// 第一批：#1 #2
+	old := []ReviewItem{
+		{Number: 1, Word: "あ", Correct: true, Answer: "あ"},
+		{Number: 2, Word: "い", Correct: false, Answer: "いけ"},
+	}
+	// 第二批（回写后新出的）：题号重新从 1 开始，且是另一批词
+	got := mergeReview([]ReviewItem{
+		{Number: 1, Word: "う", Correct: true, Answer: "う"},
+		{Number: 2, Word: "え", Correct: true, Answer: "え"},
+	}, old)
+
+	if len(got) != 4 {
+		t.Fatalf("新一批的词应全部保留（按词合并），len = %d, want 4: %+v", len(got), got)
+	}
+	want := []string{"あ", "い", "う", "え"}
+	for i, w := range want {
+		if got[i].Word != w {
+			t.Errorf("got[%d].Word = %q, want %q", i, got[i].Word, w)
+		}
+	}
+	// 第一批的错词不能因为号码撞车被冲掉
+	if got[1].Correct || got[1].Answer != "いけ" {
+		t.Errorf("第一批的错词被新一批盖掉了: %+v", got[1])
+	}
+	// 号码重排成 1..N 连续，否则前端按号码索引会错位
+	for i, it := range got {
+		if it.Number != i+1 {
+			t.Errorf("got[%d].Number = %d, want %d（重排避免跨批次撞号）", i, it.Number, i+1)
+		}
+	}
+}
+
+// 同一天同一个词被练了两次（两批都抽到它）→ 只留一条，后一次覆盖前一次。
+func TestMergeReviewSameWordSameDay(t *testing.T) {
+	old := []ReviewItem{
+		{Number: 1, Word: "あ", Correct: false, Answer: "い"},
+	}
+	got := mergeReview([]ReviewItem{
+		{Number: 7, Word: "あ", Correct: true, Answer: "あ"},
+	}, old)
+	if len(got) != 1 {
+		t.Fatalf("同一天同一个词只留一条，len = %d, want 1: %+v", len(got), got)
+	}
+	if !got[0].Correct || got[0].Answer != "あ" {
+		t.Errorf("后一次该覆盖前一次: %+v", got[0])
+	}
+}
+
+// 历史遗留：号码撞车时同一个词被写了两遍（快照里出现两条同词不同号）。
+// 合并后必须收敛成一条，否则「共 N / 对 X」会把同一个词数两次。
+// 2026-10-05：同一事故里快照 101 条其实只有 68 个词。
+func TestMergeReviewDropsDuplicateWordRows(t *testing.T) {
+	old := []ReviewItem{
+		{Number: 6, Word: "あ", Correct: false, Answer: "い"},
+		{Number: 18, Word: "あ", Blank: true},
+		{Number: 49, Word: "あ", Blank: true},
+		{Number: 7, Word: "う", Correct: true},
+	}
+	got := mergeReview([]ReviewItem{
+		{Number: 1, Word: "う", Correct: true},
+	}, old)
+
+	if len(got) != 2 {
+		t.Fatalf("同一个词只应留一条，len = %d, want 2: %+v", len(got), got)
+	}
+	if got[0].Word != "あ" || got[0].Blank {
+		t.Errorf("重复条目应保留有信息量那条（错词，不是 blank）: %+v", got[0])
+	}
+	if got[0].Number != 1 || got[1].Number != 2 {
+		t.Errorf("号码应重排成 1..N: %+v", got)
 	}
 }
