@@ -235,6 +235,20 @@ var sentence = {
     self.draftTimer = setTimeout(function () { self.saveDraft(); }, 1200);   // 停手 1.2 秒才存
   },
 
+  // 单条草稿的序列化：saveDraft（全量）和 pruneDraft（部分提交后只留没交的）共用。
+  draftItem: function (s) {
+    var it = {
+      number: s.number,
+      answer: s.input || '',
+      unknown: !!s.unknown,
+      manual: !!s.manual,
+      prompt: s.answer        // 原句指纹：恢复时核对，防止串到换过的题上
+    };
+    // 模型结论跟着草稿走：刷新、换设备回来还是同一个结论
+    if (s.llm) it.judge = { v: 2, correct: !!s.correct, reason: s.llmReason || '' };
+    return it;
+  },
+
   saveDraft: function () {
     var self = this;
     if (!self.date) return;
@@ -245,20 +259,30 @@ var sentence = {
         date: self.date,
         mode: 'sentences',
         grade_mode: app.mode(),
-        items: self.items.map(function (s) {
-          var it = {
-            number: s.number,
-            answer: s.input || '',
-            unknown: !!s.unknown,
-            manual: !!s.manual,
-            prompt: s.answer        // 原句指纹：恢复时核对，防止串到换过的题上
-          };
-          // 模型结论跟着草稿走：刷新、换设备回来还是同一个结论
-          if (s.llm) it.judge = { v: 2, correct: !!s.correct, reason: s.llmReason || '' };
-          return it;
-        })
+        items: self.items.map(function (s) { return self.draftItem(s); })
       })
     }).catch(function () {   // 草稿存不上不该打断练习
+    });
+  },
+
+  // 部分提交成功后：只把没交的句子留在草稿里（已交的判分结果已归档，不用再存）。
+  // 这样刷新页面后，剩下的句子还在、写了一半的答案也还在。
+  pruneDraft: function (submitted) {
+    var self = this;
+    clearTimeout(self.draftTimer);
+    if (!self.date) return;
+    var keep = self.items.filter(function (s) { return !submitted[s.number]; });
+    if (!keep.length) { self.clearDraft(); return; }
+    app.api('/api/draft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date: self.date,
+        mode: 'sentences',
+        grade_mode: app.mode(),
+        items: keep.map(function (s) { return self.draftItem(s); })
+      })
+    }).catch(function () {
     });
   },
 
@@ -411,12 +435,18 @@ var sentence = {
       el('sentenceCommitResult').textContent =
         '已回写：正确 ' + (s.correct || 0) + '，错误 ' + (s.wrong || 0) +
         '（错句会按 3/7/14 天重出）' +
-        (left > 0 ? '　另 ' + left + ' 句没写，不记分，下次还会轮到' : '');
-      // 这批已经归档，草稿没用了；后端同时清掉了当天锁定的 plan，
-      // 所以下一次装载才是新的一批 —— 换题发生在提交之后，不是刷新之后。
+        (left > 0 ? '　另 ' + left + ' 句没写，已留在今天这批里 —— 刷新页面还在，写完再提交一次即可' : '');
+      // 草稿跟着提交结果走：全交完 → 整份草稿没用了，清掉（后端也删了 plan，
+      // 下次装载才是新的一批）；只交了一部分 → 只留没交那几句的草稿，
+      // 刷新后题和写了一半的答案都还在。
+      var submitted = {};
+      rs.forEach(function (r) { submitted[r.number] = true; });
+      if (left > 0) self.pruneDraft(submitted);
+      else self.clearDraft();
+      // 「换下一批」只在全交完时出现；还剩句子时刷新了也还是这批，别误导。
+      if (left > 0) el('sentenceNext').classList.add('hidden');
+      else el('sentenceNext').classList.remove('hidden');
       self.dropDraftBar();
-      self.clearDraft();
-      el('sentenceNext').classList.remove('hidden');
       app.toast('造句结果已回写');
     }).catch(function (e) {
       el('sentenceCommit').disabled = false;

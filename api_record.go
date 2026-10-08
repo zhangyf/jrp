@@ -105,10 +105,24 @@ func (s *server) handleRecord(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		// 造句「提交之后才换下一批」：清掉当天锁定的 plan。
-		// 下一次 GET /api/plan?mode=sentences 发现没有存档，才会重新出题。
-		// 删失败不报错 —— 最坏结果是下一批还是这几句，不会丢数据。
-		_ = s.storage.DeleteSentencePlan(s.ctx(), input.PlanDate)
+		// 造句换题时机是「全部提交之后」，不是「提交之后」：
+		// 部分提交时把没交的几句留在当天 plan 里，刷新页面还是这批（草稿回填答案），
+		// 老师当天分几次写都行；全部交完才删 plan，下一次 GET 才出全新的一批。
+		// 2026-10-08 之前是只要回写就删 plan，部分提交后刷新，没写的句子直接没了。
+		remaining := 0
+		plan, perr := s.storage.DownloadSentencePlan(s.ctx(), input.PlanDate)
+		if perr == nil && plan != nil {
+			remaining = pruneSentencePlan(plan, input.SentenceResults)
+			if remaining > 0 {
+				// 写失败不报错 —— 最坏结果是下一批还是这几句，不会丢数据。
+				_ = s.storage.UploadSentencePlan(s.ctx(), plan)
+			} else {
+				_ = s.storage.DeleteSentencePlan(s.ctx(), input.PlanDate)
+			}
+		} else {
+			// 读不到 plan（本就不存在/网络问题）→ 维持旧行为，删掉算了。
+			_ = s.storage.DeleteSentencePlan(s.ctx(), input.PlanDate)
+		}
 
 		correct, wrongN := 0, 0
 		for _, sr := range input.SentenceResults {
@@ -122,7 +136,8 @@ func (s *server) handleRecord(w http.ResponseWriter, r *http.Request) {
 			"correct":         correct,
 			"wrong":           wrongN,
 			"plan_date":       input.PlanDate,
-			"next_on_refresh": true, // 前端提示「换下一批」
+			"remaining":       remaining,          // 没交的句数（>0 = 刷新后还在）
+			"next_on_refresh": remaining == 0,     // 全部交完才会换下一批
 		}
 	}
 
@@ -175,4 +190,22 @@ func intParam(r *http.Request, name string, def int) int {
 		return def
 	}
 	return v
+}
+
+// pruneSentencePlan 把已提交的句子从 plan 里摘掉，返回还剩几句。
+// 部分提交时剩下的句子留在 plan 里，刷新页面还是这批（题号保持原编号，
+// 前端草稿按 number+原句指纹回填，对得上）。
+func pruneSentencePlan(plan *ReviewPlan, results []SentenceResult) int {
+	submitted := make(map[int]bool, len(results))
+	for _, sr := range results {
+		submitted[sr.Number] = true
+	}
+	left := plan.Sentences[:0]
+	for _, ps := range plan.Sentences {
+		if !submitted[ps.Number] {
+			left = append(left, ps)
+		}
+	}
+	plan.Sentences = left
+	return len(left)
 }
