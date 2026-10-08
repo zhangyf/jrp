@@ -194,8 +194,10 @@ any external dependency.
 - `jrp --lang ja list-knowledge` — list all knowledge documents (name + size)
 - `jrp --lang ja get-knowledge --name <filename>` — download a document's full content
 
-Current Japanese knowledge docs (标准日本语初级上册 第1-15课，其中第15课为 2026-09-24 增补):
-`标准日本语初级上册_第N课知识点.md`
+Current Japanese knowledge docs —— 知识点 `标准日本语初级上册_第N课知识点.md` **第1-17课齐全**，
+课本原文汇编 `课本原文汇编_第N单元（基本课文/应用课文）.md` **第1-5单元齐全**
+（第1单元=第1-4课、第2=5-8、第3=9-12、第4=13-16、第5=17-20，故汇编已覆盖到第17课）。
+另有 `造句易错语法速查（第12-13课）.md`。
 
 ### IMA Knowledge Base (legacy / human-readable fallback)
 
@@ -315,7 +317,7 @@ Knowledge base IDs:
         4. **Lastly** fall back to 语法例句 tables within learned-scope lessons.
       - Chinese prompt = the doc's own Chinese translation of that line; Japanese
         answer = the verbatim original.
-      - **Cover ALL learned lessons (第1-15课；句库 v3 覆盖到第15课，第4单元仅第16课待补), NOT just the last 2-3.** Balance the 20
+      - **Cover ALL learned lessons (第1-17课；知识点第1-17课、单元汇编第1-5单元都已入库), NOT just the last 2-3.** Balance the 20
         sentences across the full learned scope. Prioritize by (a) lessons where today's
         due words cluster, (b) lessons where 钉子户 are densest — notably 第7课生活动词
         (おろします/はらいます/ぬぎます/あけます/しめます/つけます/けします/きます/はきます)
@@ -386,7 +388,7 @@ Knowledge base IDs:
         scratch" rule at the user's request (2026-08-27): textbook lines are guaranteed
         correct and within learned scope, so the old leak risk disappears.
       - **⚠️ Hard scope guard**: Only pick sentences from lessons the user has learned
-        (currently 第1-15课，第4单元仅13-15课入库). If a consolidated-原文 doc has a placeholder
+        (currently 第1-17课，第1-5单元汇编全部入库). If a consolidated-原文 doc has a placeholder
         "（待补 — 用户未提供...）", SKIP that section entirely.
 
    d. **Self-check before saving**: Verify each of the 20 sentences is a verbatim
@@ -452,10 +454,10 @@ jrp --lang ja gen-plan --date YYYY-MM-DD --sentences-only --sentences tmp_senten
   - 输出 JSON 里 `kind="sentences"`、`sentence_count=N`、`due_count=0`。
 
 **题量**：默认 **50 句**（普通模式 20 句）。挑句规则**完全沿用上面第 3 节 c 的全部约束**：
-课本原文、句库 v3 覆盖第1-15课（第4单元仅第16课待补）、近 7 天归一化不重复、错句重练强制插入、变形句。
+课本原文、句库覆盖第1-17课（第1-5单元汇编齐全）、近 7 天归一化不重复、错句重练强制插入、变形句。
 - 变形句上限按比例放大：普通模式 20 句最多 4 句 → **纯句子 50 句最多 10 句**。
 - 50 句量大，**归一化自检必须做**（近 7 天重复 + 当天内部重复），否则重复率会明显上升。
-- 跨课覆盖要摊平：第1-15课每课至少 2-3 句，别被最近学的课吃掉一半（程序侧已有轮转起点轮换+最新两课加权）。
+- 跨课覆盖要摊平：第1-17课每课至少 2-3 句，别被最近学的课吃掉一半（程序侧已有轮转起点轮换+最新两课加权）。
 
 **回填**：纯句子模式**没有单词，不要跑 `record`**（跑了也只是写一条 0 对 0 错的 changelog）。
 造句对错走 `sentence_wrong.json`，规则不变（错 → +3/+7/+14 天重出；对 → archived）。
@@ -710,6 +712,10 @@ analyzes every archive; all statistical data must come from its JSON output.
    - `changes{}` — first→last deltas with `+N/-N` annotations ← for summary tables
    - `detail{}` — per-lesson distribution, accuracy buckets, hard-word breakdown,
      top-reviewed words ← for "what do I need to work on?"
+   - `jlpt{}` — JLPT 等级进度（**仅 `--lang ja`**，其他语言是 `null`）：
+     `vocab_total` / `vocab_firm`（牢固词数）/ `lesson`（已学到的课号，从分组名「第N课」正则取最大）
+     / `n5{vocab,lesson}` / `n4{vocab,lesson}` 门槛。算的是**牢固词**（掌握+基础），
+     不是总词数——所以进度条会低于「总词数 ÷ 门槛」的直觉值。CLI 与 `/api/stats` 都有这个字段。
 
    The `detail` section comes from the latest archive and includes:
    - `by_lesson[]` — word count per group/lesson
@@ -1036,6 +1042,16 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
   cp api_judge.go /tmp/jrp_backup/ && git show origin/main:api_judge.go | diff api_judge.go - && rm api_judge.go
   ```
   比对不一致说明本地有独立改动，必须先问老师怎么处理。
+- **⚠️ 反复 `merge` 会陷入「删了又回来」的死循环**（2026-10-08 踩到）：失败的
+  `git merge --ff-only` 自己会在工作区留下同名文件——删掉再 merge，它又冒出来，
+  而且第二次报的可能**不是同一批**（删 `cmd_stats_test.go` 之后变成
+  `api_record_test.go` + 两份 `knowledge/…第5单元….md`，删完再试前者又回来了）。
+  **出路是改用 `git reset --hard origin/main`**：它和 ff 合并等价，且不会被 untracked 文件挡住。
+  前提是**工作区其它内容本来就干净**（`git status --short` 只有这些 ?? 文件），
+  且这些 ?? 文件已逐字节比对确认与远端一致——满足这两条才用，否则会丢本地改动。
+- **macOS 自带 `grep` 不支持 `\|` 基本正则**（2026-09-29、2026-10-08 各踩一次）：
+  `grep -rn "jlpt\|JLPT" --include="*.go" .` 返回空，会误判成「源码里根本没写这个功能」。
+  改用 `grep -E`、或直接用 Grep 工具（ripgrep 支持）。
 - **After editing `~/jrp/SKILL.md`, copy it to `~/.workbuddy/skills/jrp/SKILL.md`** — the two
   must stay in sync（与 Windows 同理）。
 - **⚠️ 拉到 2026-09-20 之后的构建，第一次跑之前先重加密**（Windows 那边改了密钥种子的
@@ -1193,6 +1209,20 @@ for **active flashcard-style review** — one word at a time, answer by keyboard
 
 Run: `jrp --lang ja serve --addr 0.0.0.0 --port 8080` to expose on a server; default `127.0.0.1:8080`.
 COS credentials load the same way as other commands (`.env.enc` or env vars).
+
+### 网页端行为（2026-10 起）
+
+- **练习支持部分提交**：主按钮只提交**已练的**条目，没练的留在当天 plan 里；
+  卡片/钉子户的二次提交只发**增量**。所以一天可以分多次提交，不用一次做完——
+  老师问「还有几道没练」时，指的是留在当天 plan 里的那些。
+- **错词按快照累积**：当天多次提交后错词要累积显示；快照合并**按词形**而不是按题号
+  （多批 plan 的题号会重复，按题号会互相覆盖，导致当天统计虚高），
+  且空条目不再覆盖已答条目（否则刷新后整批重发会抹掉当天错词）。
+- **未交的句子留在当天 plan**：造句部分提交后，没交的句子刷新还在，全交完才换一批。
+- **统计页顶部有 JLPT N5/N4 进度条**（数据来自 `stats` 的 `jlpt` 段，仅日语）。
+- **词库页显示近义区分备注**（`lexicon` 接口带出 `word_note`，写入方式见 Workflow 6c）。
+- **活用专项答题前只显示词性大类**（动词/形容词），对完答案才显示一类/二类，
+  避免提前把活用规则透给老师。
 
 ## 活用练习页（动词 / 形容词活用）
 
