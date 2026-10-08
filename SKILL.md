@@ -1116,6 +1116,19 @@ ssh root@154.8.216.179 'strings /usr/local/bin/jrp | grep -c conj-input;
 5. **本机自测用另一个端口**（如 `--port 8099`，`--addr 127.0.0.1` 无鉴权），测完 `pkill`，
    别和本机常驻的 8080 打架。
 6. **ssh/scp 输出里会夹腾讯云扫码横幅**，取数据时 `2>/dev/null` 过滤，别当成错误。
+7. **⚠️ 判断「服务器是不是最新」别只看日期/大小 —— 用 ASCII 特征串比对**
+   （2026-10-08 踩到）：服务器上那份二进制 mtime 是当天 10:11，看着像"已经最新"，
+   但只靠日期会误判、只看大小更会被骗（本地加 `-s -w` 是 23 MB，服务器不加是 31 MB，
+   差 8 MB 纯属编译参数差异，不代表版本不同）。可靠办法是从**最近几个提交**里挑独有的
+   **ASCII 标识符**（前端函数名 / JSON 键名，如 `pruneDraft`、`cardReviewItems`、`jlpt`），
+   两边各跑一次 `strings <二进制> | grep -c <标识符>` 对比计数：
+   ```bash
+   for k in page-conj conj-input pruneDraft cardReviewItems jlpt word_note; do
+     printf "%-18s %s\n" "$k" "$(strings /usr/local/bin/jrp | grep -c "$k")"; done
+   ```
+   **别用中文字符串做特征** —— `strings` 默认不认多字节，CJK 一律返回 0，会误判成"没有"。
+8. **只改文档（SKILL.md / knowledge/*.md）的提交不需要重新部署** —— 二进制里没有它们，
+   部署只跟 `*.go` 和 `web/**` 有关。
 
 ## Language Codes
 
