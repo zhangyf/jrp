@@ -97,6 +97,8 @@ func runStats(fs *flag.FlagSet, lang string) {
 		"snapshots": res.Snapshots,
 		"changes":   res.Changes,
 		"detail":    res.Detail,
+		// 与 /api/stats 对齐（api_stats.go 里也带 jlpt）。非日语为 nil，序列化成 null。
+		"jlpt": res.Jlpt,
 	})
 }
 
