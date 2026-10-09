@@ -97,7 +97,8 @@ var sentence = {
     s.correct = normSentence(s.input) === normSentence(s.answer);
     this.renderItem(i);
     // 字面一致就到此为止：0 延迟、不依赖外网，绝大多数句子走这条路。
-    // 只有字面不一致才问模型 —— 每天最多 20 次，成本和延迟都无所谓。
+    // 只有字面不一致才问模型 —— 每天最多 32 句（20 原文 + 12 回炉变形句），
+    // 成本和延迟都无所谓。
     if (!s.correct && app.llmEnabled !== false) self.askJudge(i);
     // 自动跳到下一题
     var next = el('sentenceList').querySelector('input[data-i="' + (i + 1) + '"]');

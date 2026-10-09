@@ -80,7 +80,7 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request) {
 
 	switch mode {
 	case "sentences":
-		plan, err := s.buildSentencePlan(targetDate, !readOnly)
+		plan, err := s.buildSentencePlan(targetDate, !readOnly, arc)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": err.Error(),
@@ -168,13 +168,27 @@ func (s *server) handleHard(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// 每天造句的构成：20 句课本原文（句库轮转）+ 12 句回炉变形句。
+//
+// 回炉那 12 句是 2026-10-09 老师定的：档案里有一批正确率≥80%、但 30 天以上没复习
+// 的词，按艾宾浩斯间隔还没到期，实际已经忘了。加进单词复习等于重背词表（不要），
+// 所以走造句——拿原型句换掉一个词，助词序列不动，写整句时自然要写出那个词。
+// 详见 sentence_review.go 的头部注释。
+const (
+	sentenceBaseCount   = 20
+	sentenceReviewCount = 12
+)
+
 // buildSentencePlan 从句库挑当天的造句。upload 为 false 时只读（明日预告场景）。
+//
+// arc 用来过滤回炉句：锚点词最近复习过（闲置 < 30 天）就跳过，不占名额。
+// 传 nil 时不做这层过滤（宁可多练）。
 //
 // 「当天锁定」是这里最重要的一条：只要 COS 上已经有这天的造句 plan，就原样返回，
 // 不再重算出题。否则老师写到一半刷新（或换台设备打开）题就变了，
 // 草稿对不上、白写一场。换新一批的唯一途径是回写成功 —— 见 api_record.go 的
 // DeleteSentencePlan。
-func (s *server) buildSentencePlan(targetDate time.Time, upload bool) (*ReviewPlan, error) {
+func (s *server) buildSentencePlan(targetDate time.Time, upload bool, arc *Archive) (*ReviewPlan, error) {
 	ctx := s.ctx()
 
 	if upload {
@@ -197,12 +211,31 @@ func (s *server) buildSentencePlan(targetDate time.Time, upload bool) (*ReviewPl
 		return nil, err
 	}
 
-	n := 20
+	sentences := BuildSentencePlan(bank, hist, wrong, targetDate, sentenceBaseCount)
+
+	// 回炉变形句。拿不到句库 / 解析失败就当今天没有加餐 —— 新功能绝不能
+	// 把整个造句练习弄没，20 句原文该怎么出还怎么出。
+	if rb, rerr := s.storage.DownloadReviewBank(ctx); rerr == nil && rb != nil {
+		exclude := make(map[string]bool, len(sentences))
+		for _, p := range sentences {
+			exclude[normSentence(p.Answer)] = true
+		}
+		extra := BuildReviewSentences(rb, hist, arc, targetDate,
+			sentenceReviewCount, exclude, DefaultReviewIdleDays)
+		for _, e := range extra {
+			sentences = append(sentences, PlanSentence{
+				Number:  len(sentences) + 1,
+				Chinese: e.Chinese,
+				Answer:  e.Answer,
+			})
+		}
+	}
+
 	plan := &ReviewPlan{
 		Date:      targetDate.Format("2006-01-02"),
 		Language:  s.lang,
 		Kind:      "sentences",
-		Sentences: BuildSentencePlan(bank, hist, wrong, targetDate, n),
+		Sentences: sentences,
 	}
 
 	if upload {

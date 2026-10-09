@@ -282,6 +282,26 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 	}
 
 	picked := BuildSentencePlan(bank, hist, wrong, today, *count)
+	baseCount := len(picked)
+
+	// 回炉变形句：跟网页端同一套加餐逻辑（arc 传 nil → 不按闲置过滤，
+	// 预检场景拿不到档案，宁可全列出来让人看过全貌）。
+	if rb, rerr := storage.DownloadReviewBank(ctx); rerr == nil && rb != nil {
+		exclude := make(map[string]bool, len(picked))
+		for _, p := range picked {
+			exclude[normSentence(p.Answer)] = true
+		}
+		extra := BuildReviewSentences(rb, hist, nil, today,
+			sentenceReviewCount, exclude, DefaultReviewIdleDays)
+		for _, e := range extra {
+			picked = append(picked, PlanSentence{
+				Number:  len(picked) + 1,
+				Chinese: e.Chinese,
+				Answer:  e.Answer,
+			})
+		}
+	}
+	reviewCount := len(picked) - baseCount
 
 	// 自检：近 7 天重复
 	cutoff := today.AddDate(0, 0, -7)
@@ -329,12 +349,14 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 	}
 
 	outputResult(map[string]interface{}{
-		"success":   true,
-		"command":   "sentence-preview",
-		"language":  lang,
-		"date":      today.Format("2006-01-02"),
-		"note":      "只读干跑，未写入任何数据",
-		"pool_size": len(bank.Sentences),
+		"success":      true,
+		"command":      "sentence-preview",
+		"language":     lang,
+		"date":         today.Format("2006-01-02"),
+		"note":         "只读干跑，未写入任何数据",
+		"pool_size":    len(bank.Sentences),
+		"base_count":   baseCount,
+		"review_added": reviewCount,
 		"self_check": map[string]interface{}{
 			"recent_7d_repeat": recentDup, // 应为 0（错句除外）
 			"inner_repeat":     innerDup,  // 必须为 0

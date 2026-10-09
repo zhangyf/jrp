@@ -72,14 +72,14 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		})
 
 	case "sentences":
-		sp, err := s.buildSentencePlan(targetDate, false)
+		sp, err := s.buildSentencePlan(targetDate, false, arc)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": err.Error(),
 			})
 			return
 		}
-		sp.Sentences = BuildSentencePlanFrom(s.storage, targetDate, 50)
+		sp.Sentences = BuildSentencePlanFrom(s.storage, targetDate, 50, arc)
 		if sp.Sentences == nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": "句库读取失败",
@@ -93,7 +93,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 
 	default: // daily：到期词 + 20 句造句
 		plan := BuildDuePlan(arc, s.lang, targetDate)
-		plan.Sentences = BuildSentencePlanFrom(s.storage, targetDate, 20)
+		plan.Sentences = BuildSentencePlanFrom(s.storage, targetDate, 20, arc)
 		filename = fmt.Sprintf("review_%s.xlsx", dateStr)
 		genErr = GenerateExcelWithMeta(plan, tmp.Name(), &ExcelMeta{
 			PlanDate: dateStr, Language: s.lang, Mode: "daily",
@@ -205,8 +205,11 @@ func (s *server) handleImport(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// BuildSentencePlanFrom 从 COS 句库挑 n 句。纯读，不写 history。
-func BuildSentencePlanFrom(st *Storage, today time.Time, n int) []PlanSentence {
+// BuildSentencePlanFrom 从 COS 句库挑 n 句，再追加回炉变形句。纯读，不写 history。
+//
+// 离线导出 Excel 走这条路，所以它也必须带加餐 —— 老师在飞机上/离线时练的那份
+// 要是少了回炉句，等于白加这个功能。
+func BuildSentencePlanFrom(st *Storage, today time.Time, n int, arc *Archive) []PlanSentence {
 	ctx := bgctx()
 	bank, err := st.DownloadSentenceBank(ctx)
 	if err != nil {
@@ -220,7 +223,24 @@ func BuildSentencePlanFrom(st *Storage, today time.Time, n int) []PlanSentence {
 	if err != nil {
 		return nil
 	}
-	return BuildSentencePlan(bank, hist, wrong, today, n)
+	out := BuildSentencePlan(bank, hist, wrong, today, n)
+
+	if rb, rerr := st.DownloadReviewBank(ctx); rerr == nil && rb != nil {
+		exclude := make(map[string]bool, len(out))
+		for _, p := range out {
+			exclude[normSentence(p.Answer)] = true
+		}
+		extra := BuildReviewSentences(rb, hist, arc, today,
+			sentenceReviewCount, exclude, DefaultReviewIdleDays)
+		for _, e := range extra {
+			out = append(out, PlanSentence{
+				Number:  len(out) + 1,
+				Chinese: e.Chinese,
+				Answer:  e.Answer,
+			})
+		}
+	}
+	return out
 }
 
 // saveMultipartFile 把上传的文件落到磁盘。
