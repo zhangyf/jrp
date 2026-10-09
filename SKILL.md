@@ -1164,6 +1164,18 @@ ssh root@154.8.216.179 'strings /usr/local/bin/jrp | grep -c conj-input;
    **别用中文字符串做特征** —— `strings` 默认不认多字节，CJK 一律返回 0，会误判成"没有"。
 8. **只改文档（SKILL.md / knowledge/*.md）的提交不需要重新部署** —— 二进制里没有它们，
    部署只跟 `*.go` 和 `web/**` 有关。
+9. **⚠️ `Permission denied (publickey)` 不等于「这台机器没配过密钥」**（2026-10-09 踩到）：
+   Windows 的 `id_rsa`、`id_ed25519` 私钥都是有效的（`ssh -vv` 里能看到
+   `Offering public key ... we sent a publickey packet`，说明签名发出去了），
+   但服务器拒收 —— 是**服务器 root 的 `authorized_keys` 里没有这两把钥匙**，
+   不是本机缺密钥。排查顺序：
+   - 先确认服务器没被重装：`ssh-keygen -l -f ~/.ssh/known_hosts | grep <IP>`
+     和本次连接的 `Server host key` 指纹比对，一致就说明还是同一台。
+   - 别信腾讯云那个「微信扫码安全登录」横幅 —— **免密成功时它也会出现**，不是失败信号。
+   - 腾讯云 API 那条路也走不通：本机 `~/.tccli/default.credential` 是 oauth 临时凭证，
+     几个月前就过期了。
+   - 出路：**让老师交互式登录一次**（密码或扫码），顺便把本机公钥追加回
+     `authorized_keys`，免密就恢复了。现成脚本：`outputs/deploy_jrp.sh`（上传+写公钥+部署+验证一条龙）。
 
 ## Language Codes
 
