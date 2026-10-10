@@ -36,6 +36,7 @@ Commands:
   sentence-lint    Read-only check that every bank sentence is real textbook text
   sentence-bank    Sentence bank management (--file upload / --dump / --stats)
   sentence-preview  Read-only dry run: which sentences would be picked today
+  sentence-review-todo  List words that qualify for 回炉 but have no transformed sentence yet
 
 Global flags:
   --lang string   Language code: ja (Japanese), en (English), fr (French) (required)
@@ -152,6 +153,8 @@ func main() {
 		runSentenceBank(fs, lang)
 	case "sentence-preview":
 		runSentencePreview(fs, lang)
+	case "sentence-review-todo":
+		runSentenceReviewTodo(fs, lang)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		fmt.Print(usage)
