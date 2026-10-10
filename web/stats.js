@@ -195,7 +195,9 @@ function stShare(snaps) {
   return stCardWide('掌握度构成', '共 ' + total + ' 词', bar + legend);
 }
 
-// 词库走势：总词量 + 已掌握两条线
+// 词库走势：四档堆叠 —— 各档相加就是总词量，顶部深色轮廓即总量线。
+// 早先只画「总量 + 已掌握」两条线，待巩固／基本掌握／未测试看不出走向，
+// 堆叠之后四档的消长一眼能看出：哪天待巩固鼓起来了、哪天已掌握涨上去。
 function stTrend(snaps) {
   if (snaps.length < 2) {
     return stCardWide('词库走势', '至少两个存档点才能画走势',
@@ -207,11 +209,13 @@ function stTrend(snaps) {
   };
 
   var svg = chart.line([
-    { name: '总词量', color: chart.PALETTE.accent, data: toPts('total') },
-    { name: '已掌握', color: chart.PALETTE.light, data: toPts('mastered') }
-  ], { height: 220 });
+    { name: '已掌握', color: chart.PALETTE.accent, data: toPts('mastered') },
+    { name: '基本掌握', color: chart.PALETTE.light, data: toPts('basic') },
+    { name: '待巩固', color: chart.PALETTE.warn, data: toPts('needs_consol') },
+    { name: '未测试', color: chart.PALETTE.line, data: toPts('untested') }
+  ], { height: 220, stacked: true });
 
-  return stCardWide('词库走势', '每天取当天最后一个版本', svg);
+  return stCardWide('词库走势', '四档堆叠，顶部轮廓即总词量；鼠标放到图上可看每天的数字', svg);
 }
 
 // 正确率分布：5 个桶，颜色从红到绿

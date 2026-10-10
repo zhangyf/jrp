@@ -419,6 +419,17 @@ button.unk.on {
 .legend-col .legend-item { justify-content: flex-start; }
 .legend-col .legend-name { flex: 1; }
 .legend .muted { font-size: 12px; }
+/* 折线图悬浮提示：跟着鼠标走，显示这一天的各档数字 */
+.chart-tip {
+  position: absolute; z-index: 50; display: none;
+  padding: 7px 10px; border-radius: 8px;
+  background: var(--panel); color: var(--ink);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  font-size: 12px; line-height: 1.55; white-space: nowrap;
+  pointer-events: none;
+}
+.chart-tip div:first-child { color: var(--muted); margin-bottom: 2px; }
 
 /* 复习最多的词：正确率条 */
 .acc-cell { display: flex; align-items: center; gap: 8px; }

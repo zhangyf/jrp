@@ -26,19 +26,37 @@ var chart = {
   // 多条系列共用一套 Y 轴；X 轴按索引等距（快照是按天排的，等距更好读）。
   line: function (series, opt) {
     opt = opt || {};
+    var stacked = !!opt.stacked; // 堆叠：各层相加，顶部轮廓就是总量
     var W = opt.width || 640, H = opt.height || 210;
     var pl = 40, pr = 12, pt = 14, pb = 26;
     var iw = W - pl - pr, ih = H - pt - pb;
 
-    var n = 0, max = 0, min = Infinity;
-    series.forEach(function (s) {
-      n = Math.max(n, s.data.length);
-      s.data.forEach(function (p) {
-        if (p.value > max) max = p.value;
-        if (p.value < min) min = p.value;
+    var n = 0;
+    series.forEach(function (s) { n = Math.max(n, s.data.length); });
+    if (!n) return chart.empty('没有足够的数据点');
+
+    // 堆叠先算每层的下沿（_base）和累加顶部（acc）；否则各线共用一个 Y 轴。
+    var acc = null, max = 0, min = Infinity;
+    if (stacked) {
+      acc = [];
+      for (var z = 0; z < n; z++) acc.push(0);
+      series.forEach(function (s) {
+        s._base = acc.slice();
+        acc = acc.map(function (v, i) {
+          return v + (((s.data[i] || {}).value) || 0);
+        });
       });
-    });
-    if (!n || min === Infinity) return chart.empty('没有足够的数据点');
+      acc.forEach(function (v) { if (v > max) max = v; });
+      min = 0;
+    } else {
+      series.forEach(function (s) {
+        s.data.forEach(function (p) {
+          if (p.value > max) max = p.value;
+          if (p.value < min) min = p.value;
+        });
+      });
+    }
+    if (min === Infinity) return chart.empty('没有足够的数据点');
 
     // 上下留白，别让线贴着边缘
     var span = max - min;
@@ -82,6 +100,19 @@ var chart = {
 
     var body = '';
     series.forEach(function (s) {
+      if (stacked) {
+        // 每层画成一条带状多边形：上沿 = 本层下沿 + 本层值，下沿 = 本层下沿
+        var top = s.data.map(function (p, i) {
+          return X(i).toFixed(1) + ',' + Y(s._base[i] + p.value).toFixed(1);
+        });
+        var bot = s.data.map(function (p, i) {
+          return X(i).toFixed(1) + ',' + Y(s._base[i]).toFixed(1);
+        }).reverse();
+        body += '<polygon points="' + top.concat(bot).join(' ') + '" fill="' +
+          s.color + '" opacity="0.85"/>';
+        return;
+      }
+
       var pts = s.data.map(function (p, i) {
         return X(i).toFixed(1) + ',' + Y(p.value).toFixed(1);
       });
@@ -107,8 +138,43 @@ var chart = {
       }
     });
 
+    if (stacked) {
+      // 顶部轮廓 = 各档相加 = 总词量，用深色粗线画出来，跟各档颜色区分开
+      var topPts = acc.map(function (v, i) {
+        return X(i).toFixed(1) + ',' + Y(v).toFixed(1);
+      });
+      body += '<polyline points="' + topPts.join(' ') + '" fill="none" stroke="' +
+        (opt.topColor || chart.PALETTE.accent) + '" stroke-width="2.5" ' +
+        'stroke-linejoin="round" stroke-linecap="round"/>';
+    }
+
+    // 悬浮层：每列一个透明矩形，鼠标进去就浮出该天的各档数字（见文件末尾委托）
+    var colW = n > 1 ? iw / (n - 1) : iw;
+    var hit = '<g class="ch-hit">';
+    for (var ci = 0; ci < n; ci++) {
+      var cx = X(ci);
+      var hx0 = Math.max(pl, cx - colW / 2), hx1 = Math.min(W - pr, cx + colW / 2);
+      var tipTxt = String((series[0].data[ci] || {}).label || '');
+      series.forEach(function (s) {
+        tipTxt += '|' + s.name + ' ' + (((s.data[ci] || {}).value) || 0);
+      });
+      if (stacked) tipTxt += '|合计 ' + acc[ci];
+      hit += '<rect class="ch-hitcol" data-tip="' + esc(tipTxt).replace(/"/g, '&quot;') +
+        '" data-x="' + cx.toFixed(1) + '" x="' + hx0.toFixed(1) + '" y="' + pt +
+        '" width="' + Math.max(1, hx1 - hx0).toFixed(1) + '" height="' + ih +
+        '" fill="transparent"/>';
+    }
+    hit += '<line class="ch-cursor" x1="0" y1="' + pt + '" x2="0" y2="' + (pt + ih) +
+      '" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" opacity="0"/>';
+    hit += '</g>';
+
     var legend = series.length > 1
-      ? '<div class="legend">' + series.map(function (s) {
+      ? '<div class="legend">' +
+        (stacked
+          ? '<span class="legend-item"><i style="background:' +
+            (opt.topColor || chart.PALETTE.accent) + '"></i>总词量（堆叠轮廓）</span>'
+          : '') +
+        series.map(function (s) {
           return '<span class="legend-item"><i style="background:' + s.color + '"></i>' +
             esc(s.name) + '</span>';
         }).join('') + '</div>'
@@ -116,7 +182,7 @@ var chart = {
 
     return legend +
       '<svg class="chart-svg" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" role="img">' +
-      g + xs + body + '</svg>';
+      g + xs + body + hit + '</svg>';
   },
 
   // 垂直柱状图。data: [{label, value, color}]
@@ -215,3 +281,66 @@ var chart = {
     return '<div class="donut-wrap">' + svg + legend + '</div>';
   }
 };
+
+// 折线图悬浮提示：鼠标移到某一列，浮出这一天的各档数字。
+// 用 document 级委托 —— 图表是 innerHTML 塞进去的，调用方不用管绑定/解绑。
+// data-tip 里用 | 分隔，第一行是日期，后面每行一条系列。
+(function () {
+  var tipEl = null, curLine = null;
+
+  function ensure() {
+    if (tipEl) return tipEl;
+    tipEl = document.createElement('div');
+    tipEl.className = 'chart-tip';
+    tipEl.style.display = 'none';
+    document.body.appendChild(tipEl);
+    return tipEl;
+  }
+
+  function place(evt) {
+    var t = ensure();
+    var x = evt.pageX + 14, y = evt.pageY + 14;
+    if (x + t.offsetWidth > window.innerWidth - 10) x = evt.pageX - t.offsetWidth - 14;
+    t.style.left = Math.max(8, x) + 'px';
+    t.style.top = y + 'px';
+  }
+
+  function hitOf(e) {
+    return e.target && e.target.closest ? e.target.closest('.ch-hitcol') : null;
+  }
+
+  function cursorIn(el) {
+    var svg = el.ownerSVGElement || (el.closest ? el.closest('svg') : null);
+    if (!svg) return null;
+    var line = svg.querySelector('.ch-cursor');
+    if (!line) return null;
+    var x = el.getAttribute('data-x');
+    line.setAttribute('x1', x);
+    line.setAttribute('x2', x);
+    line.setAttribute('opacity', '1');
+    return line;
+  }
+
+  document.addEventListener('mouseover', function (e) {
+    var el = hitOf(e);
+    if (!el) return;
+    var t = ensure();
+    t.innerHTML = String(el.getAttribute('data-tip') || '').split('|').map(function (s) {
+      return '<div>' + esc(s) + '</div>';
+    }).join('');
+    t.style.display = 'block';
+    place(e);
+    curLine = cursorIn(el);
+  });
+
+  document.addEventListener('mousemove', function (e) {
+    if (tipEl && tipEl.style.display === 'block') place(e);
+  });
+
+  document.addEventListener('mouseout', function (e) {
+    var el = hitOf(e);
+    if (!el) return;
+    if (tipEl) tipEl.style.display = 'none';
+    if (curLine) { curLine.setAttribute('opacity', '0'); curLine = null; }
+  });
+})();
