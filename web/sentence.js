@@ -10,9 +10,11 @@ var sentence = {
   draftTimer: null,
   draftBar: null,
 
-  // 当前生效的 prompt 版本（COS 模板 sha256 前 12 位）。草稿里的模型结论记着
-  // 它算的时候的版本，对不上说明 prompt 改过了 —— 旧结论一律作废，重新问模型。
-  // 拿不到版本时按「未知」处理，同样不复用旧结论。
+  // 当前生效的 prompt 版本（COS 模板 sha256 前 12 位）。
+  //
+  // ⚠️ 只用于展示/排查和探测服务有没有配模型，**不用来作废旧结论** ——
+  // 草稿按天隔离，恢复只发生在同一天，按版本作废会让当天已判的句子全部重判。
+  // 新规则从「新的一天」自然生效，不需要靠版本号强制刷新。
   promptVersion: '',
 
   fetchPromptVersion: function () {
@@ -334,11 +336,14 @@ var sentence = {
           else {
             if (x.answer) s.input = x.answer;
             if (x.manual) { s.manual = true; s.correct = true; }
-            // 草稿里存过模型结论、且是当前规则版本（v2）+ 当前 prompt 版本 → 直接复用。
-            // prompt 改过（松紧变了 / 换模板）一律作废，恢复后重新问模型 ——
-            // 不能拿旧规矩算出的结论在新规矩下继续糊弄。
-            else if (x.judge && x.judge.v === 2 && s.input &&
-                     x.judge.pv && x.judge.pv === self.promptVersion) {
+            // 草稿里存过模型结论（v2）→ 直接复用，不再问一次。
+            //
+            // 注意：**不拿 prompt 版本作废旧结论**。草稿按天隔离（DownloadDraft
+            // 只恢复当天的），恢复永远发生在同一天内 —— 若按版本比对，当天改一次
+            // prompt 就会把老师已经判过的句子全部打回重判，看起来像「白练了」。
+            // 老师 2026-10-12 明确要求：今天已判的维持原样，新规则从明天
+            // （新一天的草稿）开始生效。`pv` 只记录结论用的是哪版 prompt，供排查。
+            else if (x.judge && x.judge.v === 2 && s.input && x.judge.pv) {
               s.pv = String(x.judge.pv);
               s.llm = true; s.llmReason = String(x.judge.reason || '');
               s.correct = !!x.judge.correct;
