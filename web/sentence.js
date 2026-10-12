@@ -10,6 +10,21 @@ var sentence = {
   draftTimer: null,
   draftBar: null,
 
+  // 当前生效的 prompt 版本（COS 模板 sha256 前 12 位）。草稿里的模型结论记着
+  // 它算的时候的版本，对不上说明 prompt 改过了 —— 旧结论一律作废，重新问模型。
+  // 拿不到版本时按「未知」处理，同样不复用旧结论。
+  promptVersion: '',
+
+  fetchPromptVersion: function () {
+    var self = this;
+    return app.api('/api/judge-prompt').then(function (p) {
+      if (p && p.version) self.promptVersion = String(p.version);
+      if (p && p.enabled === false) app.llmEnabled = false;   // 服务端没配模型
+    }).catch(function () {
+      self.promptVersion = '';
+    });
+  },
+
   load: function () {
     var self = this;
     el('sentenceList').innerHTML = '';
@@ -25,7 +40,7 @@ var sentence = {
       self.items = (d.sentences || []).map(function (s) {
         return { number: s.number, chinese: s.chinese, answer: s.answer,
                  input: '', correct: null, unknown: false, manual: false,
-                 llm: false, llmReason: '', judging: false };
+                 llm: false, llmReason: '', judging: false, pv: '' };
       });
       if (!self.items.length) {
         el('sentenceSummary').innerHTML = '<span class="chip warn">句库没建或为空</span>';
@@ -79,7 +94,8 @@ var sentence = {
         });
       });
       // 有没写完的草稿就回填。后端把当天的造句题锁定了，所以题号一定对得上。
-      self.loadDraft();
+      // 先拿 prompt 版本：草稿里存的模型结论要是旧规矩算的，作废重新问。
+      self.fetchPromptVersion().then(function () { self.loadDraft(); });
     }).catch(function (e) {
       el('sentenceSummary').innerHTML = '<span class="chip warn">' + esc(e.message) + '</span>';
     });
@@ -138,6 +154,7 @@ var sentence = {
         cur.llm = true;
         cur.llmReason = String(d.reason || '').trim();
         cur.correct = !!d.correct;
+        cur.pv = String(d.pv || '');     // 记下这次用的 prompt 版本
       }
       self.renderItem(i);
       self.scheduleDraft();
@@ -246,7 +263,7 @@ var sentence = {
       prompt: s.answer        // 原句指纹：恢复时核对，防止串到换过的题上
     };
     // 模型结论跟着草稿走：刷新、换设备回来还是同一个结论
-    if (s.llm) it.judge = { v: 2, correct: !!s.correct, reason: s.llmReason || '' };
+    if (s.llm) it.judge = { v: 2, correct: !!s.correct, reason: s.llmReason || '', pv: s.pv || '' };
     return it;
   },
 
@@ -317,9 +334,12 @@ var sentence = {
           else {
             if (x.answer) s.input = x.answer;
             if (x.manual) { s.manual = true; s.correct = true; }
-            // 草稿里存过模型结论、且是当前规则版本（v2）→ 直接复用，不再问一次。
-            // 旧版本结论（prompt 改过松紧）一律作废，恢复后重新问模型。
-            else if (x.judge && x.judge.v === 2 && s.input) {
+            // 草稿里存过模型结论、且是当前规则版本（v2）+ 当前 prompt 版本 → 直接复用。
+            // prompt 改过（松紧变了 / 换模板）一律作废，恢复后重新问模型 ——
+            // 不能拿旧规矩算出的结论在新规矩下继续糊弄。
+            else if (x.judge && x.judge.v === 2 && s.input &&
+                     x.judge.pv && x.judge.pv === self.promptVersion) {
+              s.pv = String(x.judge.pv);
               s.llm = true; s.llmReason = String(x.judge.reason || '');
               s.correct = !!x.judge.correct;
             }

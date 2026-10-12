@@ -3,9 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -61,32 +64,144 @@ func loadLLMConfig() (llmConfig, bool) {
 
 // ---------- prompt ----------
 
-// judgePrompt 判定用词。规则写死在这里：只判意思，不判措辞；
-// 拿不准判对。老师的原则是「已学语法不该被标成陷阱」，模型更不该自作主张。
+// builtinJudgePrompt 内置判定模板。COS 上没有 / 模板坏了 / 读不到时用这份。
+//
+// 规则的内涵：只判意思，不判措辞；拿不准判对。老师的原则是「已学语法不该被
+// 标成陷阱」，模型更不该自作主张。删掉第 3、5、6 条，模型立刻变成语法警察。
+// TestJudgePromptKeepsConservativeRules 盯着不许删。
+//
+// 2026-10-12 起整段 prompt 可外置到 COS（configs/judge_prompt.txt），这份是兜底。
+// 占位符：{answer} 参考答案、{chinese} 中文意思、{input} 学生写的。
+const builtinJudgePrompt = `你是日语老师。判断学生写的句子是否表达了参考答案的意思。
+
+参考答案：{answer}
+中文意思：{chinese}
+学生写的：{input}
+
+判定规则：
+1. 只判断意思是否成立，不评价语法是否地道、措辞是否优雅。
+2. 以下差异一律视为正确：汉字与假名的写法不同、全角半角、标点符号、空格、助词的省略或添加（を/が/は 等）、词序微调、同义词替换、敬体简体差异。
+3. 感叹词、语气词、开场填充词（ええ/えっ/えっと/あの/うーん/あれ 等）互相不同不算错 —— 它们不承载句子的核心意思。唯一例外：把肯定答成否定（はい↔いいえ、うん↔ううん）才算错。
+4. 学生用了没学过的表达，只要意思成立，仍判正确。
+5. 只有关键要素错了才判错误：主体、动作、对象、时态、肯定否定。感叹词永远不算关键要素。
+6. 拿不准就判正确。
+
+例：参考答案「えっと、銀座ですか？」学生写「ええ、銀座ですか。」→ 正确（开场词不同，核心问句一样）。
+例：参考答案「はい、そうです」学生写「いいえ、違います」→ 错误（肯定变否定）。
+
+只输出一行 JSON，不要解释：{"correct": true 或 false, "reason": "一句话中文说明，20 字以内"}`
+
+// judgePrompt 用内置模板渲染判定词。
 func judgePrompt(answer, chinese, input string) string {
-	var b strings.Builder
-	b.WriteString("你是日语老师。判断学生写的句子是否表达了参考答案的意思。\n\n")
-	b.WriteString("参考答案：" + answer + "\n")
-	if strings.TrimSpace(chinese) != "" {
-		b.WriteString("中文意思：" + chinese + "\n")
+	return fillJudgePrompt(builtinJudgePrompt, answer, chinese, input)
+}
+
+// fillJudgePrompt 把占位符换成实际句子。
+// 中文意思为空时，模板里含 {chinese} 的整行直接删掉 —— 免得留一行「中文意思：」空壳。
+func fillJudgePrompt(tpl, answer, chinese, input string) string {
+	hasChinese := strings.TrimSpace(chinese) != ""
+	var kept []string
+	for _, ln := range strings.Split(tpl, "\n") {
+		if !hasChinese && strings.Contains(ln, "{chinese}") {
+			continue
+		}
+		kept = append(kept, ln)
 	}
-	b.WriteString("学生写的：" + input + "\n\n")
-	b.WriteString("判定规则：\n")
-	b.WriteString("1. 只判断意思是否成立，不评价语法是否地道、措辞是否优雅。\n")
-	b.WriteString("2. 以下差异一律视为正确：汉字与假名的写法不同、全角半角、标点符号、空格、")
-	b.WriteString("助词的省略或添加（を/が/は 等）、词序微调、同义词替换、敬体简体差异。\n")
-	b.WriteString("3. 感叹词、语气词、开场填充词（ええ/えっ/えっと/あの/うーん/あれ 等）")
-	b.WriteString("互相不同不算错 —— 它们不承载句子的核心意思。唯一例外：把肯定答成否定")
-	b.WriteString("（はい↔いいえ、うん↔ううん）才算错。\n")
-	b.WriteString("4. 学生用了没学过的表达，只要意思成立，仍判正确。\n")
-	b.WriteString("5. 只有关键要素错了才判错误：主体、动作、对象、时态、肯定否定。")
-	b.WriteString("感叹词永远不算关键要素。\n")
-	b.WriteString("6. 拿不准就判正确。\n\n")
-	b.WriteString("例：参考答案「えっと、銀座ですか？」学生写「ええ、銀座ですか。」")
-	b.WriteString("→ 正确（开场词不同，核心问句一样）。\n")
-	b.WriteString("例：参考答案「はい、そうです」学生写「いいえ、違います」→ 错误（肯定变否定）。\n\n")
-	b.WriteString(`只输出一行 JSON，不要解释：{"correct": true 或 false, "reason": "一句话中文说明，20 字以内"}`)
-	return b.String()
+	s := strings.Join(kept, "\n")
+	s = strings.ReplaceAll(s, "{answer}", answer)
+	s = strings.ReplaceAll(s, "{chinese}", chinese)
+	s = strings.ReplaceAll(s, "{input}", input)
+	// 删掉空行后可能留下的连续换行
+	for strings.Contains(s, "\n\n\n") {
+		s = strings.ReplaceAll(s, "\n\n\n", "\n\n")
+	}
+	return strings.TrimSpace(s)
+}
+
+// validateJudgePrompt 校验外置模板。护栏之一：缺 {answer} 或 {input} 一律判坏，
+// 否则填完的 prompt 里根本没有要判的句子，模型只能瞎猜。
+func validateJudgePrompt(tpl string) error {
+	if strings.TrimSpace(tpl) == "" {
+		return fmt.Errorf("模板为空")
+	}
+	var miss []string
+	if !strings.Contains(tpl, "{answer}") {
+		miss = append(miss, "{answer}")
+	}
+	if !strings.Contains(tpl, "{input}") {
+		miss = append(miss, "{input}")
+	}
+	if len(miss) > 0 {
+		return fmt.Errorf("模板缺少占位符 %s", strings.Join(miss, "、"))
+	}
+	return nil
+}
+
+// ensureJSONRule 护栏之二：模板里没提 JSON 输出就补上。
+// 少了这行模型就开始自由发挥，parseJudgeReply 抠不出结论，判分全线失灵。
+func ensureJSONRule(p string) string {
+	if strings.Contains(strings.ToLower(p), "correct") {
+		return p
+	}
+	return p + "\n\n只输出一行 JSON，不要解释：{\"correct\": true 或 false, \"reason\": \"一句话中文说明，20 字以内\"}"
+}
+
+// promptVersion 模板版本：内容 sha256 前 12 位。
+// 改一个字版本就变，草稿里的旧结论据此作废重判 —— 不能拿旧规矩的结论当新规矩的。
+func promptVersion(tpl string) string {
+	sum := sha256.Sum256([]byte(tpl))
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+// ---------- 模板装载（带缓存） ----------
+
+const judgePromptTTL = 60 * time.Second
+
+var judgePromptCache = struct {
+	sync.Mutex
+	at      time.Time
+	tpl     string
+	version string
+	source  string // "cos" 或 "builtin"
+}{}
+
+// chooseJudgePrompt 在「COS 上读到的」和「内置的」之间做选择。抽成纯函数是为了能单测 ——
+// 护栏全在这里：读不到、空的、缺占位符，一律回退内置，练习绝不因为一份坏文件卡住。
+func chooseJudgePrompt(cosText string, err error) (tpl, source string) {
+	if err != nil || strings.TrimSpace(cosText) == "" {
+		return builtinJudgePrompt, "builtin"
+	}
+	if err := validateJudgePrompt(cosText); err != nil {
+		log.Printf("judge-prompt: COS 上的模板不可用（%v），回退内置模板", err)
+		return builtinJudgePrompt, "builtin"
+	}
+	return cosText, "cos"
+}
+
+// resolveJudgePrompt 拿当前生效的模板：COS 优先，坏了就用内置。
+// 缓存 60 秒 —— 判定在每次输入后都可能触发，不能每句都打一次 COS。
+func resolveJudgePrompt(ctx context.Context, st *Storage) (tpl, version, source string) {
+	judgePromptCache.Lock()
+	if time.Since(judgePromptCache.at) < judgePromptTTL && judgePromptCache.tpl != "" {
+		t, v, src := judgePromptCache.tpl, judgePromptCache.version, judgePromptCache.source
+		judgePromptCache.Unlock()
+		return t, v, src
+	}
+	judgePromptCache.Unlock()
+
+	tpl, source = chooseJudgePrompt(st.DownloadJudgePrompt(ctx))
+	version = promptVersion(tpl)
+
+	judgePromptCache.Lock()
+	judgePromptCache.at, judgePromptCache.tpl = time.Now(), tpl
+	judgePromptCache.version, judgePromptCache.source = version, source
+	judgePromptCache.Unlock()
+	return tpl, version, source
+}
+
+// renderJudgePrompt 渲染出最终发给模型的文本。
+func renderJudgePrompt(tpl, answer, chinese, input string) string {
+	return ensureJSONRule(fillJudgePrompt(tpl, answer, chinese, input))
 }
 
 // ---------- 解析 ----------
@@ -185,31 +300,36 @@ var judgeCache = struct {
 	m map[string]judgeResult
 }{m: map[string]judgeResult{}}
 
-func judgeCacheKey(answer, input string) string {
-	return normSentence(answer) + "\x00" + normSentence(input)
+// judgeCacheKey 缓存键带模板版本：prompt 一改，旧的判定结论自然失效，
+// 不会出现「规矩换了但还拿旧结论糊弄」的情况。
+func judgeCacheKey(version, answer, input string) string {
+	return version + "\x00" + normSentence(answer) + "\x00" + normSentence(input)
 }
 
-func judgeWithCache(cfg llmConfig, answer, chinese, input string) (judgeResult, error) {
-	key := judgeCacheKey(answer, input)
+// judgeWithCache 判定一句，顺带返回这次用的模板版本（前端存进草稿，
+// 下次恢复时对不上就作废重判）。
+func judgeWithCache(ctx context.Context, st *Storage, cfg llmConfig, answer, chinese, input string) (judgeResult, string, error) {
+	tpl, version, _ := resolveJudgePrompt(ctx, st)
+	key := judgeCacheKey(version, answer, input)
 	judgeCache.Lock()
 	if r, ok := judgeCache.m[key]; ok {
 		judgeCache.Unlock()
-		return r, nil
+		return r, version, nil
 	}
 	judgeCache.Unlock()
 
-	reply, err := callLLM(cfg, judgePrompt(answer, chinese, input))
+	reply, err := callLLM(cfg, renderJudgePrompt(tpl, answer, chinese, input))
 	if err != nil {
-		return judgeResult{}, err
+		return judgeResult{}, version, err
 	}
 	r, err := parseJudgeReply(reply)
 	if err != nil {
-		return judgeResult{}, err
+		return judgeResult{}, version, err
 	}
 	judgeCache.Lock()
 	judgeCache.m[key] = r
 	judgeCache.Unlock()
-	return r, nil
+	return r, version, nil
 }
 
 // ---------- HTTP ----------
@@ -264,7 +384,7 @@ func (s *server) handleJudgeSentence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := judgeWithCache(cfg, in.Answer, in.Chinese, in.Input)
+	res, ver, err := judgeWithCache(r.Context(), s.storage, cfg, in.Answer, in.Chinese, in.Input)
 	if err != nil {
 		// 模型不可用不是业务错误：不返回 5xx，让前端退回字面判定继续练
 		writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -276,5 +396,30 @@ func (s *server) handleJudgeSentence(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true, "enabled": true,
 		"correct": res.Correct, "reason": res.Reason, "by": "llm",
+		"pv": ver, // prompt 版本：存进草稿，改了 prompt 就作废旧结论
+	})
+}
+
+// GET /api/judge-prompt
+//
+//	→ { enabled, version, source: "cos"|"builtin" }
+//
+// 只回版本不回内容：前端拿它判断草稿里的旧结论还能不能用。
+// 顺带把「有没有配模型」告诉前端，省得前端非要发一次判定才知道。
+func (s *server) handleJudgePrompt(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
+			"success": false, "error": "只用 GET",
+		})
+		return
+	}
+	_, enabled := loadLLMConfig()
+	tpl, ver, src := resolveJudgePrompt(r.Context(), s.storage)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"enabled": enabled,
+		"version": ver,
+		"source":  src,
+		"chars":   len(tpl),
 	})
 }

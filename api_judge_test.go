@@ -78,13 +78,17 @@ func TestLoadLLMConfigReadsEnv(t *testing.T) {
 // 缓存键必须走归一化：全角「２」和半角「2」是同一句，不能问两次模型，
 // 更不能给出两个不同结论。
 func TestJudgeCacheKeyFoldsWidth(t *testing.T) {
-	a := judgeCacheKey("2万円です", "２万円です。")
-	b := judgeCacheKey("2万円です", "2万円です")
+	a := judgeCacheKey("v1", "2万円です", "２万円です。")
+	b := judgeCacheKey("v1", "2万円です", "2万円です")
 	if a != b {
 		t.Errorf("归一化后应是同一个键：%q vs %q", a, b)
 	}
-	if judgeCacheKey("甲", "乙") == judgeCacheKey("甲", "甲") {
+	if judgeCacheKey("v1", "甲", "乙") == judgeCacheKey("v1", "甲", "甲") {
 		t.Error("不同的输入不能撞键")
+	}
+	// prompt 改了必须换键：否则新规矩下还拿旧结论复用
+	if judgeCacheKey("v1", "甲", "乙") == judgeCacheKey("v2", "甲", "乙") {
+		t.Error("模板版本变了缓存键必须跟着变")
 	}
 }
 

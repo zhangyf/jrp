@@ -83,6 +83,7 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 	mux.HandleFunc("/api/lexicon", srv.requireAuth(srv.handleLexicon))
 	mux.HandleFunc("/api/conjugation", srv.requireAuth(srv.handleConjugation))
 	mux.HandleFunc("/api/judge-sentence", srv.requireAuth(srv.handleJudgeSentence))
+	mux.HandleFunc("/api/judge-prompt", srv.requireAuth(srv.handleJudgePrompt))
 
 	listen := fmt.Sprintf("%s:%d", *addr, *port)
 	authNote := "（无鉴权，仅本机）"
