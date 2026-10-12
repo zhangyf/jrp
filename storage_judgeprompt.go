@@ -47,12 +47,5 @@ func (s *Storage) DeleteJudgePrompt(ctx context.Context) error {
 	if s.dryRun {
 		return nil
 	}
-	if err := s.store.DeleteObject(ctx, s.judgePromptKey()); err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "404") ||
-			strings.Contains(err.Error(), "NoSuchKey") {
-			return nil
-		}
-		return err
-	}
-	return nil
+	return s.deleteObjectIgnore404(ctx, s.judgePromptKey())
 }

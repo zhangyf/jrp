@@ -345,6 +345,20 @@ func (s *Storage) planJSONKey(kind, date string) string {
 }
 
 // UploadPlan uploads a review plan JSON to COS.
+// deleteObjectIgnore404 删 COS 对象，不存在当成功。
+// 清 plan / 清草稿 / 清模板都是这个语义：删一个本来就没有的东西不算失败。
+func (s *Storage) deleteObjectIgnore404(ctx context.Context, key string) error {
+	err := s.store.DeleteObject(ctx, key)
+	if err == nil {
+		return nil
+	}
+	if strings.Contains(strings.ToLower(err.Error()), "404") ||
+		strings.Contains(err.Error(), "NoSuchKey") {
+		return nil
+	}
+	return err
+}
+
 func (s *Storage) UploadPlan(ctx context.Context, plan *ReviewPlan) error {
 	if s.dryRun {
 		return nil
