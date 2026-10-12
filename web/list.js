@@ -144,6 +144,8 @@ function ListPractice(opts) {
           self.refreshSummary();
         }
         self.updateCount();
+        // 一填字就把「回写」按钮放出来 —— 不用先点「对答案」
+        self.refreshCommitBtn();
         self.scheduleDraft();
       });
       inp.addEventListener('keydown', function (e) {
@@ -202,9 +204,22 @@ function ListPractice(opts) {
   self.refreshSummary = function () {
     self.o.msg.className = 'feedback';
     self.o.msg.textContent = UNK.line(self.items);
-    // 只有第一轮才给回写按钮；已回写过就别再显形
+    self.refreshCommitBtn();
+  };
+
+  // 「回写档案」什么时候可点：填了答案、或标了「不会」。
+  //
+  // 不再要求先点「对答案」—— 以前只按 collect() 判断，没判过的行 correct
+  // 还是 null 全被过滤掉，按钮只靠几个「不会」撑着冒出来；老师填了一屏答案
+  // 直接点回写，交上去的只有那几个「不会」，其余全丢（2026-10-12 事故）。
+  // 现在点回写时 commit() 会自己先判一遍，见下面。
+  self.refreshCommitBtn = function () {
+    var any = self.items.some(function (it) {
+      return !!it.unknown || String(it.input || '').trim() !== '';
+    });
+    // 只有第一轮才给回写按钮；已回写过、只读回看态就别再显形
     self.o.commitBtn.classList.toggle('hidden',
-      self.round !== 1 || self.committed || !self.collect().length);
+      self.round !== 1 || self.committed || self.reviewOnly || !any);
   };
 
   // 判分前后都能点「不会」：点了立刻变橙 + 显示正确答案；再点一次复原。
@@ -319,6 +334,9 @@ function ListPractice(opts) {
 
   // --- 回写 ---
   self.commit = function () {
+    // 没点「对答案」直接点回写：先自动判一遍。
+    // 少了这一步，collect() 收不到任何 correct===null 的行，填好的答案全白填。
+    if (!self.graded && !self.reviewOnly) self.gradeAll();
     var pend = UNK.pending(self.items);
     self.pendLeft = 0;
     var go = function () {
