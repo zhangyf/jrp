@@ -1040,6 +1040,22 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
     NEVER place credential files inside any `~/.workbuddy/skills/<marketplace-skill>/`
     directory: marketplace skill updates wholesale-replace those directories and wipe
     local files (this destroyed `.env.enc` on 2026-09-10).
+23. **⚠️ 报「练完了但页面还是显示没做」时的排查顺序 —— 先拿证据，别猜。**
+    ① `nginx access.log` 找当天 `POST /api/record` 的时间和响应码。COS 对象的
+       `LastModified` 是 **UTC，`+8` 才是北京时间**，跟 access.log 一一对上就能锁定
+       「哪个请求写了哪个文件」，也能一眼看出提交是不是发生在部署之前。
+    ② 读 `reviews/review_<date>_<mode>.json` 的 `answer` / `blank` 分布：
+       `answer` 有值但 `blank=true` ⇒ **填了答案但没判分就提交了**；`answer` 空 ⇒
+       真没填。这一步直接分开「没做」和「做了没提交」。
+    ③ 档案 changelog 那行「N词写对 M词写错」才是提交内容的真相。
+    ⚠️ `/api/record` 返回 **200 也可能一个词都没写**（题号映射不上时 `notFound`
+    照样 200），别拿 200 当成功。
+    历史坑（2026-10-12，已修）：列表模式回写按钮只看 `collect()`，而 `collect()`
+    只收 `correct !== null` 的行 —— 填了一屏没点「对答案」时按钮只靠几个「不会」
+    冒出来，点下去只提交「不会」，72 行答案全丢。修法见 `web/list.js` 的
+    `refreshCommitBtn()` + `commit()` 里的自动 `gradeAll()`。
+    另一半症状不是 bug：造句**全交完才换题**，下次刷新出全新一批空白 = 看着像
+    「没做」，数据其实在 `sentence_history.json` / `sentence_wrong.json` 里。
 
 ## Windows Environment Notes
 
