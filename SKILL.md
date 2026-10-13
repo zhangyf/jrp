@@ -396,9 +396,11 @@ Knowledge base IDs:
              不是半年。按艾宾浩斯间隔它们还没到期，可实际已经忘了。老师明确不要
              「加进单词表重背」，所以走造句：拿原型句换掉一个词，助词序列不动。
            - 句库 `language-review/ja/plans/sentence_review.json`，读取与挑句逻辑在
-             `sentence_review.go`；每天 **20 句**（`api_plan.go` 的 `sentenceReviewCount`，
-             2026-10-13 从 12 提到 20 —— 290 条的池子按 12 句/天要 24 天才轮完，实际练过的
-             只有 37 个词），排在 20 句原文之后（编号 21-40，共 40 句/天）。
+             `sentence_review.go`；每天 **20 句**（2026-10-13 从 12 提到 20 —— 290 条的池子
+             按 12 句/天要 24 天才轮完，实际练过的只有 37 个词），排在 20 句原文之后
+             （编号 21-40，共 40 句/天）。**配额已外置**到 COS `configs/plan_config.json`，
+             `jrp --lang ja plan-config --set sentence_review_count=N` 改（不用重新部署），
+             内置默认在 `plan_config.go`。
              网页端 + 离线导出 Excel 都带（`BuildSentencePlanFrom` 里也追加了）。
              ⚠️ 调这个配额只改常量即可，但池子受「锚点词闲置≥30天」过滤，
              练过的词越多可用池越小，某天不足 20 条时总数会相应少几条（不是 bug）。
@@ -898,6 +900,15 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
    - **改 prompt 不用重启**：`jrp --lang ja judge-prompt --file x.txt`（上传前先校验，
      坏的直接中止不写）。另：`--builtin` 打内置、`--reset` 删回退内置、无参看当前。
      服务最多 60 秒后生效。
+   - **出题配额同样外置（2026-10-13）**：COS `configs/plan_config.json`，
+     `sentence_base_count`（课本原句数，默认 20）+ `sentence_review_count`
+     （回炉变形句数，默认 20），允许 0-50。读不到/解析坏/越界 → 内置默认 20+20，
+     缓存 60 秒。
+     **改配额不用编译、不用部署**：`jrp --lang ja plan-config --set sentence_review_count=24`
+     （多个用逗号分隔），`--reset` 删回退内置，无参看当前生效值与来源。
+     三处引用（网页出题 `api_plan.go`、离线 Excel `api_offline.go`、预检
+     `cmd_sentence.go`）都读同一份配置，改一次三处同步。
+     ⚠️ CLI 里直读 COS 不走缓存 —— 否则刚 `--set` 完 `--show` 会看到旧值。
    - ⚠️ **改了 prompt 不作废旧结论**（2026-10-12 老师定的）：版本＝模板 sha256 前 12 位，
      随结论存草稿（`judge.pv`）**只作记录**。**草稿按天隔离**（`DownloadDraft` 只恢复
      当天的），恢复永远发生在同一天内 —— 若按版本作废旧结论，当天改一次 prompt 就会把

@@ -291,8 +291,9 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 		for _, p := range picked {
 			exclude[normSentence(p.Answer)] = true
 		}
+		cfg, _ := resolvePlanConfig(ctx, storage)
 		extra := BuildReviewSentences(rb, hist, nil, today,
-			sentenceReviewCount, exclude, DefaultReviewIdleDays)
+			cfg.SentenceReviewCount, exclude, DefaultReviewIdleDays)
 		for _, e := range extra {
 			picked = append(picked, PlanSentence{
 				Number:  len(picked) + 1,

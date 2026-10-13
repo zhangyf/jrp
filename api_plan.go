@@ -168,19 +168,20 @@ func (s *server) handleHard(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// 每天造句的构成：20 句课本原文（句库轮转）+ 20 句回炉变形句。
+// 每天造句的构成：N 句课本原文（句库轮转）+ M 句回炉变形句。
 //
 // 回炉句是 2026-10-09 老师定的：档案里有一批正确率≥80%、但 30 天以上没复习
 // 的词，按艾宾浩斯间隔还没到期，实际已经忘了。加进单词复习等于重背词表（不要），
 // 所以走造句——拿原型句换掉一个词，助词序列不动，写整句时自然要写出那个词。
 // 详见 sentence_review.go 的头部注释。
 //
-// 配额 2026-10-13 从 12 提到 20：句库 290 条，按 12 句/天要 24 天才轮完一遍，
-// 老师嫌慢（实际练过的只有 37 个词）。20 句/天 → 约 15 天一轮。
-const (
-	sentenceBaseCount   = 20
-	sentenceReviewCount = 20
-)
+// 配额 2026-10-13 起不再是硬编码：默认 20 + 20，可在 COS 的
+// configs/plan_config.json 里改，60 秒内生效，不用重新编译部署。
+// 改它的命令：jrp --lang ja plan-config --set sentence_review_count=24
+// 读取与兜底逻辑见 plan_config.go（读不到 / 配坏了 → 内置默认 20+20）。
+//
+// 值为什么是 20：句库 290 条，按原来的 12 句/天要 24 天才轮完一遍，
+// 老师嫌慢（实际练过的只有 37 个词）；20 句/天 → 约 15 天一轮。
 
 // buildSentencePlan 从句库挑当天的造句。upload 为 false 时只读（明日预告场景）。
 //
@@ -214,7 +215,8 @@ func (s *server) buildSentencePlan(targetDate time.Time, upload bool, arc *Archi
 		return nil, err
 	}
 
-	sentences := BuildSentencePlan(bank, hist, wrong, targetDate, sentenceBaseCount)
+	cfg, _ := resolvePlanConfig(ctx, s.storage)
+	sentences := BuildSentencePlan(bank, hist, wrong, targetDate, cfg.SentenceBaseCount)
 
 	// 回炉变形句。拿不到句库 / 解析失败就当今天没有加餐 —— 新功能绝不能
 	// 把整个造句练习弄没，20 句原文该怎么出还怎么出。
@@ -224,7 +226,7 @@ func (s *server) buildSentencePlan(targetDate time.Time, upload bool, arc *Archi
 			exclude[normSentence(p.Answer)] = true
 		}
 		extra := BuildReviewSentences(rb, hist, arc, targetDate,
-			sentenceReviewCount, exclude, DefaultReviewIdleDays)
+			cfg.SentenceReviewCount, exclude, DefaultReviewIdleDays)
 		for _, e := range extra {
 			sentences = append(sentences, PlanSentence{
 				Number:  len(sentences) + 1,

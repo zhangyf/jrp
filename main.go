@@ -38,6 +38,7 @@ Commands:
   sentence-preview  Read-only dry run: which sentences would be picked today
   judge-prompt       View / upload / reset the LLM prompt template for 造句 judgement
   sentence-review-todo  List words that qualify for 回炉 but have no transformed sentence yet
+  plan-config       View / change daily sentence quotas (no redeploy needed): --set / --reset
 
 Global flags:
   --lang string   Language code: ja (Japanese), en (English), fr (French) (required)
@@ -56,6 +57,8 @@ Examples:
   jrp --lang ja save-lesson --file lesson.md --name 第9课知识点.md
   jrp --lang ja list-knowledge
   jrp --lang ja get-knowledge --name 第8课知识点.md
+  jrp --lang ja plan-config
+  jrp --lang ja plan-config --set sentence_review_count=24
 `
 
 func main() {
@@ -158,6 +161,8 @@ func main() {
 		runJudgePrompt(fs, lang)
 	case "sentence-review-todo":
 		runSentenceReviewTodo(fs, lang)
+	case "plan-config":
+		runPlanConfig(fs, lang)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		fmt.Print(usage)
