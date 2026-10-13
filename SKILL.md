@@ -1341,15 +1341,16 @@ COS credentials load the same way as other commands (`.env.enc` or env vars).
 
 ## 活用练习页（动词 / 形容词活用）
 
-`serve` 端有两个**只练不计档**的活用练习页（2026-09-28 新增）：给出档案里的原始词，
-老师自己写出活用形，比默写原词更能验规则是否内化。
+`serve` 端有三个**只练不计档**的活用练习页（2026-09-28 新增；ない形 2026-10-13 新增）：
+给出档案里的原始词，老师自己写出活用形，比默写原词更能验规则是否内化。
 
 | 页 | 接口 | 题型 |
 |---|---|---|
 | 动词活用 | `GET /api/conjugation?type=verb&count=N` | 一卡**两空**：原形 + て形 |
+| 动词 ない形活用 | `GET /api/conjugation?type=verb_nai&count=N` | 一卡**两空**：原形 + ない形 |
 | 形容词活用 | `GET /api/conjugation?type=adj&count=N` | 一卡**三空**：过去式 / 否定形 / 过去否定形（都带 です） |
 
-- 词池 = 档案全部词条按词性表 `pos`/`sub` 过滤（当前 102 动词 / 88 形容词）。
+- 词池 = 档案全部词条按词性表 `pos`/`sub` 过滤（当前 **125 动词 / 92 形容词**）。
   `sub` 兼容「一类/二类/三类」「い形/な形」**和**数字 `1/2/3` 两种写法——
   词性表实际用的是中文类别名，只认数字会让词池缩到个位数。
 - 判分复用 `grade.js`：答案里用 `/` 分隔的多个写法**都算对**
@@ -1357,8 +1358,14 @@ COS credentials load the same way as other commands (`.env.enc` or env vars).
 - 特殊形按规则判：`いい→よかった`、`かっこいい→かっこよかった`；
   行く例外（`行って`）；特殊五段词干认 **い 结尾**
   （`ください/なさい/いらっしゃい/おっしゃい/ござい`）——写成「ござ」会让 `ございます` 算成 `ござう`。
+- ない形两个坑：① 一类动词末音「い」→**わ**（`かいます→かわない`，不是かあない）；
+  ② **`あります` 词性表标的是「一类」，但否定形是 `ない`**，不是「あらない」——靠规则躲不过去，
+  在 `conjVerbNai` 里特判。`conjVerbNai` 的原形**复用 `conjVerb`**，变形规则只留一份。
 - 跳过 `〜ています` 与寒暄固定说法；**纯前端作答，不写档案、不 bump 版本、不进统计**。
 - 单测在 `api_conjugation_test.go`（含 `かいます` 这类普通五段的反面保护，防被特殊规则误伤）：`go test -run TestConj ./...`
+- 加新题型（た形、可能形…）的姿势：写 `conjXn` 函数 → handler 的 `switch typ` 加一个 case →
+  `web/index.html` 的 `#conjType` 加 option → `web/conjugation.js` 的 `typeNames` 补一条。
+  前端按服务端返回的 `tasks` 渲染，填空数量不用改代码。
 
 ⚠️ 改完 `api_conjugation.go` / `web/conjugation.js` 必须**重新交叉编译并部署服务器**，
 否则老师页面看不到变化（见下一节）。判断新旧最可靠的办法是 `strings <二进制> | grep conj-input`。

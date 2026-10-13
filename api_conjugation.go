@@ -2,8 +2,9 @@ package main
 
 // 活用专项练习（2026-09-28 老师新增板块）。
 //
-//	GET /api/conjugation?type=verb&count=10 → 动词卡：原词（ます形）→ 原形 + て形
-//	GET /api/conjugation?type=adj&count=10  → 形容词卡：原词 → 过去式 / 否定形 / 过去否定形（带です）
+//	GET /api/conjugation?type=verb&count=10      → 动词卡：原词（ます形）→ 原形 + て形
+//	GET /api/conjugation?type=verb_nai&count=10  → 动词ない形卡：原词 → 原形 + ない形
+//	GET /api/conjugation?type=adj&count=10       → 形容词卡：原词 → 过去式 / 否定形 / 过去否定形（带です）
 //
 // 设计要点：
 //   - 词源 = 档案全词表 × word_meta 词性，只收 pos 能对上号的词；
@@ -11,7 +12,7 @@ package main
 //   - 服务端算好标准答案（可多写法），判分放在前端用 grade.js 的 either 档：
 //     写假名或汉字都算对，多写法用「/」分隔交给 parseAnswerForms 拆。
 //   - 纯自测：不回写档案、不动 ReviewCount —— 老师明确要求「只练不计档」。
-//   - 动词后续要加 ない形/た形，就往 conjVerb 的 tasks 里追加，前端自动跟着渲染。
+//   - 动词再要加 た形 之类，就往对应的 conj* 里追加 tasks，前端自动跟着渲染。
 
 import (
 	"math/rand"
@@ -50,6 +51,27 @@ var irregularIStem = map[string]bool{
 var iToU = map[rune]rune{
 	'い': 'う', 'き': 'く', 'ぎ': 'ぐ', 'し': 'す', 'ち': 'つ',
 	'に': 'ぬ', 'ひ': 'ふ', 'び': 'ぶ', 'み': 'む', 'り': 'る',
+}
+
+// iToA 动1 ます形→ない形 的 い段→あ段映射。
+// ⚠️「い」的对应是「わ」不是「あ」：買います→か**わ**ない（❌かあない）。
+// 课本原话：「最后一个音为い时，把い变成わ后再加ない（注意不能将い变为あ）」。
+var iToA = map[rune]rune{
+	'い': 'わ', 'き': 'か', 'ぎ': 'が', 'し': 'さ', 'ち': 'た',
+	'に': 'な', 'ひ': 'は', 'び': 'ば', 'み': 'ま', 'り': 'ら',
+}
+
+// applyItoA 把末尾的 い段假名换成相应的 あ段（い→わ）。末尾不是 い段假名 → ok=false。
+func applyItoA(s string) (string, bool) {
+	head, last, ok := splitHeadLast(s)
+	if !ok {
+		return "", false
+	}
+	a, ok2 := iToA[last]
+	if !ok2 {
+		return "", false
+	}
+	return head + string(a), true
 }
 
 // splitHeadLast 取字符串最后一个 rune，返回「去掉末尾的前缀 + 末尾 rune」。
@@ -166,6 +188,63 @@ func conjVerb(kana, kanji, sub string) (base, te string, ok bool) {
 		}
 		if kana == "します" && kanji == "" { // 裸 します
 			return "する", "して", true
+		}
+	}
+	return "", "", false
+}
+
+// conjVerbNai 按动词分类算出 原形 / ない形 两个答案串（2026-10-13 老师新增题型）。
+// 原形直接复用 conjVerb —— 变形规则只留一份，不在两处维护。
+func conjVerbNai(kana, kanji, sub string) (base, nai string, ok bool) {
+	base, _, ok = conjVerb(kana, kanji, sub)
+	if !ok {
+		return "", "", false
+	}
+	switch sub {
+	case "1": // 五段：词干末音 い段→あ段（い→わ）＋ない
+		stem := strings.TrimSuffix(kana, "ます")
+		// ⚠️ あります 是五段，但否定形不规则：不是「あらない」，是「ない」。
+		// word_meta 里它标的是「一类」，靠规则躲不过去，必须特判。
+		if kana == "あります" {
+			return base, "ない", true
+		}
+		naiKana, ok2 := applyItoA(stem)
+		if !ok2 {
+			return "", "", false
+		}
+		var naiKanji string
+		if kanji != "" && strings.HasSuffix(kanji, "ます") {
+			if ak, ok3 := applyItoA(strings.TrimSuffix(kanji, "ます")); ok3 {
+				naiKanji = ak + "ない"
+			}
+		}
+		return base, formAnswer(naiKana+"ない", naiKanji), true
+
+	case "2": // 一段：去ます＋ない
+		stem := strings.TrimSuffix(kana, "ます")
+		if stem == "" {
+			return "", "", false
+		}
+		var naiKanji string
+		if kanji != "" && strings.HasSuffix(kanji, "ます") {
+			naiKanji = strings.TrimSuffix(kanji, "ます") + "ない"
+		}
+		return base, formAnswer(stem+"ない", naiKanji), true
+
+	case "3": // サ变・カ变
+		if strings.HasSuffix(kana, "します") {
+			stem := strings.TrimSuffix(kana, "します")
+			var naiKanji string
+			if kanji != "" && strings.HasSuffix(kanji, "します") {
+				naiKanji = strings.TrimSuffix(kanji, "します") + "しない"
+			}
+			return base, formAnswer(stem+"しない", naiKanji), true
+		}
+		if kana == "きます" && strings.HasPrefix(kanji, "来") { // 来ます → こない
+			return base, formAnswer("こない", "来ない"), true
+		}
+		if kana == "します" && kanji == "" { // 裸 します
+			return base, "しない", true
 		}
 	}
 	return "", "", false
@@ -290,9 +369,9 @@ func (s *server) handleConjugation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	typ := r.URL.Query().Get("type")
-	if typ != "verb" && typ != "adj" {
+	if typ != "verb" && typ != "verb_nai" && typ != "adj" {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
-			"success": false, "error": "type 必须是 verb 或 adj",
+			"success": false, "error": "type 必须是 verb / verb_nai / adj",
 		})
 		return
 	}
@@ -341,7 +420,7 @@ func (s *server) handleConjugation(w http.ResponseWriter, r *http.Request) {
 		}
 
 		switch typ {
-		case "verb":
+		case "verb", "verb_nai":
 			cls := conjVerbClass(pos.Pos, pos.Sub)
 			if cls == "" || conjSkipWord(w.Word, kana) {
 				continue
@@ -350,13 +429,28 @@ func (s *server) handleConjugation(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				continue
 			}
-			pool = append(pool, ConjItem{
-				Word: w.Word, Definition: w.Definition, Pos: pos.Pos, Sub: pos.Sub,
-				Tasks: []ConjTask{
-					{Label: "原形", Answers: []string{base}},
-					{Label: "て形", Answers: []string{te}},
-				},
-			})
+			if typ == "verb" {
+				pool = append(pool, ConjItem{
+					Word: w.Word, Definition: w.Definition, Pos: pos.Pos, Sub: pos.Sub,
+					Tasks: []ConjTask{
+						{Label: "原形", Answers: []string{base}},
+						{Label: "て形", Answers: []string{te}},
+					},
+				})
+			} else {
+				// ない形卡：原形 + ない形（conjVerbNai 内部复用 conjVerb 算原形）
+				_, nai, okNai := conjVerbNai(kana, kanji, cls)
+				if !okNai {
+					continue
+				}
+				pool = append(pool, ConjItem{
+					Word: w.Word, Definition: w.Definition, Pos: pos.Pos, Sub: pos.Sub,
+					Tasks: []ConjTask{
+						{Label: "原形", Answers: []string{base}},
+						{Label: "ない形", Answers: []string{nai}},
+					},
+				})
+			}
 			seenKana[kana] = true
 
 		case "adj":

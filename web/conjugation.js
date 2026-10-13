@@ -2,6 +2,7 @@
 //
 // 老师的需求原话：「给出列表中的原始动词和形容词，我来写出活用后的形式」。
 //  - 动词：一张卡两个空 —— 原形 + て形（做法 A，一张卡把一个词的两种变形一起过）
+//  - 动词ない形：一张卡两个空 —— 原形 + ない形（2026-10-13 老师新增）
 //  - 形容词：一张卡三个空 —— 过去式 / 否定形 / 过去否定形（都带「です」）
 //
 // ⚠️ 这一页只练不记档：不调 /api/record、不碰复习档案、不影响 ReviewCount 和
@@ -16,6 +17,9 @@ var conj = {
   pool: 0,
   type: 'verb',
   graded: false,
+
+  // 下拉值 → 显示名。加新题型时这里补一条即可。
+  typeNames: { verb: '动词', verb_nai: '动词ない形', adj: '形容词' },
 
   boot: function () {
     el('conjType').addEventListener('change', function () {
@@ -50,7 +54,7 @@ var conj = {
         renderSummary(el('conjSummary'), [
           { label: '本次', value: self.items.length + ' 题' },
           { label: '可用词池', value: self.pool },
-          { label: '类型', value: self.type === 'verb' ? '动词' : '形容词' }
+          { label: '类型', value: conj.typeNames[self.type] || self.type }
         ]);
         el('conjPool').textContent = '词池 ' + self.pool + ' 个词（随机抽）';
         self.render();
