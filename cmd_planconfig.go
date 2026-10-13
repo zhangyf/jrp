@@ -114,6 +114,11 @@ func runPlanConfig(fs *flag.FlagSet, lang string) {
 	// 默认：查看
 	cos, err := storage.DownloadPlanConfig(ctx)
 	eff, source := choosePlanConfig(cos, err)
+	// hint 跟着 source 走 —— 写死一句「没配」的话，配好了也会显示这句，反而误导。
+	hint := "COS 上的配置正在生效（改完最多 60 秒后线上跟着变）"
+	if source == "builtin" {
+		hint = "COS 上没配或配坏了，用的是内置默认 20+20"
+	}
 	outputResult(map[string]interface{}{
 		"success":   true,
 		"command":   "plan-config",
@@ -122,6 +127,6 @@ func runPlanConfig(fs *flag.FlagSet, lang string) {
 		"source":    source,
 		"limits":    map[string]int{"min": 0, "max": maxPlanCount},
 		"cos_key":   storage.planConfigKey(),
-		"hint":      "source=builtin 表示 COS 上没配或配坏了，用的是内置默认 20+20",
+		"hint":      hint,
 	})
 }
