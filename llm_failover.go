@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -27,7 +28,7 @@ import (
 
 const (
 	llmFailThreshold = 2
-	llmCooldown      = 5 * time.Minute
+	llmCooldown      = 2 * time.Minute
 )
 
 // parseFallbackModels 解析备用模型列表。纯函数，可单测。
@@ -123,8 +124,13 @@ func judgeWithFallback(cfg llmConfig, prompt string) (judgeResult, string, error
 		}
 		lastErr = err
 		llmMarkResult(m, false, now)
+		// 每次失败都留痕 —— 2026-10-15 网关抖了几分钟，全链冷却，老师判句全退回
+		// 字面判定，服务端却一个字都没记，只能靠猜。有了这行，journalctl 一翻就知道
+		// 当时是超时、5xx 还是模型胡说。
+		log.Printf("judge-failover: 模型 %s 失败：%v", m, err)
 	}
 	if tried == 0 {
+		log.Printf("judge-failover: 全部模型都在冷却中，本句退回字面判定")
 		return judgeResult{}, "", errors.New("所有判句模型都在冷却中")
 	}
 	return judgeResult{}, "", lastErr
