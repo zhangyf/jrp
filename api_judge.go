@@ -32,8 +32,9 @@ import (
 type llmConfig struct {
 	Endpoint string        // OpenAI 兼容的 chat/completions 地址
 	APIKey   string        // Bearer token
-	Model    string        // 模型名
-	Timeout  time.Duration // 单次判定的超时
+	Model    string        // 主模型
+	Fallback []string      // 备用模型，主模型失败时按顺序接上（见 llm_failover.go）
+	Timeout  time.Duration // 单个模型的超时（切换链条里每个都各自计时）
 }
 
 const llmDefaultTimeout = 8 * time.Second
@@ -42,8 +43,9 @@ const llmDefaultTimeout = 8 * time.Second
 //
 //	JRP_LLM_ENDPOINT  https://api.deepseek.com/v1/chat/completions
 //	JRP_LLM_API_KEY   sk-...
-//	JRP_LLM_MODEL     deepseek-chat（可选，默认这个）
-//	JRP_LLM_TIMEOUT   秒（可选，默认 8，上限 60）
+//	JRP_LLM_MODEL     主模型（可选，默认 deepseek-chat）
+//	JRP_LLM_FALLBACK  备用模型，逗号分隔（可选，主模型挂了依次接上）
+//	JRP_LLM_TIMEOUT   秒（可选，默认 8，上限 60）—— 链条里每个模型各自计时
 func loadLLMConfig() (llmConfig, bool) {
 	c := llmConfig{
 		Endpoint: strings.TrimSpace(os.Getenv("JRP_LLM_ENDPOINT")),
@@ -54,6 +56,7 @@ func loadLLMConfig() (llmConfig, bool) {
 	if c.Model == "" {
 		c.Model = "deepseek-chat"
 	}
+	c.Fallback = parseFallbackModels(os.Getenv("JRP_LLM_FALLBACK"), c.Model)
 	if v := strings.TrimSpace(os.Getenv("JRP_LLM_TIMEOUT")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 60 {
 			c.Timeout = time.Duration(n) * time.Second
@@ -317,28 +320,25 @@ func judgeCacheKey(version, answer, input string) string {
 
 // judgeWithCache 判定一句，顺带返回这次用的模板版本（前端存进草稿，
 // 下次恢复时对不上就作废重判）。
-func judgeWithCache(ctx context.Context, st *Storage, cfg llmConfig, answer, chinese, input string) (judgeResult, string, error) {
+func judgeWithCache(ctx context.Context, st *Storage, cfg llmConfig, answer, chinese, input string) (judgeResult, string, string, error) {
 	tpl, version, _ := resolveJudgePrompt(ctx, st)
 	key := judgeCacheKey(version, answer, input)
 	judgeCache.Lock()
 	if r, ok := judgeCache.m[key]; ok {
 		judgeCache.Unlock()
-		return r, version, nil
+		return r, version, "", nil
 	}
 	judgeCache.Unlock()
 
-	reply, err := callLLM(cfg, renderJudgePrompt(tpl, answer, chinese, input))
+	// 主模型失败会自动切备用 —— 返回实际用的是哪个模型，写进响应便于排查。
+	r, model, err := judgeWithFallback(cfg, renderJudgePrompt(tpl, answer, chinese, input))
 	if err != nil {
-		return judgeResult{}, version, err
-	}
-	r, err := parseJudgeReply(reply)
-	if err != nil {
-		return judgeResult{}, version, err
+		return judgeResult{}, version, "", err
 	}
 	judgeCache.Lock()
 	judgeCache.m[key] = r
 	judgeCache.Unlock()
-	return r, version, nil
+	return r, version, model, nil
 }
 
 // ---------- HTTP ----------
@@ -393,19 +393,21 @@ func (s *server) handleJudgeSentence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, ver, err := judgeWithCache(r.Context(), s.storage, cfg, in.Answer, in.Chinese, in.Input)
+	res, ver, model, err := judgeWithCache(r.Context(), s.storage, cfg, in.Answer, in.Chinese, in.Input)
 	if err != nil {
 		// 模型不可用不是业务错误：不返回 5xx，让前端退回字面判定继续练
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"success": true, "enabled": true, "correct": false, "by": "literal",
 			"reason": "模型不可用，按字面判定",
+			"chain": append([]string{cfg.Model}, cfg.Fallback...),
 		})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true, "enabled": true,
 		"correct": res.Correct, "reason": res.Reason, "by": "llm",
-		"pv": ver, // prompt 版本：存进草稿，改了 prompt 就作废旧结论
+		"pv":    ver,   // prompt 版本：存进草稿，改了 prompt 就作废旧结论
+		"model": model, // 实际判这句的模型（主模型挂了会显示备用）
 	})
 }
 

@@ -900,6 +900,17 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
    - **改 prompt 不用重启**：`jrp --lang ja judge-prompt --file x.txt`（上传前先校验，
      坏的直接中止不写）。另：`--builtin` 打内置、`--reset` 删回退内置、无参看当前。
      服务最多 60 秒后生效。
+   - **模型自动切换（2026-10-15 老师要求，见 `llm_failover.go`）**：
+     `JRP_LLM_MODEL` 主模型 + `JRP_LLM_FALLBACK` 备用（逗号分隔，去空去重、自动排除主模型）。
+     - 什么算失败：网络错、非 2xx、空内容、超时、**模型回废话解析不出 JSON** —— 都换下一个。
+     - 冷却：连续失败 2 次 → 5 分钟内跳过它（少了这条，每句都要干等超时）。
+     - 全挂 → 维持原行为：返回 `by:"literal"` 退回字面判定，不返回 5xx。
+     - 响应带 `model` 字段（实际判这句的是谁），排查「现在用的哪个模型」看它。
+     - 改链条只改 env + restart，**不用编译**。
+   - ⚠️ **模型会下线**：`GET /v1/models` 每个对象带 `status`，`pre-offline` 就是要下线
+     （2026-10-15 发现 `deepseek-v4-flash-0731` 已是 pre-offline）。换模型前先查这个字段。
+     现网：主 `deepseek/deepseek-flash`（原厂直供，name=DeepSeek-V4.1-Flash），
+     备 `glm-5.3-flash`，单模型超时 6 秒。
    - **出题配额同样外置（2026-10-13）**：COS `configs/plan_config.json`，
      `sentence_base_count`（课本原句数，默认 20）+ `sentence_review_count`
      （回炉变形句数，默认 20），允许 0-50。读不到/解析坏/越界 → 内置默认 20+20，
