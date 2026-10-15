@@ -307,10 +307,17 @@ func callLLM(cfg llmConfig, prompt string) (string, error) {
 
 // 判定缓存：同一 (原句, 学生写的) 只问一次模型。刷新页面、换设备重开
 // 都必须得到同一个结论 —— 否则就是「这次判对下次判错」，比没有模型更糟。
+// 缓存里连模型名一起存 —— 命中缓存时也要能说出这句是谁判的，
+// 否则排查「用的哪个模型」会看到一片空，误以为没走模型。
+type judgeCacheEntry struct {
+	res   judgeResult
+	model string
+}
+
 var judgeCache = struct {
 	sync.Mutex
-	m map[string]judgeResult
-}{m: map[string]judgeResult{}}
+	m map[string]judgeCacheEntry
+}{m: map[string]judgeCacheEntry{}}
 
 // judgeCacheKey 缓存键带模板版本：prompt 一改，旧的判定结论自然失效，
 // 不会出现「规矩换了但还拿旧结论糊弄」的情况。
@@ -324,9 +331,9 @@ func judgeWithCache(ctx context.Context, st *Storage, cfg llmConfig, answer, chi
 	tpl, version, _ := resolveJudgePrompt(ctx, st)
 	key := judgeCacheKey(version, answer, input)
 	judgeCache.Lock()
-	if r, ok := judgeCache.m[key]; ok {
+	if e, ok := judgeCache.m[key]; ok {
 		judgeCache.Unlock()
-		return r, version, "", nil
+		return e.res, version, e.model, nil
 	}
 	judgeCache.Unlock()
 
@@ -336,7 +343,7 @@ func judgeWithCache(ctx context.Context, st *Storage, cfg llmConfig, answer, chi
 		return judgeResult{}, version, "", err
 	}
 	judgeCache.Lock()
-	judgeCache.m[key] = r
+	judgeCache.m[key] = judgeCacheEntry{res: r, model: model}
 	judgeCache.Unlock()
 	return r, version, model, nil
 }
