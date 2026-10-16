@@ -101,3 +101,22 @@ func TestAuthRequiredOffWithoutUsers(t *testing.T) {
 		t.Error("没配 appid/secret 时不该强制登录")
 	}
 }
+
+// TestResolveWXEnv：小程序码版本开关。未发布的小程序必须用 trial，
+// 否则 getwxacodeunlimit 报 41030；写错值不能让登录整个挂掉。
+func TestResolveWXEnv(t *testing.T) {
+	cases := map[string]string{
+		"":        "release",
+		"release": "release",
+		"trial":   "trial",
+		"develop": "develop",
+		" trial ": "trial",
+		"TRIAL":   "release", // 大小写不认，回退 release（微信只认小写）
+		"线上":      "release", // 笔误回退，不 panic
+	}
+	for in, want := range cases {
+		if got := resolveWXEnv(in); got != want {
+			t.Errorf("resolveWXEnv(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

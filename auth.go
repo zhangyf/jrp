@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -297,11 +298,30 @@ func (s *server) loadSession(sid string) (*session, bool) {
 var (
 	wxAppID     string
 	wxAppSecret string
+	wxEnv       string // release / trial / develop，见 loadWXConfig
 )
 
 func loadWXConfig() {
 	wxAppID = strings.TrimSpace(os.Getenv("JRP_WX_APPID"))
 	wxAppSecret = strings.TrimSpace(os.Getenv("JRP_WX_APPSECRET"))
+	wxEnv = resolveWXEnv(os.Getenv("JRP_WX_ENV"))
+}
+
+// resolveWXEnv 解析 JRP_WX_ENV：小程序码指向哪个版本。
+//
+// release（默认，小程序已发布）/ trial（体验版）/ develop（开发版）。
+// ⚠️ 小程序没发布时 getwxacodeunlimit 会报 41030，开发期要设成 trial。
+// 不认识的值不直接报错——笔误不该让整个登录挂掉，回退 release 并打一行日志。
+func resolveWXEnv(v string) string {
+	switch s := strings.TrimSpace(v); s {
+	case "release", "trial", "develop":
+		return s
+	case "":
+		return "release"
+	default:
+		log.Printf("auth: JRP_WX_ENV 值不认识（%q），回退 release", s)
+		return "release"
+	}
 }
 
 // wxEnabled 报告有没有配小程序 appid/secret。没配时登录接口返回 503，

@@ -51,7 +51,7 @@ func (s *server) handleAuthQR(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]interface{}{"success": false, "error": "ticket 无效或已过期，请刷新页面"})
 		return
 	}
-	png, err := miniCode(r.Context(), ticket, loginPage, "")
+	png, err := miniCode(r.Context(), ticket, loginPage, wxEnv)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]interface{}{"success": false, "error": err.Error()})
 		return

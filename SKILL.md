@@ -1441,7 +1441,12 @@ web 登录后进原来的页面，微信里扫码后进小程序。
 ### 微信接口
 
 - `JRP_WX_APPID` / `JRP_WX_APPSECRET` **只放服务器 `/etc/jrp/jrp.env`（chmod 600）**，
-  不进 COS、不进 git、不写进 SKILL.md 正文（这里只写变量名）。
+  不进 COS、不进 git、不写进 SKILL.md 正文（这里只写变量名）。AppID 不敏感（进 `project.config.json` 无所谓），
+  AppSecret **别贴进对话/工单**，老师自己在服务器上写。
+  验证（不打印 secret，只数有没有拿到）：`set -a; . /etc/jrp/jrp.env; set +a; curl -s "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=$JRP_WX_APPID&secret=$JRP_WX_APPSECRET" | grep -c access_token` → `1` 就通。
+- `JRP_WX_ENV`：小程序码指向哪个版本，`release`（默认）/ `trial` / `develop`。
+  ⚠️ **小程序没发布时 `getwxacodeunlimit` 报 41030，开发期必须设 `trial`**；发布后删掉这行回默认。
+- 微信后台「开发管理 → 开发设置 → 服务器域名」要加 `https://jrp.110105.xyz` 为 request 合法域名，否则真机请求被拦。
 - ticket ≤ 32 字符（`wxacode.getUnlimited` 的 scene 硬上限，超了微信只报错不说原因）→ 16 字节 base64url = 22 字符。
 - `wxacode.getUnlimited` **要求小程序已发布**，未发布报 41030；开发期用 `env_version:"trial"` + `check_path:false`。
 - 个人主体小程序：拿不到手机号、头像昵称匿名化、**没有 unionid** → 确认页只写「用此微信登录」，跨端身份不依赖 unionid。
