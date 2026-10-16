@@ -191,121 +191,40 @@ func TestBuildImportPlanDedupesInsideDoc(t *testing.T) {
 	}
 }
 
-// 文档改了原文 → 同位置那条原地覆盖，ID 不变，总数不涨。
-// 这是"重复就覆盖"的关键：改过的旧版本不能留在句库里跟新版同时被练到。
-func TestBuildImportPlanUpdatesInPlaceWhenTextChanged(t *testing.T) {
+// 不做覆盖：意思一样但句式不同的两句（帰らなければ / 帰らなくては）是两句，
+// 都要留在句库里。2026-10-16 老师否掉了"很像就覆盖"的逻辑。
+func TestBuildImportPlanNeverOverwritesSimilarSentence(t *testing.T) {
 	rows := []importedRow{
-		{JP: "テレビの 音を 大きく します。", CN: "把电视机的声音开大一点儿。"},
-		{JP: "息子は 医者に なりました。", CN: "儿子当医生了。"},
+		{JP: "李さんは 今日 早く 帰らなくては なりません。", CN: "小李今天得早点回家。"},
 	}
 	existing := []BankSentence{
-		{ID: "L18B002", Lesson: "第18课", Source: "基本课文", Type: "original", Answer: "テレビの 音を 大きく します"},
-		{ID: "L18B003", Lesson: "第18课", Source: "基本课文", Type: "original", Answer: "息子は 医者に なりました"},
-		{ID: "L18B004", Lesson: "第18课", Source: "基本课文", Type: "original", Answer: "部屋を きれいに して ください。"},
+		{ID: "L18B002", Lesson: "第18课", Source: "基本课文", Type: "original", Answer: "李さんは 今日 早く 帰らなければ なりません。"},
 	}
 	plan := buildImportPlan(rows, 18, lessonDocKinds[0], "x.md", existing)
-	if len(plan.Added) != 0 {
-		t.Errorf("不该新增，实际新增 %d 条", len(plan.Added))
-	}
-	if len(plan.Updated) != 0 {
-		t.Fatalf("这两句归一化后已存在，应判重复而不是覆盖，实际覆盖 %d 条", len(plan.Updated))
-	}
-	if plan.Skipped != 2 {
-		t.Errorf("应跳过 2 条，实际 %d", plan.Skipped)
-	}
-
-	// 真·改了内容的场景：第2条被改掉一个词
-	rows[1] = importedRow{JP: "娘は 医者に なりました。", CN: "女儿当医生了。"}
-	plan = buildImportPlan(rows, 18, lessonDocKinds[0], "x.md", existing)
-	if len(plan.Added) != 0 || len(plan.Updated) != 1 {
-		t.Fatalf("应原地覆盖 1 条、不新增，实际 add=%d upd=%d", len(plan.Added), len(plan.Updated))
-	}
-	u := plan.Updated[0]
-	if u.ID != "L18B003" {
-		t.Errorf("覆盖要保住原 ID，实际 %q", u.ID)
-	}
-	if u.Before != "息子は 医者に なりました" || u.After != "娘は 医者に なりました。" {
-		t.Errorf("before/after 不对：%q → %q", u.Before, u.After)
-	}
-	if u.Entry.SourceDoc != "x.md" || u.Entry.Type != "original" {
-		t.Errorf("覆盖后字段丢了：%+v", u.Entry)
-	}
-	// 文档里只剩 2 条，句库里同来源有 3 条 → 多出来的那条报 orphan（不自动删）
-	if len(plan.Orphans) != 1 || plan.Orphans[0] != "L18B004" {
-		t.Errorf("多出来的旧条目应报 orphan，实际 %v", plan.Orphans)
-	}
-}
-
-// 相似度门槛是量出来的，不是拍的：改一个词约 0.41，同课不相关的两句普遍 <0.25。
-func TestSentenceSimilarity(t *testing.T) {
-	cases := []struct {
-		a, b string
-		want bool // 是否应判为"同一句被改写"
-	}{
-		{"息子は医者になりました", "娘は医者になりました", true},
-		{"テレビの音を大きくします", "テレビの音を小さくします", true},
-		{"李さんは今日早く帰らなければなりません", "すみません今日は早く帰ってレポートを書かなければなりません", false},
-		{"あの人が吉田課長ですよ", "早く帰ります", false},
-		{"部屋をきれいにしてください", "テレビの音を大きくします", false},
-	}
-	for _, c := range cases {
-		got := sentenceSimilarity(c.a, c.b)
-		if got >= reviseThreshold != c.want {
-			t.Errorf("similarity(%q,%q)=%.2f，门槛 %.2f，期望判为改写=%v",
-				c.a, c.b, got, reviseThreshold, c.want)
-		}
-	}
-}
-
-// 变形句是回炉句库的数据，不能拿课本原文去盖。
-func TestBuildImportPlanDoesNotOverwriteTransformed(t *testing.T) {
-	rows := []importedRow{{JP: "娘は 医者に なりました。", CN: "女儿当医生了。"}}
-	existing := []BankSentence{
-		{ID: "L18B003", Lesson: "第18课", Source: "基本课文", Type: "transformed", Prototype: "L18B003", Answer: "息子は 医者に なりました"},
-	}
-	plan := buildImportPlan(rows, 18, lessonDocKinds[0], "x.md", existing)
-	if len(plan.Updated) != 0 {
-		t.Errorf("不该覆盖变形句，实际覆盖了 %d 条", len(plan.Updated))
-	}
 	if len(plan.Added) != 1 {
-		t.Errorf("应作为新条目追加，实际 add=%d", len(plan.Added))
+		t.Fatalf("句式不同的另一句应作为新条目追加，实际 add=%d", len(plan.Added))
+	}
+	if plan.Added[0].Answer != "李さんは 今日 早く 帰らなくては なりません。" {
+		t.Errorf("追加的内容不对：%q", plan.Added[0].Answer)
+	}
+	if plan.Added[0].ID == "L18B002" {
+		t.Error("不该复用旧条目的 ID（那等于覆盖）")
 	}
 }
 
-// 单元与课的对应关系不统一：第2单元只有 5-6 课，第3单元塞了 7-12 课。
-// 按 4 课一单元去推会把第7课指到第2单元（那里没第7课），必须按内容找。
-func TestResolveLessonDocsFindsRealUnit(t *testing.T) {
-	docs := map[string]string{
-		lessonDocName(2, lessonDocKinds[0]): "## 第5课 基本课文\n\n## 第6课 基本课文\n",
-		lessonDocName(3, lessonDocKinds[0]): "## 第7课 基本课文\n\n## 第8课 基本课文\n",
+// 重复导入同一课不涨条目 —— 这是"入库前先查重"的底线。
+func TestBuildImportPlanIsIdempotent(t *testing.T) {
+	existing := []BankSentence{
+		{ID: "L19B001", Lesson: "第19课", Source: "基本课文", Type: "original", Answer: "部屋の かぎを 忘れないで ください。"},
+		{ID: "L19B002", Lesson: "第19课", Source: "基本课文", Type: "original", Answer: "李さんは 今日 早く 帰らなければ なりません。"},
 	}
-	fetch := func(name string) (string, bool) {
-		c, ok := docs[name]
-		return c, ok
+	rows := []importedRow{
+		{JP: "部屋の かぎを 忘れないで ください。", CN: "请别忘了房间钥匙。"},
+		{JP: "李さんは 今日 早く 帰らなければ なりません。", CN: "小李今天必须早点回家。"},
 	}
-	unit, basic, applied, ok := resolveLessonDocs(fetch, 7)
-	if !ok {
-		t.Fatal("第7课应能定位到文档")
-	}
-	if unit != 3 {
-		t.Errorf("第7课应在第3单元，实际第%d单元", unit)
-	}
-	if basic != lessonDocName(3, lessonDocKinds[0]) || applied != lessonDocName(3, lessonDocKinds[1]) {
-		t.Errorf("文档名不对：%q / %q", basic, applied)
-	}
-	if _, _, _, ok := resolveLessonDocs(fetch, 99); ok {
-		t.Error("不存在的课不该定位成功")
-	}
-}
-
-func TestResolveLessonDocsAcceptsEmptySection(t *testing.T) {
-	docs := map[string]string{
-		lessonDocName(5, lessonDocKinds[0]): "## 第18课 基本课文\n\n（待补）\n",
-	}
-	fetch := func(name string) (string, bool) { c, ok := docs[name]; return c, ok }
-	unit, _, _, ok := resolveLessonDocs(fetch, 18)
-	if !ok || unit != 5 {
-		t.Errorf("段落是待补也应定位到（由调用方看句子数判断空壳），unit=%d ok=%v", unit, ok)
+	plan := buildImportPlan(rows, 19, lessonDocKinds[0], "x.md", existing)
+	if len(plan.Added) != 0 || plan.Skipped != 2 {
+		t.Errorf("整课重复导入应全部跳过：new=%d skip=%d", len(plan.Added), plan.Skipped)
 	}
 }
 

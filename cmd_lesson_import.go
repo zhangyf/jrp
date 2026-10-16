@@ -101,18 +101,15 @@ func runSentenceImport(fs *flag.FlagSet, lang string) {
 	}
 
 	type docReport struct {
-		Name        string   `json:"name"`
-		Source      string   `json:"source"`
-		RowsInDoc   int      `json:"rows_in_doc"`
-		NewCount    int      `json:"new_count"`
-		UpdateCount int      `json:"update_count"`
-		Skipped     int      `json:"skipped"`
-		Orphans     []string `json:"orphans,omitempty"`
-		DownloadErr string   `json:"download_error,omitempty"`
+		Name        string `json:"name"`
+		Source      string `json:"source"`
+		RowsInDoc   int    `json:"rows_in_doc"`
+		NewCount    int    `json:"new_count"`
+		Skipped     int    `json:"skipped"`
+		DownloadErr string `json:"download_error,omitempty"`
 	}
 	var reports []docReport
 	var added []BankSentence
-	var updated []bankEntryUpdate
 	missingDoc := 0
 
 	for _, d := range docs {
@@ -126,42 +123,32 @@ func runSentenceImport(fs *flag.FlagSet, lang string) {
 		}
 		rows := extractLessonRows(content, *lesson)
 		plan := buildImportPlan(rows, *lesson, d.Kind, d.Name, all)
-		for _, u := range plan.Updated {
-			all[u.Index] = u.Entry
-		}
 		all = append(all, plan.Added...)
 		added = append(added, plan.Added...)
-		updated = append(updated, plan.Updated...)
 		reports = append(reports, docReport{
 			Name: d.Name, Source: d.Kind.Source,
-			RowsInDoc: len(rows), NewCount: len(plan.Added),
-			UpdateCount: len(plan.Updated), Skipped: plan.Skipped,
-			Orphans: plan.Orphans,
+			RowsInDoc: len(rows), NewCount: len(plan.Added), Skipped: plan.Skipped,
 		})
 	}
 
 	out := map[string]interface{}{
-		"success":      true,
-		"command":      "sentence-import",
-		"language":     lang,
-		"lesson":       *lesson,
-		"unit":         unit,
-		"dry_run":      !*apply,
-		"bank_before":  len(bank.Sentences),
-		"new_count":    len(added),
-		"update_count": len(updated),
-		"bank_after":   len(bank.Sentences) + len(added),
-		"docs":         reports,
+		"success":     true,
+		"command":     "sentence-import",
+		"language":    lang,
+		"lesson":      *lesson,
+		"unit":        unit,
+		"dry_run":     !*apply,
+		"bank_before": len(bank.Sentences),
+		"new_count":   len(added),
+		"bank_after":  len(bank.Sentences) + len(added),
+		"docs":        reports,
 	}
 	if len(added) > 0 {
 		out["added"] = added
 	}
-	if len(updated) > 0 {
-		out["updated"] = updated
-	}
 
 	if *apply {
-		if len(added) == 0 && len(updated) == 0 {
+		if len(added) == 0 {
 			out["note"] = "句库里已是最新，未改动"
 		} else {
 			bank.Sentences = all
@@ -180,8 +167,6 @@ func runSentenceImport(fs *flag.FlagSet, lang string) {
 		switch {
 		case missingDoc == len(docs):
 			out["next_step"] = "两份汇编文档都没找到：先 save-lesson 把课文存进 COS"
-		case len(updated) > 0:
-			out["next_step"] = "上面 updated 是「文档改过、句库要跟着改」的条目，看一眼 old→new 再加 --apply"
 		default:
 			out["next_step"] = "确认无误后加 --apply 写回句库"
 		}

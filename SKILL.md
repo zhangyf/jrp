@@ -871,12 +871,11 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
    文档里按 `## 第N课` 段落抽表格里的句子，生词表和「待补」占位自动跳过，
    与已有句库按归一化去重，ID 连号（L19B001…/L19A001…）。
    **默认只干跑预览，加 `--apply` 才写回**。写完照旧能过 `sentence-lint`。
-   导入是「查重 → 覆盖 → 新增」三选一，重复导入不会涨条目：
-   ① 句库已有一模一样的（归一化比，句号/空格/斜杠差异算同一句）→ 跳过；
-   ② 同课同来源里有**相似度 ≥0.35** 的旧句 → 判定「同一句被改写」，**原地覆盖、ID 不变**
-   （不能按第几条配对：文档中间插一句就全错位，会把不相干的句子盖掉）；
-   ③ 都没有 → 追加。文档里删掉的旧句子列在 `orphans` 里**只报告不自动删**
-   （当天 plan 可能正在用）。
+   规则就两条，**不做覆盖**：① 句库已有一模一样的（归一化比，句号/空格/斜杠
+   差异都算同一句）→ 跳过，所以重复导入不涨条目；② 其余一律追加。
+   ⚠️ 别再加「很像就覆盖」的逻辑（2026-10-16 加了又被老师否掉）：
+   「帰らなければ」和「帰らなくては」意思一样、句式不同，是两句真句子，
+   相似度说得出"很像"、说不出"就是同一句"，自动覆盖会把真句子盖没。
 6. **单词去重入库**：本课生词跟档案已有的对一遍，只补差异（`add-words`）
 7. Run: `jrp --lang ja sentence-lint` — 校验新加的句子真是课本原文
 8. Report: 文档已存 + **句库现在覆盖到第几课** + 新增多少词
@@ -1337,7 +1336,7 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 | `save-lesson` | `--file <path> --name <name>` | Save knowledge doc to COS（存的是汇编文档时，会提示把哪几课补进句库） |
 | `list-knowledge` | (none) | List all knowledge documents in COS |
 | `get-knowledge` | `--name <filename>` | Download a knowledge document from COS |
-| `sentence-import` | `--lesson <N>` `--apply` `--doc <name>` | 从「课本原文汇编」自动抽第N课的课文句子进句库。**默认干跑**，`--apply` 才写回。查重后重复的跳过、改过的覆盖（ID 不变）、全新的追加 |
+| `sentence-import` | `--lesson <N>` `--apply` `--doc <name>` | 从「课本原文汇编」自动抽第N课的课文句子进句库。**默认干跑**，`--apply` 才写回。查重（一模一样就跳过）+ 直接追加，不做覆盖 |
 | `lesson-status` | `--lesson <N>` \\| `--all` | 一次查某一课四件套：知识点 / 汇编·基本课文 / 汇编·应用课文 / 单词 / 句库 |
 | `encrypt-env` | (none) | Encrypt the plaintext `.env` into `.env.enc` (AES-256-GCM, keyed to machine/user/skillDir). Backs up the old `.env.enc` first. Does NOT need `--lang` | 
 | `serve` | `--addr <ip>` `--port <n>` | Start the web review UI (keyboard + handwriting input) |
