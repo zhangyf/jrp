@@ -865,7 +865,16 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
 2. Reorganize following the style rules above — this is the key step
 3. Save to local file
 4. Run: `jrp --lang ja save-lesson --file /tmp/lesson.md --name 第N课知识点.md`
-5. Report: document saved to COS
+5. **把课文句子加进句库**（`jrp --lang ja sentence-bank --file <本课句子文件>`）
+   —— ⚠️ 这步以前不在流程里，2026-10-16 才发现第19课的知识点 / 汇编 / 单词都在，
+   **唯独句库没有第19课**，造句永远练不到。**句库不会自动从汇编长出来**（Go 里
+   没有任何这条逻辑），只能手动上传。少了这步 = 这一课白学一半。
+6. **单词去重入库**：本课生词跟档案已有的对一遍，只补差异（`add-words`）
+7. Run: `jrp --lang ja sentence-lint` — 校验新加的句子真是课本原文
+8. Report: 文档已存 + **句库现在覆盖到第几课** + 新增多少词
+
+> 想确认某一课有没有漏项：`jrp --lang ja sentence-bank --stats`（看课号分布）
+> + `jrp --lang ja list-knowledge`（看文档）+ `stats` 的 `by_lesson`（看单词）。
 
 ## 造句的语义判定（大模型，2026-09-29 起，默认关闭）
 
