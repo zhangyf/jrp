@@ -51,14 +51,14 @@ func (s *server) handleAuthQR(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]interface{}{"success": false, "error": "ticket 无效或已过期，请刷新页面"})
 		return
 	}
-	png, err := miniCode(r.Context(), ticket, loginPage, wxEnv)
+	img, ct, err := miniCode(r.Context(), ticket, loginPage, wxEnv)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]interface{}{"success": false, "error": err.Error()})
 		return
 	}
-	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Content-Type", ct) // 微信给的是什么格式就用什么格式（现在是 JPEG）
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(png)
+	_, _ = w.Write(img)
 }
 
 // handleAuthStatus PC 端轮询。

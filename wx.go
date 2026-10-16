@@ -125,19 +125,22 @@ func accessToken(ctx context.Context) (string, error) {
 	return wxToken.token, nil
 }
 
-// miniCode 出一张小程序码（PNG）。scene 里塞的是登录 ticket。
+// miniCode 出一张小程序码。scene 里塞的是登录 ticket。
+//
+// 返回 (图片字节, Content-Type, error)。图是什么格式由微信说了算（现在是 JPEG），
+// 别在上层写死 image/png。
 //
 // ⚠️ scene 硬上限 32 字符，超了微信只回一个没有说明的报错 —— ticket 是 22 字符。
 // ⚠️ 小程序必须已经发布，否则报 41030 / invalid page。开发期传 envVersion="trial"
 //
 //	并 checkPath=false 走体验版。
-func miniCode(ctx context.Context, scene, page, envVersion string) ([]byte, error) {
+func miniCode(ctx context.Context, scene, page, envVersion string) ([]byte, string, error) {
 	tk, err := accessToken(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if len(scene) > 32 {
-		return nil, fmt.Errorf("scene 超过 32 字符（%d），微信会直接拒绝", len(scene))
+		return nil, "", fmt.Errorf("scene 超过 32 字符（%d），微信会直接拒绝", len(scene))
 	}
 
 	payload := map[string]interface{}{
@@ -151,38 +154,75 @@ func miniCode(ctx context.Context, scene, page, envVersion string) ([]byte, erro
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		"https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token="+url.QueryEscape(tk),
 		bytes.NewReader(data))
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{Timeout: wxAPITimeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	// 成功时直接是 PNG 二进制；失败时是 JSON（errcode/errmsg）。
-	if len(body) > 2 && string(body[:2]) == "\x89P" {
-		return body, nil
+	// 成功时直接是图片二进制；失败时是 JSON（errcode/errmsg）。
+	ct, err := classifyMiniCodeResp(body, resp.Header.Get("Content-Type"))
+	if err != nil {
+		return nil, "", err
 	}
+	return body, ct, nil
+}
+
+// classifyMiniCodeResp 判断出码接口的返回是图还是报错，返回该用的 Content-Type。
+//
+// ⚠️ 判据是「是不是 JSON」，不是「是不是某种图片格式」：
+// getwxacodeunlimit 实际返回的是 **JPEG**（不是文档里容易想当然的 PNG），
+// 认死 PNG 头会把正常返回当成错误。微信哪天换格式也不该让我们挂。
+func classifyMiniCodeResp(body []byte, respCT string) (string, error) {
+	// ① JSON 一律当报错：微信出码失败也回 200，错误只在 body 里。
 	var out struct {
 		ErrCode int    `json:"errcode"`
 		ErrMsg  string `json:"errmsg"`
 	}
-	if err := json.Unmarshal(body, &out); err == nil && out.ErrCode != 0 {
-		return nil, fmt.Errorf("生成小程序码失败（%d %s）", out.ErrCode, out.ErrMsg)
+	if err := json.Unmarshal(body, &out); err == nil {
+		if out.ErrCode != 0 {
+			return "", fmt.Errorf("生成小程序码失败（%d %s）", out.ErrCode, out.ErrMsg)
+		}
+		return "", fmt.Errorf("生成小程序码返回了 JSON 但不是图片：%s", truncate(string(body), 200))
 	}
-	return nil, fmt.Errorf("生成小程序码返回了非图片内容：%s", truncate(string(body), 200))
+	// ② 认图片魔数（多种格式都认，别认死一种）
+	if ct := imageContentType(body); ct != "" {
+		if c := strings.TrimSpace(respCT); c != "" {
+			return c, nil // 微信自己说了是什么就是什么
+		}
+		return ct, nil
+	}
+	// ③ 既不是 JSON 也不是认识的图 —— 多半是网关错误页，别当图片发给前端
+	return "", fmt.Errorf("生成小程序码返回了非图片内容：%s", truncate(string(body), 200))
+}
+
+// imageContentType 按魔数猜图片格式，认不出来返回 ""。
+func imageContentType(b []byte) string {
+	switch {
+	case bytes.HasPrefix(b, []byte("\xff\xd8\xff")):
+		return "image/jpeg" // 微信 getwxacodeunlimit 现在给的就是 JPEG
+	case bytes.HasPrefix(b, []byte("\x89PNG\r\n\x1a\n")):
+		return "image/png"
+	case bytes.HasPrefix(b, []byte("GIF87a")), bytes.HasPrefix(b, []byte("GIF89a")):
+		return "image/gif"
+	case len(b) > 12 && string(b[:4]) == "RIFF" && string(b[8:12]) == "WEBP":
+		return "image/webp"
+	}
+	return ""
 }
 
 func truncate(s string, n int) string {

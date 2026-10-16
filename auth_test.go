@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -118,5 +119,32 @@ func TestResolveWXEnv(t *testing.T) {
 		if got := resolveWXEnv(in); got != want {
 			t.Errorf("resolveWXEnv(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestClassifyMiniCodeResp：出码接口的返回可能是图也可能是 JSON 报错。
+// ⚠️ 微信 getwxacodeunlimit 实际返回 JPEG，只认 PNG 头会把正常返回当错误（2026-10-16 线上实测踩到）。
+func TestClassifyMiniCodeResp(t *testing.T) {
+	jpeg := []byte("\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01")
+	png := []byte("\x89PNG\r\n\x1a\n")
+
+	if ct, err := classifyMiniCodeResp(jpeg, "image/jpeg"); err != nil || ct != "image/jpeg" {
+		t.Errorf("jpeg: ct=%q err=%v，应原样返回 content-type", ct, err)
+	}
+	if ct, err := classifyMiniCodeResp(png, "image/png"); err != nil || ct != "image/png" {
+		t.Errorf("png: ct=%q err=%v", ct, err)
+	}
+	// 微信没给 content-type 时兜底 jpeg（它现在给的就是这个）
+	if ct, err := classifyMiniCodeResp(jpeg, ""); err != nil || ct != "image/jpeg" {
+		t.Errorf("no ct: ct=%q err=%v", ct, err)
+	}
+	// JSON 报错要解析出 errcode
+	_, err := classifyMiniCodeResp([]byte(`{"errcode":41030,"errmsg":"invalid page"}`), "application/json")
+	if err == nil || !strings.Contains(err.Error(), "41030") {
+		t.Errorf("errcode 41030 没被识别出来：%v", err)
+	}
+	// 既不是图也不是可解析的 JSON → 报错但不能 panic
+	if _, err := classifyMiniCodeResp([]byte("gateway timeout"), "text/html"); err == nil {
+		t.Error("非图非 JSON 应当报错")
 	}
 }
