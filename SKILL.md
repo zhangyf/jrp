@@ -1343,6 +1343,7 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 | `lesson-status` | `--lesson <N>` \\| `--all` | 一次查某一课四件套：知识点 / 汇编·基本课文 / 汇编·应用课文 / 单词 / 句库 |
 | `encrypt-env` | (none) | Encrypt the plaintext `.env` into `.env.enc` (AES-256-GCM, keyed to machine/user/skillDir). Backs up the old `.env.enc` first. Does NOT need `--lang` | 
 | `serve` | `--addr <ip>` `--port <n>` | Start the web review UI (keyboard + handwriting input) |
+| `user` | `list` \\| `approve <uid>` \\| `set-role <uid> <owner\\|member\\|pending\\|disabled>` \\| `disable <uid>` \\| `rename <uid> <名字>` | 账号管理。列出/批准/改角色/停用/改名。第一个登录的人自动成为 owner |
 
 ## Web Review UI (`serve`)
 
@@ -1407,3 +1408,57 @@ COS credentials load the same way as other commands (`.env.enc` or env vars).
 
 ⚠️ 改完 `api_conjugation.go` / `web/conjugation.js` 必须**重新交叉编译并部署服务器**，
 否则老师页面看不到变化（见下一节）。判断新旧最可靠的办法是 `strings <二进制> | grep conj-input`。
+
+## 账号体系与小程序（2026-10-16 起）
+
+登录方式 = **小程序码确认登录**：网页出小程序码 → 微信扫 → 小程序里点「确认登录」→ 网页轮询到确认后落地会话。
+web 登录后进原来的页面，微信里扫码后进小程序。
+
+### 数据隔离（零迁移设计）
+
+- `Storage` 多了一个 `uid` 字段。**`uid == ""` ⇔ owner ⇔ COS key 与今天逐字节相同**，老数据不用搬。
+- 普通成员：个人数据落在 `<语言根>/users/<uid>/...`（`personalBase()`），
+  **教材/共享数据仍读 `<语言根>/...`**（`sharedBase()`）。
+- 个人：档案 archivs / history / plans / 三个 xlsx / drafts / reviews / sentence_history / sentence_wrong
+  共享：sentence_bank / sentence_review / knowledge / word_meta / configs
+- ⚠️ `plans/` 目录里 personal 与 shared **混住**（`sentence_bank.json` 是教材共享，`plan_<date>.json` 是个人进度）
+  → 只能按函数区分，**绝不能按目录切**。
+- 拿用户维度的 Storage：`st.ForUser(uid)`（浅拷贝，不改原来的）。`NewStorage` 签名没变，CLI 一行没动。
+
+### 会话与路由
+
+- Cookie `jrp_sid`（`Path=/; Max-Age=30天; HttpOnly; Secure; SameSite=Lax`）；
+  小程序端没有 cookie jar → 用 `Authorization: Bearer <token>`，后端同一张 session 表两种载体都认。
+- 会话存内存 + COS 兜底（`_auth/sessions/<sid>.json`），重启不丢。
+- 用户表 `_auth/users.json`（语言无关），角色 `owner | member | pending | disabled`。
+  第一个登录的人自动 owner，其余 **pending**，要 `jrp user approve <uid>` 才能进。
+- ⛔ **红线**：开了强制登录后，**无凭证绝不能退回 owner**（那就是把老师的账号给人白用）。
+  `withUser` 里缺凭证直接 401。
+- 编译期防串号：handler 签名是 `func(w, r, st *Storage)`，所有要用数据的 handler 必须走 `srv.withUser(...)`，
+  漏改直接编译不过。
+- `authRequired()`：没配凭证且用户表为空 → false（本地开发照旧裸奔）；一旦有用户 → 强制登录。
+
+### 微信接口
+
+- `JRP_WX_APPID` / `JRP_WX_APPSECRET` **只放服务器 `/etc/jrp/jrp.env`（chmod 600）**，
+  不进 COS、不进 git、不写进 SKILL.md 正文（这里只写变量名）。
+- ticket ≤ 32 字符（`wxacode.getUnlimited` 的 scene 硬上限，超了微信只报错不说原因）→ 16 字节 base64url = 22 字符。
+- `wxacode.getUnlimited` **要求小程序已发布**，未发布报 41030；开发期用 `env_version:"trial"` + `check_path:false`。
+- 个人主体小程序：拿不到手机号、头像昵称匿名化、**没有 unionid** → 确认页只写「用此微信登录」，跨端身份不依赖 unionid。
+
+### 部署顺序（阶段 3 的红线）
+
+切会话鉴权 + 摘 nginx Basic Auth 是**唯一的危险窗口**，顺序不可反：
+
+1. 先部署 Go（此时已强制登录，nginx Basic Auth 还开着 = 双重保护）
+2. 确认扫码能登录
+3. 再改 nginx 删掉 `auth_basic` / `auth_basic_user_file`（`outputs/deploy/nginx.conf.template`）
+4. `nginx -t && systemctl reload nginx`
+
+**每一步都要老师单独点头。** 中间任何一步出问题就停在那一步，别往前推。
+
+### 小程序
+
+`miniprogram/` 目录，`project.config.json` 里的 appid 是占位串，用开发者工具打开时换成自己的。
+第一版 = 登录壳（`pages/login` 取 scene=ticket 调 `/api/auth/confirm`）+ 占位首页（`pages/index`）。
+完整练习（列表复习 / 造句 / 钉子户 / 统计）是 4B，还没做。
