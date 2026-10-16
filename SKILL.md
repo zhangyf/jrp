@@ -865,16 +865,24 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
 2. Reorganize following the style rules above — this is the key step
 3. Save to local file
 4. Run: `jrp --lang ja save-lesson --file /tmp/lesson.md --name 第N课知识点.md`
-5. **把课文句子加进句库**（`jrp --lang ja sentence-bank --file <本课句子文件>`）
+5. **把课文句子加进句库**（`jrp --lang ja sentence-import --lesson N --apply`）
    —— ⚠️ 这步以前不在流程里，2026-10-16 才发现第19课的知识点 / 汇编 / 单词都在，
-   **唯独句库没有第19课**，造句永远练不到。**句库不会自动从汇编长出来**（Go 里
-   没有任何这条逻辑），只能手动上传。少了这步 = 这一课白学一半。
+   **唯独句库没有第19课**，造句永远练不到。现在有自动抽句：从两份「课本原文汇编」
+   文档里按 `## 第N课` 段落抽表格里的句子，生词表和「待补」占位自动跳过，
+   与已有句库按归一化去重，ID 连号（L19B001…/L19A001…）。
+   **默认只干跑预览，加 `--apply` 才写回**。写完照旧能过 `sentence-lint`。
 6. **单词去重入库**：本课生词跟档案已有的对一遍，只补差异（`add-words`）
 7. Run: `jrp --lang ja sentence-lint` — 校验新加的句子真是课本原文
 8. Report: 文档已存 + **句库现在覆盖到第几课** + 新增多少词
 
-> 想确认某一课有没有漏项：`jrp --lang ja sentence-bank --stats`（看课号分布）
-> + `jrp --lang ja list-knowledge`（看文档）+ `stats` 的 `by_lesson`（看单词）。
+> 想确认某一课有没有漏项：`jrp --lang ja lesson-status --lesson N`
+> （一次性查四件套：知识点文档 / 汇编·基本课文 / 汇编·应用课文 / 单词 / 句库，
+> 缺哪样列在 `missing`，`ready: true` 才算齐）。
+> `jrp --lang ja lesson-status --all` 扫全部课，`not_ready` 直接给课号列表。
+>
+> ⚠️ **单元 ↔ 课的对应不固定**，别按"一单元 4 课"去推：第1单元 1-4、**第2单元只有 5-6**、
+> **第3单元塞了 7-12**、第4单元 13-16、第5单元 17-20。代码里 `resolveLessonDocs`
+> 是按文档内容（`## 第N课` 段落）定位的，不靠算术。
 
 ## 造句的语义判定（大模型，2026-09-29 起，默认关闭）
 
@@ -1320,9 +1328,11 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 | `dedupe` | `--dry-run` | Remove duplicate word entries from archive (byte-identical text only). Keeps the one with highest reviewCount. Backs up to `history/` first. **Always dry-run first** |
 | `merge-words` | `--input <json>` `--dry-run` | Merge two entries that are the same word under different forms (e.g. `すし` → `すし(寿司)`) — the case `dedupe` cannot catch. Sums ReviewCount/ErrorCount, max's ConsecutiveCorrect, later LastReview. Backs up to `history/` first. **Always dry-run first** |
 | `stats` | `--days <N>` | Show statistics for last N days |
-| `save-lesson` | `--file <path> --name <name>` | Save knowledge doc to COS |
+| `save-lesson` | `--file <path> --name <name>` | Save knowledge doc to COS（存的是汇编文档时，会提示把哪几课补进句库） |
 | `list-knowledge` | (none) | List all knowledge documents in COS |
 | `get-knowledge` | `--name <filename>` | Download a knowledge document from COS |
+| `sentence-import` | `--lesson <N>` `--apply` `--doc <name>` | 从「课本原文汇编」自动抽第N课的课文句子进句库。**默认干跑**，`--apply` 才写回 |
+| `lesson-status` | `--lesson <N>` \\| `--all` | 一次查某一课四件套：知识点 / 汇编·基本课文 / 汇编·应用课文 / 单词 / 句库 |
 | `encrypt-env` | (none) | Encrypt the plaintext `.env` into `.env.enc` (AES-256-GCM, keyed to machine/user/skillDir). Backs up the old `.env.enc` first. Does NOT need `--lang` | 
 | `serve` | `--addr <ip>` `--port <n>` | Start the web review UI (keyboard + handwriting input) |
 

@@ -43,13 +43,21 @@ func runSaveLesson(fs *flag.FlagSet, lang string) {
 		os.Exit(1)
 	}
 
-	outputResult(map[string]interface{}{
+	out := map[string]interface{}{
 		"success":  true,
 		"command":  "save-lesson",
 		"language": lang,
 		"name":     *name,
 		"size":     len(data),
-	})
+	}
+	// 汇编文档 = 课文句子入口。存完就提醒把这些课的句子补进句库 ——
+	// 第19课（2026-10-16）就是存了汇编却没进句库，造句一直练不到。
+	if lessons := lessonSectionsIn(string(data)); len(lessons) > 0 {
+		out["lessons_in_doc"] = lessons
+		out["next_step"] = fmt.Sprintf("把这些课的句子补进句库：jrp --lang %s sentence-import --lesson %d --apply"+
+			"（文档里共 %d 课：%v），然后跑 sentence-lint", lang, lessons[len(lessons)-1], len(lessons), lessons)
+	}
+	outputResult(out)
 }
 
 func lastSlash(s string) int {
