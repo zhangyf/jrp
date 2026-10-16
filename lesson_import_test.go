@@ -145,49 +145,130 @@ func TestTableColumnsRejectsTwoColumnVocabTable(t *testing.T) {
 	}
 }
 
-func TestBuildImportedEntriesIDsAndDedupe(t *testing.T) {
+func TestBuildImportPlanAddsWithNextID(t *testing.T) {
 	rows := []importedRow{
 		{JP: "部屋の かぎを 忘れないで ください。", CN: "请别忘了房间钥匙。"},
 		{JP: "あの 人が 吉田課長ですよ。", CN: "那个人是吉田科长。"},
 	}
 	existing := []BankSentence{
-		{ID: "L19B001", Lesson: "第19课", Answer: "部屋の かぎを 忘れないで ください"},
-		{ID: "L19B009", Lesson: "第19课", Answer: "早く 帰ります。"},
+		{ID: "L19B001", Lesson: "第19课", Source: "基本课文", Answer: "部屋の かぎを 忘れないで ください"},
+		{ID: "L19B009", Lesson: "第19课", Source: "基本课文", Answer: "早く 帰ります。"},
 	}
-	got, skipped := buildImportedEntries(rows, 19, lessonDocKinds[0], "x.md", existing)
-	if len(got) != 1 || skipped != 1 {
-		t.Fatalf("应新增 1 条、跳过 1 条，实际 new=%d skip=%d", len(got), skipped)
+	plan := buildImportPlan(rows, 19, lessonDocKinds[0], "x.md", existing)
+	if len(plan.Added) != 1 || plan.Skipped != 1 {
+		t.Fatalf("应新增 1 条、跳过 1 条，实际 new=%d skip=%d", len(plan.Added), plan.Skipped)
 	}
 	// 已有最大序号 9 → 新条目从 010 开始，不能撞号。
-	if got[0].ID != "L19B010" {
-		t.Errorf("ID 应从已有最大号接着编，实际 %q", got[0].ID)
+	if plan.Added[0].ID != "L19B010" {
+		t.Errorf("ID 应从已有最大号接着编，实际 %q", plan.Added[0].ID)
 	}
-	if got[0].Lesson != "第19课" || got[0].Source != "基本课文" || got[0].Type != "original" {
-		t.Errorf("条目字段不对：%+v", got[0])
+	if plan.Added[0].Lesson != "第19课" || plan.Added[0].Source != "基本课文" || plan.Added[0].Type != "original" {
+		t.Errorf("条目字段不对：%+v", plan.Added[0])
 	}
-	if got[0].SourceDoc != "x.md" {
+	if plan.Added[0].SourceDoc != "x.md" {
 		t.Errorf("source_doc 没写，sentence-lint 会报查不到出处")
 	}
 }
 
 // 句号差异不算新句子，否则同一句会被录两遍。
-func TestBuildImportedEntriesIgnoresPunctuationDiff(t *testing.T) {
+func TestBuildImportPlanIgnoresPunctuationDiff(t *testing.T) {
 	rows := []importedRow{{JP: "あの 人が 吉田課長ですよ", CN: "x"}}
-	existing := []BankSentence{{ID: "L19B001", Answer: "あの 人が 吉田課長ですよ。"}}
-	got, skipped := buildImportedEntries(rows, 19, lessonDocKinds[0], "x.md", existing)
-	if len(got) != 0 || skipped != 1 {
-		t.Errorf("仅句号差异应判重复：new=%d skip=%d", len(got), skipped)
+	existing := []BankSentence{{ID: "L19B001", Lesson: "第19课", Source: "基本课文", Answer: "あの 人が 吉田課長ですよ。"}}
+	plan := buildImportPlan(rows, 19, lessonDocKinds[0], "x.md", existing)
+	if len(plan.Added) != 0 || plan.Skipped != 1 {
+		t.Errorf("仅句号差异应判重复：new=%d skip=%d", len(plan.Added), plan.Skipped)
 	}
 }
 
-func TestBuildImportedEntriesDedupesInsideDoc(t *testing.T) {
+func TestBuildImportPlanDedupesInsideDoc(t *testing.T) {
 	rows := []importedRow{
 		{JP: "あの 人が 吉田課長ですよ。", CN: "a"},
 		{JP: "あの 人が 吉田課長ですよ。", CN: "b"},
 	}
-	got, skipped := buildImportedEntries(rows, 19, lessonDocKinds[0], "x.md", nil)
-	if len(got) != 1 || skipped != 1 {
-		t.Errorf("文档内重复应只留一条：new=%d skip=%d", len(got), skipped)
+	plan := buildImportPlan(rows, 19, lessonDocKinds[0], "x.md", nil)
+	if len(plan.Added) != 1 || plan.Skipped != 1 {
+		t.Errorf("文档内重复应只留一条：new=%d skip=%d", len(plan.Added), plan.Skipped)
+	}
+}
+
+// 文档改了原文 → 同位置那条原地覆盖，ID 不变，总数不涨。
+// 这是"重复就覆盖"的关键：改过的旧版本不能留在句库里跟新版同时被练到。
+func TestBuildImportPlanUpdatesInPlaceWhenTextChanged(t *testing.T) {
+	rows := []importedRow{
+		{JP: "テレビの 音を 大きく します。", CN: "把电视机的声音开大一点儿。"},
+		{JP: "息子は 医者に なりました。", CN: "儿子当医生了。"},
+	}
+	existing := []BankSentence{
+		{ID: "L18B002", Lesson: "第18课", Source: "基本课文", Type: "original", Answer: "テレビの 音を 大きく します"},
+		{ID: "L18B003", Lesson: "第18课", Source: "基本课文", Type: "original", Answer: "息子は 医者に なりました"},
+		{ID: "L18B004", Lesson: "第18课", Source: "基本课文", Type: "original", Answer: "部屋を きれいに して ください。"},
+	}
+	plan := buildImportPlan(rows, 18, lessonDocKinds[0], "x.md", existing)
+	if len(plan.Added) != 0 {
+		t.Errorf("不该新增，实际新增 %d 条", len(plan.Added))
+	}
+	if len(plan.Updated) != 0 {
+		t.Fatalf("这两句归一化后已存在，应判重复而不是覆盖，实际覆盖 %d 条", len(plan.Updated))
+	}
+	if plan.Skipped != 2 {
+		t.Errorf("应跳过 2 条，实际 %d", plan.Skipped)
+	}
+
+	// 真·改了内容的场景：第2条被改掉一个词
+	rows[1] = importedRow{JP: "娘は 医者に なりました。", CN: "女儿当医生了。"}
+	plan = buildImportPlan(rows, 18, lessonDocKinds[0], "x.md", existing)
+	if len(plan.Added) != 0 || len(plan.Updated) != 1 {
+		t.Fatalf("应原地覆盖 1 条、不新增，实际 add=%d upd=%d", len(plan.Added), len(plan.Updated))
+	}
+	u := plan.Updated[0]
+	if u.ID != "L18B003" {
+		t.Errorf("覆盖要保住原 ID，实际 %q", u.ID)
+	}
+	if u.Before != "息子は 医者に なりました" || u.After != "娘は 医者に なりました。" {
+		t.Errorf("before/after 不对：%q → %q", u.Before, u.After)
+	}
+	if u.Entry.SourceDoc != "x.md" || u.Entry.Type != "original" {
+		t.Errorf("覆盖后字段丢了：%+v", u.Entry)
+	}
+	// 文档里只剩 2 条，句库里同来源有 3 条 → 多出来的那条报 orphan（不自动删）
+	if len(plan.Orphans) != 1 || plan.Orphans[0] != "L18B004" {
+		t.Errorf("多出来的旧条目应报 orphan，实际 %v", plan.Orphans)
+	}
+}
+
+// 相似度门槛是量出来的，不是拍的：改一个词约 0.41，同课不相关的两句普遍 <0.25。
+func TestSentenceSimilarity(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want bool // 是否应判为"同一句被改写"
+	}{
+		{"息子は医者になりました", "娘は医者になりました", true},
+		{"テレビの音を大きくします", "テレビの音を小さくします", true},
+		{"李さんは今日早く帰らなければなりません", "すみません今日は早く帰ってレポートを書かなければなりません", false},
+		{"あの人が吉田課長ですよ", "早く帰ります", false},
+		{"部屋をきれいにしてください", "テレビの音を大きくします", false},
+	}
+	for _, c := range cases {
+		got := sentenceSimilarity(c.a, c.b)
+		if got >= reviseThreshold != c.want {
+			t.Errorf("similarity(%q,%q)=%.2f，门槛 %.2f，期望判为改写=%v",
+				c.a, c.b, got, reviseThreshold, c.want)
+		}
+	}
+}
+
+// 变形句是回炉句库的数据，不能拿课本原文去盖。
+func TestBuildImportPlanDoesNotOverwriteTransformed(t *testing.T) {
+	rows := []importedRow{{JP: "娘は 医者に なりました。", CN: "女儿当医生了。"}}
+	existing := []BankSentence{
+		{ID: "L18B003", Lesson: "第18课", Source: "基本课文", Type: "transformed", Prototype: "L18B003", Answer: "息子は 医者に なりました"},
+	}
+	plan := buildImportPlan(rows, 18, lessonDocKinds[0], "x.md", existing)
+	if len(plan.Updated) != 0 {
+		t.Errorf("不该覆盖变形句，实际覆盖了 %d 条", len(plan.Updated))
+	}
+	if len(plan.Added) != 1 {
+		t.Errorf("应作为新条目追加，实际 add=%d", len(plan.Added))
 	}
 }
 

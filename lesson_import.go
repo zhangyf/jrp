@@ -97,12 +97,12 @@ type importedRow struct {
 }
 
 var (
-	h2LessonRe      = regexp.MustCompile(`^##\s*第(\d+)课`)
-	vocabHeadingRe  = regexp.MustCompile(`生词|单词|词汇|末词`)
-	straySlashRe    = regexp.MustCompile(`[\s　]*/[\s　]*`)
-	multiSpaceRe    = regexp.MustCompile(`[\s　]+`)
-	bankIDRe        = regexp.MustCompile(`^L(\d+)([AB])(\d+)$`)
-	placeholderRe   = regexp.MustCompile(`待补|TODO|（待`)
+	h2LessonRe     = regexp.MustCompile(`^##\s*第(\d+)课`)
+	vocabHeadingRe = regexp.MustCompile(`生词|单词|词汇|末词`)
+	straySlashRe   = regexp.MustCompile(`[\s　]*/[\s　]*`)
+	multiSpaceRe   = regexp.MustCompile(`[\s　]+`)
+	bankIDRe       = regexp.MustCompile(`^L(\d+)([AB])(\d+)$`)
+	placeholderRe  = regexp.MustCompile(`待补|TODO|（待`)
 )
 
 // splitCells 拆 markdown 表格的一行，去掉首尾空管并 trim 每格。
@@ -277,38 +277,168 @@ func maxBankSeq(existing []BankSentence, lesson int, tag string) int {
 	return max
 }
 
-// buildImportedEntries 把抽出来的行变成句库条目：
-// 文档内去重 + 与已有句库去重（按 normSentence 比，避免句号/空格差异重复入库），
-// 然后连号编 ID。返回新条目与被跳过的条数。
-func buildImportedEntries(rows []importedRow, lesson int, kind lessonDocKind, doc string, existing []BankSentence) ([]BankSentence, int) {
-	have := make(map[string]bool, len(existing))
-	for _, s := range existing {
+// bankEntryUpdate 一次「原地覆盖」：文档里第 N 条被改了，句库里第 N 条跟着改，
+// ID 不变（ID 就是它在这一课这个来源里的位置）。
+type bankEntryUpdate struct {
+	Index  int          `json:"-"` // 在 bank.Sentences 里的下标
+	ID     string       `json:"id"`
+	Before string       `json:"before"`
+	After  string       `json:"after"`
+	Entry  BankSentence `json:"entry"`
+}
+
+// importPlan 一课的导入方案。三种结局互斥：新增 / 覆盖 / 跳过。
+type importPlan struct {
+	Added   []BankSentence    `json:"added"`
+	Updated []bankEntryUpdate `json:"updated"`
+	Skipped int               `json:"skipped"`
+	// Orphans 文档里已经没有、句库里还留着的条目 ID。只报告不自动删 ——
+	// 当天 plan 可能正在用，删了会让老师正在练的句子凭空消失。
+	Orphans []string `json:"orphans,omitempty"`
+}
+
+// buildImportPlan 把抽出来的行变成导入方案。三种情况：
+//
+//  1. 句库里已有完全一样的一句（按 normSentence 比，句号/空格/斜杠差异都算同一句）→ 跳过
+//  2. 同一课同一来源的**第 N 条**已存在但内容不同 → **原地覆盖**，ID 不变
+//     （文档改了原文，句库跟着改，不留旧的那一版）
+//  3. 都没有 → 追加新条目，ID 接着已有最大号编
+//
+// 位置（第几条）按句库里「同课 + 同来源」的现有顺序算，不靠 ID 数字 ——
+// 老课的 ID 有两种写法（L1-B001 / L18B001）且序号是跨课接的，不能当位置用。
+func buildImportPlan(rows []importedRow, lesson int, kind lessonDocKind, doc string, existing []BankSentence) importPlan {
+	label := lessonLabelOf(lesson)
+
+	byNorm := make(map[string]int, len(existing))
+	for i, s := range existing {
 		if n := normSentence(s.Answer); n != "" {
-			have[n] = true
+			if _, dup := byNorm[n]; !dup {
+				byNorm[n] = i
+			}
 		}
 	}
+	group := []int{}
+	for i, s := range existing {
+		if s.Lesson == label && s.Source == kind.Source {
+			group = append(group, i)
+		}
+	}
+	used := map[int]bool{}
 
+	plan := importPlan{}
 	seq := maxBankSeq(existing, lesson, kind.IDTag)
 	seen := make(map[string]bool, len(rows))
-	out := make([]BankSentence, 0, len(rows))
-	skipped := 0
 	for _, r := range rows {
 		n := normSentence(r.JP)
-		if n == "" || seen[n] || have[n] {
-			skipped++
+		if n == "" || seen[n] {
+			plan.Skipped++
 			continue
 		}
 		seen[n] = true
+
+		if idx, ok := byNorm[n]; ok {
+			used[idx] = true
+			plan.Skipped++
+			continue
+		}
+		if idx := findRevisedEntry(existing, group, used, n); idx >= 0 {
+			old := existing[idx]
+			used[idx] = true
+			entry := newBankSentence(lesson, kind, doc, 0, r)
+			entry.ID = old.ID
+			entry.Type = old.Type
+			entry.Prototype = old.Prototype
+			plan.Updated = append(plan.Updated, bankEntryUpdate{
+				Index: idx, ID: old.ID, Before: old.Answer, After: r.JP, Entry: entry,
+			})
+			continue
+		}
 		seq++
-		out = append(out, BankSentence{
-			ID:        fmt.Sprintf("L%d%s%03d", lesson, kind.IDTag, seq),
-			Lesson:    lessonLabelOf(lesson),
-			Source:    kind.Source,
-			SourceDoc: doc,
-			Type:      "original",
-			Answer:    r.JP,
-			Chinese:   r.CN,
-		})
+		plan.Added = append(plan.Added, newBankSentence(lesson, kind, doc, seq, r))
 	}
-	return out, skipped
+
+	for _, i := range group {
+		if !used[i] {
+			plan.Orphans = append(plan.Orphans, existing[i].ID)
+		}
+	}
+	return plan
+}
+
+// reviseThreshold 判定「同一句被改写了」的相似度门槛（见 sentenceSimilarity）。
+// 0.35 是拿真例子量出来的：儿子→女儿 这种改一个词约 0.41，
+// 同课里两句不相关的句子普遍低于 0.25。
+const reviseThreshold = 0.35
+
+// findRevisedEntry 在同一课同一来源里找「就是这句、但内容被改过」的旧条目。
+//
+// 不能用位置（第几条）来配对：文档中间插入一句，后面全部错位，会把不相干的
+// 旧句子盖掉。改用文本相似度，且要求该旧条目没被别的行认领过。
+func findRevisedEntry(existing []BankSentence, group []int, used map[int]bool, norm string) int {
+	best, bestScore := -1, 0.0
+	for _, i := range group {
+		if used[i] {
+			continue
+		}
+		// 变形句是回炉句库的数据，不拿课本原文去盖它。
+		if t := existing[i].Type; t != "" && t != "original" {
+			continue
+		}
+		if s := sentenceSimilarity(normSentence(existing[i].Answer), norm); s > bestScore {
+			best, bestScore = i, s
+		}
+	}
+	if bestScore >= reviseThreshold {
+		return best
+	}
+	return -1
+}
+
+// sentenceSimilarity 两个归一化句子的字符 2-gram Jaccard 相似度（0~1）。
+// 判「改词级别」的改写够用：换掉一两个词仍然很高，换整句立刻掉下来。
+func sentenceSimilarity(a, b string) float64 {
+	if a == "" || b == "" {
+		return 0
+	}
+	if a == b {
+		return 1
+	}
+	ar, br := []rune(a), []rune(b)
+	if len(ar) < 2 || len(br) < 2 {
+		return 0
+	}
+	setA := make(map[string]bool, len(ar))
+	for i := 0; i+1 < len(ar); i++ {
+		setA[string(ar[i:i+2])] = true
+	}
+	inter, union := 0, len(setA)
+	seenB := make(map[string]bool, len(br))
+	for i := 0; i+1 < len(br); i++ {
+		g := string(br[i : i+2])
+		if seenB[g] {
+			continue
+		}
+		seenB[g] = true
+		if setA[g] {
+			inter++
+		} else {
+			union++
+		}
+	}
+	if union == 0 {
+		return 0
+	}
+	return float64(inter) / float64(union)
+}
+
+func newBankSentence(lesson int, kind lessonDocKind, doc string, seq int, r importedRow) BankSentence {
+	return BankSentence{
+		ID:        fmt.Sprintf("L%d%s%03d", lesson, kind.IDTag, seq),
+		Lesson:    lessonLabelOf(lesson),
+		Source:    kind.Source,
+		SourceDoc: doc,
+		Type:      "original",
+		Answer:    r.JP,
+		Chinese:   r.CN,
+	}
 }
