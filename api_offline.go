@@ -18,7 +18,7 @@ import (
 //
 // 文件里会藏一个 _meta sheet 记录 plan_date / language / mode，回填时靠它定位
 // 这是哪天的练习（离线可能隔天才回填，不能以上传当天为准）。
-func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleExport(w http.ResponseWriter, r *http.Request, st *Storage) {
 	ctx := s.ctx()
 
 	targetDate, ok := parseDateParam(r)
@@ -34,7 +34,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 	}
 	dateStr := targetDate.Format("2006-01-02")
 
-	data, _, err := s.storage.DownloadLatestArchive(ctx)
+	data, _, err := st.DownloadLatestArchive(ctx)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 			"success": false, "error": fmt.Sprintf("download archive: %v", err),
@@ -72,14 +72,14 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 		})
 
 	case "sentences":
-		sp, err := s.buildSentencePlan(targetDate, false, arc)
+		sp, err := s.buildSentencePlan(st, targetDate, false, arc)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": err.Error(),
 			})
 			return
 		}
-		sp.Sentences = BuildSentencePlanFrom(s.storage, targetDate, 50, arc)
+		sp.Sentences = BuildSentencePlanFrom(st, targetDate, 50, arc)
 		if sp.Sentences == nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": "句库读取失败",
@@ -93,7 +93,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 
 	default: // daily：到期词 + 20 句造句
 		plan := BuildDuePlan(arc, s.lang, targetDate)
-		plan.Sentences = BuildSentencePlanFrom(s.storage, targetDate, 20, arc)
+		plan.Sentences = BuildSentencePlanFrom(st, targetDate, 20, arc)
 		filename = fmt.Sprintf("review_%s.xlsx", dateStr)
 		genErr = GenerateExcelWithMeta(plan, tmp.Name(), &ExcelMeta{
 			PlanDate: dateStr, Language: s.lang, Mode: "daily",
@@ -131,7 +131,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request) {
 // 不落库是有意的：长句手写的自动判分不可靠，必须让老师在页面上过一遍再提交。
 // 所以这里返回「你写的 / 正确答案 / 自动判定」，前端渲染成可勾选的表，
 // 确认后再调 /api/record。省掉服务端会话状态。
-func (s *server) handleImport(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleImport(w http.ResponseWriter, r *http.Request, st *Storage) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
 			"success": false, "error": "POST only",

@@ -19,7 +19,7 @@ import (
 //
 // 返回里带 tomorrow 预览：老师练完立刻能看到明天要复习多少，这就是
 // 「练习完自动生成下次的练习题」。
-func (s *server) handleRecord(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleRecord(w http.ResponseWriter, r *http.Request, st *Storage) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
 			"success": false, "error": "POST only",
@@ -45,7 +45,7 @@ func (s *server) handleRecord(w http.ResponseWriter, r *http.Request) {
 
 	// --- 单词 ---
 	if len(input.WordResults) > 0 {
-		res, err := ApplyRecord(s.ctx(), s.storage, s.lang, input)
+		res, err := ApplyRecord(s.ctx(), st, s.lang, input)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": err.Error(),
@@ -67,7 +67,7 @@ func (s *server) handleRecord(w http.ResponseWriter, r *http.Request) {
 				Mode:  mode,
 				Items: input.ReviewItems,
 			}
-			if err := s.storage.UploadReview(s.ctx(), snap); err != nil {
+			if err := st.UploadReview(s.ctx(), snap); err != nil {
 				out["review_saved"] = false
 				out["review_error"] = err.Error()
 			} else {
@@ -78,14 +78,14 @@ func (s *server) handleRecord(w http.ResponseWriter, r *http.Request) {
 
 	// --- 造句 ---
 	if len(input.SentenceResults) > 0 {
-		hist, err := s.storage.DownloadSentenceHistory(s.ctx())
+		hist, err := st.DownloadSentenceHistory(s.ctx())
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": "读取造句历史失败：" + err.Error(),
 			})
 			return
 		}
-		wrong, err := s.storage.DownloadSentenceWrong(s.ctx())
+		wrong, err := st.DownloadSentenceWrong(s.ctx())
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": "读取错句失败：" + err.Error(),
@@ -93,13 +93,13 @@ func (s *server) handleRecord(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		wrong, hist = ApplySentenceState(wrong, hist, input.SentenceResults, input.PlanDate)
-		if err := s.storage.UploadSentenceWrong(s.ctx(), wrong); err != nil {
+		if err := st.UploadSentenceWrong(s.ctx(), wrong); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": "写错句失败：" + err.Error(),
 			})
 			return
 		}
-		if err := s.storage.UploadSentenceHistory(s.ctx(), hist); err != nil {
+		if err := st.UploadSentenceHistory(s.ctx(), hist); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": "写造句历史失败：" + err.Error(),
 			})
@@ -110,18 +110,18 @@ func (s *server) handleRecord(w http.ResponseWriter, r *http.Request) {
 		// 老师当天分几次写都行；全部交完才删 plan，下一次 GET 才出全新的一批。
 		// 2026-10-08 之前是只要回写就删 plan，部分提交后刷新，没写的句子直接没了。
 		remaining := 0
-		plan, perr := s.storage.DownloadSentencePlan(s.ctx(), input.PlanDate)
+		plan, perr := st.DownloadSentencePlan(s.ctx(), input.PlanDate)
 		if perr == nil && plan != nil {
 			remaining = pruneSentencePlan(plan, input.SentenceResults)
 			if remaining > 0 {
 				// 写失败不报错 —— 最坏结果是下一批还是这几句，不会丢数据。
-				_ = s.storage.UploadSentencePlan(s.ctx(), plan)
+				_ = st.UploadSentencePlan(s.ctx(), plan)
 			} else {
-				_ = s.storage.DeleteSentencePlan(s.ctx(), input.PlanDate)
+				_ = st.DeleteSentencePlan(s.ctx(), input.PlanDate)
 			}
 		} else {
 			// 读不到 plan（本就不存在/网络问题）→ 维持旧行为，删掉算了。
-			_ = s.storage.DeleteSentencePlan(s.ctx(), input.PlanDate)
+			_ = st.DeleteSentencePlan(s.ctx(), input.PlanDate)
 		}
 
 		correct, wrongN := 0, 0
@@ -136,23 +136,23 @@ func (s *server) handleRecord(w http.ResponseWriter, r *http.Request) {
 			"correct":         correct,
 			"wrong":           wrongN,
 			"plan_date":       input.PlanDate,
-			"remaining":       remaining,          // 没交的句数（>0 = 刷新后还在）
-			"next_on_refresh": remaining == 0,     // 全部交完才会换下一批
+			"remaining":       remaining,      // 没交的句数（>0 = 刷新后还在）
+			"next_on_refresh": remaining == 0, // 全部交完才会换下一批
 		}
 	}
 
 	// --- 明日预告 ---
-	out["tomorrow"] = s.tomorrowPreview()
+	out["tomorrow"] = s.tomorrowPreview(st)
 
 	writeJSON(w, http.StatusOK, out)
 }
 
 // tomorrowPreview 算明天到期多少词。只读，不写任何 COS 对象。
-func (s *server) tomorrowPreview() map[string]interface{} {
+func (s *server) tomorrowPreview(st *Storage) map[string]interface{} {
 	ctx := s.ctx()
 	tomorrow := time.Now().AddDate(0, 0, 1)
 
-	data, _, err := s.storage.DownloadLatestArchive(ctx)
+	data, _, err := st.DownloadLatestArchive(ctx)
 	if err != nil {
 		return map[string]interface{}{"error": err.Error()}
 	}

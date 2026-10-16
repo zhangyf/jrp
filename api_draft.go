@@ -15,7 +15,7 @@ import (
 //
 // 存在的意义：写一半关掉标签页，换来的是「119 个词要重写一遍」。
 // 草稿按「日期 + 模式」分键，回写成功后立即清除。
-func (s *server) handleDraft(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleDraft(w http.ResponseWriter, r *http.Request, st *Storage) {
 	date := r.URL.Query().Get("date")
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
@@ -33,7 +33,7 @@ func (s *server) handleDraft(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		d, err := s.storage.DownloadDraft(s.ctx(), date, mode)
+		d, err := st.DownloadDraft(s.ctx(), date, mode)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": err.Error(),
@@ -67,13 +67,13 @@ func (s *server) handleDraft(w http.ResponseWriter, r *http.Request) {
 		}
 		// 全空草稿不落盘，改成清掉旧的 —— 否则老师打开页面什么都没写也会留个对象
 		if !d.HasContent() {
-			_ = s.storage.DeleteDraft(s.ctx(), d.Date, d.Mode)
+			_ = st.DeleteDraft(s.ctx(), d.Date, d.Mode)
 			writeJSON(w, http.StatusOK, map[string]interface{}{
 				"success": true, "saved": false, "dry_run": s.dryRun,
 			})
 			return
 		}
-		if err := s.storage.UploadDraft(s.ctx(), &d); err != nil {
+		if err := st.UploadDraft(s.ctx(), &d); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": err.Error(),
 			})
@@ -84,7 +84,7 @@ func (s *server) handleDraft(w http.ResponseWriter, r *http.Request) {
 		})
 
 	case http.MethodDelete:
-		if err := s.storage.DeleteDraft(s.ctx(), date, mode); err != nil {
+		if err := st.DeleteDraft(s.ctx(), date, mode); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": err.Error(),
 			})

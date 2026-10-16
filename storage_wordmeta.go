@@ -34,7 +34,7 @@ type WordPOS struct {
 }
 
 func (s *Storage) wordMetaKey() string {
-	return s.cosPrefix() + "/word_meta.json"
+	return s.sharedBase() + "/word_meta.json"
 }
 
 // DownloadWordMeta 读词性表。

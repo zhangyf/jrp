@@ -21,7 +21,7 @@ type PlanConfig struct {
 	SentenceReviewCount int `json:"sentence_review_count"`
 }
 
-func (s *Storage) planConfigKey() string { return s.cosPrefix() + "/" + planConfigCosKey }
+func (s *Storage) planConfigKey() string { return s.sharedBase() + "/" + planConfigCosKey }
 
 // DownloadPlanConfig 读配置。对象不存在或读失败返回零值（=没配），不返回 error ——
 // 「没配」是正常状态，不是故障。

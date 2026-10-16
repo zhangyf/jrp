@@ -361,7 +361,7 @@ func conjSkipWord(word, kana string) bool {
 }
 
 // handleConjugation —— 活用专项出题。只读，不写档案。
-func (s *server) handleConjugation(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleConjugation(w http.ResponseWriter, r *http.Request, st *Storage) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
 			"success": false, "error": "GET only",
@@ -386,7 +386,7 @@ func (s *server) handleConjugation(w http.ResponseWriter, r *http.Request) {
 		count = n
 	}
 
-	data, _, err := s.storage.DownloadLatestArchive(bgctx())
+	data, _, err := st.DownloadLatestArchive(bgctx())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 			"success": false, "error": "读取档案失败：" + err.Error(),
@@ -400,7 +400,7 @@ func (s *server) handleConjugation(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	meta, err := s.storage.DownloadWordMeta(bgctx())
+	meta, err := st.DownloadWordMeta(bgctx())
 	if err != nil || meta.Items == nil {
 		meta = &WordMeta{Items: map[string]WordPOS{}}
 	}

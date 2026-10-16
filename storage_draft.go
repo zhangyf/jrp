@@ -28,9 +28,9 @@ type Draft struct {
 // 再被复用 —— 恢复草稿时只认 V 等于当前版本的结论，旧的重新问模型。
 // 2026-09-29 起为 2（v1 没有版本号，恢复时一律作废）。
 type DraftJudge struct {
-	V      int    `json:"v,omitempty"`
-	Correct bool  `json:"correct"`
-	Reason string `json:"reason,omitempty"`
+	V       int    `json:"v,omitempty"`
+	Correct bool   `json:"correct"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 type DraftItem struct {
@@ -71,7 +71,7 @@ func (d *Draft) HasContent() bool {
 // 按「日期 + 模式」分键，所以同一天的今日练习和钉子户互不覆盖，
 // 隔天的旧草稿也永远不会串到今天。
 func (s *Storage) draftKey(date, mode string) string {
-	return fmt.Sprintf("%s/drafts/draft_%s_%s.json", s.cosPrefix(), date, mode)
+	return fmt.Sprintf("%s/drafts/draft_%s_%s.json", s.personalBase(), date, mode)
 }
 
 // UploadDraft 写草稿。演练模式下不落盘 —— 跟其余 Upload* 保持一致，

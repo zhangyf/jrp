@@ -52,7 +52,8 @@ type ReviewSentence struct {
 	Chinese     string `json:"chinese"`
 }
 
-func (s *Storage) reviewBankKey() string { return s.cosPrefix() + "/plans/sentence_review.json" }
+// reviewBankKey 回炉变形句库 = 教材（老师用 go test 生成），全站共享。
+func (s *Storage) reviewBankKey() string { return s.sharedBase() + "/plans/sentence_review.json" }
 
 // DownloadReviewBank 读回炉句库。
 //

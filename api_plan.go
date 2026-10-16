@@ -19,7 +19,7 @@ import (
 // 为什么过去/未来日期都不能初始化档案：DownloadLatestArchive 是按 LastModified
 // 取最新的，一旦上传了一份非今天的档案，它就会变成 latest，之后 gen-plan /
 // record 全链都被污染（每天都以为要重新初始化）。
-func (s *server) handlePlan(w http.ResponseWriter, r *http.Request) {
+func (s *server) handlePlan(w http.ResponseWriter, r *http.Request, st *Storage) {
 	ctx := s.ctx()
 
 	targetDate, ok := parseDateParam(r)
@@ -37,7 +37,7 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request) {
 	today := time.Now()
 	readOnly := !sameDay(targetDate, today) && targetDate.After(today)
 
-	data, archiveFilename, err := s.storage.DownloadLatestArchive(ctx)
+	data, archiveFilename, err := st.DownloadLatestArchive(ctx)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 			"success": false, "error": fmt.Sprintf("download archive: %v", err),
@@ -61,7 +61,7 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		if !sameDay(arcDate, targetDate) {
 			AddChangelogEntry(arc, targetDate, 1, 0, "新日初始化（serve）")
 			newFilename := ArchiveFilename(s.lang, targetDate, 1, 0)
-			if err := s.storage.UploadArchive(ctx, newFilename, []byte(WriteArchive(arc))); err != nil {
+			if err := st.UploadArchive(ctx, newFilename, []byte(WriteArchive(arc))); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 					"success": false, "error": fmt.Sprintf("init today archive: %v", err),
 				})
@@ -80,7 +80,7 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request) {
 
 	switch mode {
 	case "sentences":
-		plan, err := s.buildSentencePlan(targetDate, !readOnly, arc)
+		plan, err := s.buildSentencePlan(st, targetDate, !readOnly, arc)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": err.Error(),
@@ -94,7 +94,7 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		plan := BuildDuePlan(arc, s.lang, targetDate)
 		if !readOnly {
 			// plan JSON 供 /api/record 把序号映射回词
-			if err := s.storage.UploadPlan(ctx, plan); err != nil {
+			if err := st.UploadPlan(ctx, plan); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 					"success": false, "error": fmt.Sprintf("upload plan: %v", err),
 				})
@@ -103,7 +103,7 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		}
 		// 词性 / 备注只在这里 join 给前端显示，不写进 plan 存档
 		// （存档只服务于 record 的序号映射，多塞字段没意义）。
-		s.enrichWordMeta(ctx, plan.Words)
+		s.enrichWordMeta(ctx, st, plan.Words)
 		out["due_count"] = len(plan.Words)
 		out["words"] = plan.Words
 		out["by_status"] = countByStatus(plan.Words)
@@ -115,7 +115,7 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request) {
 // handleHard 钉子户专项。不做 IsDue 过滤，把全部正确率低于阈值的词拉出来重练。
 //
 //	GET /api/hard?min_accuracy=0.6&min_reviews=3
-func (s *server) handleHard(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleHard(w http.ResponseWriter, r *http.Request, st *Storage) {
 	ctx := s.ctx()
 
 	targetDate, ok := parseDateParam(r)
@@ -129,7 +129,7 @@ func (s *server) handleHard(w http.ResponseWriter, r *http.Request) {
 	minAcc := parseFloatParam(r, "min_accuracy", DefaultHardMinAccuracy)
 	minRev := intParam(r, "min_reviews", DefaultHardMinReviews)
 
-	data, _, err := s.storage.DownloadLatestArchive(ctx)
+	data, _, err := st.DownloadLatestArchive(ctx)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 			"success": false, "error": fmt.Sprintf("download archive: %v", err),
@@ -147,7 +147,7 @@ func (s *server) handleHard(w http.ResponseWriter, r *http.Request) {
 	plan := BuildHardPlan(arc, s.lang, targetDate, minAcc, minRev)
 	// 未来日期不写：避免污染 hard plan 之外，也避免无谓的写
 	if !targetDate.After(time.Now()) {
-		if err := s.storage.UploadHardPlan(ctx, plan); err != nil {
+		if err := st.UploadHardPlan(ctx, plan); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": fmt.Sprintf("upload hard plan: %v", err),
 			})
@@ -155,7 +155,7 @@ func (s *server) handleHard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.enrichWordMeta(ctx, plan.Words)
+	s.enrichWordMeta(ctx, st, plan.Words)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success":      true,
@@ -192,35 +192,35 @@ func (s *server) handleHard(w http.ResponseWriter, r *http.Request) {
 // 不再重算出题。否则老师写到一半刷新（或换台设备打开）题就变了，
 // 草稿对不上、白写一场。换新一批的唯一途径是回写成功 —— 见 api_record.go 的
 // DeleteSentencePlan。
-func (s *server) buildSentencePlan(targetDate time.Time, upload bool, arc *Archive) (*ReviewPlan, error) {
+func (s *server) buildSentencePlan(st *Storage, targetDate time.Time, upload bool, arc *Archive) (*ReviewPlan, error) {
 	ctx := s.ctx()
 
 	if upload {
-		if old, err := s.storage.DownloadSentencePlan(ctx, targetDate.Format("2006-01-02")); err == nil &&
+		if old, err := st.DownloadSentencePlan(ctx, targetDate.Format("2006-01-02")); err == nil &&
 			sentencePlanLocked(old, targetDate.Format("2006-01-02")) {
 			return old, nil
 		}
 	}
 
-	bank, err := s.storage.DownloadSentenceBank(ctx)
+	bank, err := st.DownloadSentenceBank(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("读取句库失败（还没建库？）：%w", err)
 	}
-	hist, err := s.storage.DownloadSentenceHistory(ctx)
+	hist, err := st.DownloadSentenceHistory(ctx)
 	if err != nil {
 		return nil, err
 	}
-	wrong, err := s.storage.DownloadSentenceWrong(ctx)
+	wrong, err := st.DownloadSentenceWrong(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	cfg, _ := resolvePlanConfig(ctx, s.storage)
+	cfg, _ := resolvePlanConfig(ctx, st)
 	sentences := BuildSentencePlan(bank, hist, wrong, targetDate, cfg.SentenceBaseCount)
 
 	// 回炉变形句。拿不到句库 / 解析失败就当今天没有加餐 —— 新功能绝不能
 	// 把整个造句练习弄没，20 句原文该怎么出还怎么出。
-	if rb, rerr := s.storage.DownloadReviewBank(ctx); rerr == nil && rb != nil {
+	if rb, rerr := st.DownloadReviewBank(ctx); rerr == nil && rb != nil {
 		exclude := make(map[string]bool, len(sentences))
 		for _, p := range sentences {
 			exclude[normSentence(p.Answer)] = true
@@ -244,7 +244,7 @@ func (s *server) buildSentencePlan(targetDate time.Time, upload bool, arc *Archi
 	}
 
 	if upload {
-		if err := s.storage.UploadSentencePlan(ctx, plan); err != nil {
+		if err := st.UploadSentencePlan(ctx, plan); err != nil {
 			return nil, fmt.Errorf("上传造句 plan 失败：%w", err)
 		}
 	}
@@ -266,11 +266,11 @@ func sentencePlanLocked(old *ReviewPlan, date string) bool {
 // 这两样存在独立的 word_meta.json 里（不在档案表格中），按完整词形
 // 「假名(汉字)」匹配。读不到就整批留空 —— 纯展示增强，绝不能因为词性表
 // 挂掉或还没上传，就把今天的练习题给弄没了。
-func (s *server) enrichWordMeta(ctx context.Context, words []PlanWord) {
+func (s *server) enrichWordMeta(ctx context.Context, st *Storage, words []PlanWord) {
 	if len(words) == 0 {
 		return
 	}
-	meta, err := s.storage.DownloadWordMeta(ctx)
+	meta, err := st.DownloadWordMeta(ctx)
 	if err != nil || meta == nil {
 		return
 	}
@@ -295,11 +295,11 @@ func lookupWordMeta(meta *WordMeta, word string) (pos, sub, note string) {
 // enrichReviewMeta 给回看快照 join 词性 / 备注 —— 跟 enrichWordMeta 同一份
 // word_meta.json，只是对象不同（快照里存的是 ReviewItem）。
 // 快照可能是 nil（那天没练），直接返回。
-func (s *server) enrichReviewMeta(ctx context.Context, snap *ReviewSnapshot) {
+func (s *server) enrichReviewMeta(ctx context.Context, st *Storage, snap *ReviewSnapshot) {
 	if snap == nil || len(snap.Items) == 0 {
 		return
 	}
-	meta, err := s.storage.DownloadWordMeta(ctx)
+	meta, err := st.DownloadWordMeta(ctx)
 	if err != nil || meta == nil {
 		return
 	}

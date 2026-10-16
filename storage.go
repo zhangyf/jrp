@@ -55,6 +55,11 @@ type Storage struct {
 	store objstore.Store
 	lang  string
 
+	// uid 绑定的用户。空串 = owner（站点所有者），其个人数据直接落在语言根下，
+	// 也就是 2026-10 之前那份老数据的位置 —— 这样加账号不用迁移任何东西。
+	// 非空 = 普通成员，个人数据落在 <语言根>/users/<uid>/ 下。
+	uid string
+
 	// dryRun 为 true 时所有 Upload* 变成空操作，读取完全不受影响。
 	// 用于 serve 的演练模式：判分、序号匹配、版本号 bump 照常计算，
 	// 只是不落盘 —— 验收时随便点都不会脏档案。
@@ -280,9 +285,44 @@ func (s *Storage) cosPrefix() string {
 	return LangConfigs[s.lang].COSPrefix
 }
 
+// ForUser 返回绑定了 uid 的副本。store 是共享的 HTTP client + 凭证，
+// 这里只是复制一个小 struct，所以每个请求调一次也没有开销。
+//
+// 之所以不改 NewStorage 的签名：全仓库 26 处调用里 25 处在 CLI 中，
+// 保持签名不变 ⇒ CLI 拿到的 uid 天然是 ""（owner），一行都不用动。
+func (s *Storage) ForUser(uid string) *Storage {
+	return &Storage{store: s.store, lang: s.lang, uid: uid, dryRun: s.dryRun}
+}
+
+// UserID 返回绑定的用户（空串 = owner）。
+func (s *Storage) UserID() string { return s.uid }
+
+// IsOwner 报告这是不是站点所有者的存储。
+func (s *Storage) IsOwner() bool { return s.uid == "" }
+
+// personalBase 个人进度数据的根：档案、历史版本、plan、草稿、回看快照、
+// 以及练习痕迹（sentence_history / sentence_wrong）。
+//
+// ⚠️ owner 的前缀必须为空 —— 这是「零迁移」的全部秘密：
+// 老师今天在用的 language-review/ja/archives/ 一个字符都不用动。
+func (s *Storage) personalBase() string {
+	if s.uid == "" {
+		return s.cosPrefix()
+	}
+	return s.cosPrefix() + "/users/" + s.uid
+}
+
+// sharedBase 教材与配置的根：句库、回炉变形句库、知识点文档、词性表、
+// 出题配额、判句模板。全站一份，不随用户变 —— 这些是手工维护的教材，
+// 按人复制一份等于以后改一句要改两遍。
+//
+// ⚠️ 注意 plans/ 目录下 personal 与 shared 混住（sentence_bank.json 就在
+// plans/ 下，而 plan_<date>.json 也是），所以只能按函数区分，不能按目录切。
+func (s *Storage) sharedBase() string { return s.cosPrefix() }
+
 // DownloadLatestArchive downloads the most recent archive from COS.
 func (s *Storage) DownloadLatestArchive(ctx context.Context) ([]byte, string, error) {
-	prefix := s.cosPrefix() + "/archives/"
+	prefix := s.personalBase() + "/archives/"
 	objs, err := s.store.ListObjects(ctx, objstore.ListOptions{Prefix: prefix, Delimiter: ""})
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to list archives: %w", err)
@@ -313,7 +353,7 @@ func (s *Storage) UploadArchive(ctx context.Context, filename string, data []byt
 	if s.dryRun {
 		return nil
 	}
-	key := s.cosPrefix() + "/archives/" + filename
+	key := s.personalBase() + "/archives/" + filename
 	return s.store.PutObject(ctx, key, data)
 }
 
@@ -322,7 +362,7 @@ func (s *Storage) UploadHistory(ctx context.Context, filename string, data []byt
 	if s.dryRun {
 		return nil
 	}
-	key := s.cosPrefix() + "/history/" + filename
+	key := s.personalBase() + "/history/" + filename
 	return s.store.PutObject(ctx, key, data)
 }
 
@@ -337,11 +377,11 @@ func (s *Storage) UploadHistory(ctx context.Context, filename string, data []byt
 func (s *Storage) planJSONKey(kind, date string) string {
 	switch kind {
 	case "hard":
-		return fmt.Sprintf("%s/plans/hard_%s.json", s.cosPrefix(), date)
+		return fmt.Sprintf("%s/plans/hard_%s.json", s.personalBase(), date)
 	case "sentences":
-		return fmt.Sprintf("%s/plans/sentences_%s.json", s.cosPrefix(), date)
+		return fmt.Sprintf("%s/plans/sentences_%s.json", s.personalBase(), date)
 	}
-	return fmt.Sprintf("%s/plans/plan_%s.json", s.cosPrefix(), date)
+	return fmt.Sprintf("%s/plans/plan_%s.json", s.personalBase(), date)
 }
 
 // UploadPlan uploads a review plan JSON to COS.
@@ -451,7 +491,7 @@ func (s *Storage) UploadExcel(ctx context.Context, date string, major, minor int
 	if s.dryRun {
 		return nil
 	}
-	key := fmt.Sprintf("%s/plans/review_%s_v%d.%d.xlsx", s.cosPrefix(), date, major, minor)
+	key := fmt.Sprintf("%s/plans/review_%s_v%d.%d.xlsx", s.personalBase(), date, major, minor)
 	data, err := os.ReadFile(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to read excel file: %w", err)
@@ -464,7 +504,7 @@ func (s *Storage) UploadSentenceExcel(ctx context.Context, date string, major, m
 	if s.dryRun {
 		return nil
 	}
-	key := fmt.Sprintf("%s/plans/sentences_%s_v%d.%d.xlsx", s.cosPrefix(), date, major, minor)
+	key := fmt.Sprintf("%s/plans/sentences_%s_v%d.%d.xlsx", s.personalBase(), date, major, minor)
 	data, err := os.ReadFile(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to read excel file: %w", err)
@@ -477,7 +517,7 @@ func (s *Storage) UploadHardExcel(ctx context.Context, date string, major, minor
 	if s.dryRun {
 		return nil
 	}
-	key := fmt.Sprintf("%s/plans/hard_words_%s_v%d.%d.xlsx", s.cosPrefix(), date, major, minor)
+	key := fmt.Sprintf("%s/plans/hard_words_%s_v%d.%d.xlsx", s.personalBase(), date, major, minor)
 	data, err := os.ReadFile(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to read excel file: %w", err)
@@ -490,13 +530,13 @@ func (s *Storage) UploadKnowledge(ctx context.Context, filename string, data []b
 	if s.dryRun {
 		return nil
 	}
-	key := s.cosPrefix() + "/knowledge/" + filename
+	key := s.sharedBase() + "/knowledge/" + filename
 	return s.store.PutObject(ctx, key, data)
 }
 
 // ListKnowledge lists all knowledge documents in COS, sorted by key ascending.
 func (s *Storage) ListKnowledge(ctx context.Context) ([]objstore.ObjectInfo, error) {
-	prefix := s.cosPrefix() + "/knowledge/"
+	prefix := s.sharedBase() + "/knowledge/"
 	objs, err := s.store.ListObjects(ctx, objstore.ListOptions{Prefix: prefix, Delimiter: ""})
 	if err != nil {
 		return nil, err
@@ -509,13 +549,13 @@ func (s *Storage) ListKnowledge(ctx context.Context) ([]objstore.ObjectInfo, err
 
 // DownloadKnowledge downloads a specific knowledge document by filename.
 func (s *Storage) DownloadKnowledge(ctx context.Context, name string) ([]byte, error) {
-	key := s.cosPrefix() + "/knowledge/" + name
+	key := s.sharedBase() + "/knowledge/" + name
 	return s.store.GetAll(ctx, key)
 }
 
 // ListHistoryArchives lists all historical archives in COS.
 func (s *Storage) ListHistoryArchives(ctx context.Context) ([]objstore.ObjectInfo, error) {
-	prefix := s.cosPrefix() + "/history/"
+	prefix := s.personalBase() + "/history/"
 	objs, err := s.store.ListObjects(ctx, objstore.ListOptions{Prefix: prefix, Delimiter: ""})
 	if err != nil {
 		return nil, err
@@ -533,7 +573,7 @@ func (s *Storage) DownloadHistoryArchive(ctx context.Context, key string) ([]byt
 
 // DownloadArchiveByDate downloads the latest archive for a specific date.
 func (s *Storage) DownloadArchiveByDate(ctx context.Context, dateStr string) ([]byte, string, error) {
-	prefix := s.cosPrefix() + "/archives/"
+	prefix := s.personalBase() + "/archives/"
 	objs, err := s.store.ListObjects(ctx, objstore.ListOptions{Prefix: prefix, Delimiter: ""})
 	if err != nil {
 		return nil, "", err
@@ -564,7 +604,7 @@ func (s *Storage) DownloadArchiveByDate(ctx context.Context, dateStr string) ([]
 
 // ListAllArchives lists all archives sorted by date descending.
 func (s *Storage) ListAllArchives(ctx context.Context) ([]objstore.ObjectInfo, error) {
-	prefix := s.cosPrefix() + "/archives/"
+	prefix := s.personalBase() + "/archives/"
 	objs, err := s.store.ListObjects(ctx, objstore.ListOptions{Prefix: prefix, Delimiter: ""})
 	if err != nil {
 		return nil, err

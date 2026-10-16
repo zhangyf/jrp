@@ -8,7 +8,7 @@ import (
 // handleStats 学习进度统计，复用 CLI 的 ComputeStats。
 //
 //	GET /api/stats?days=30
-func (s *server) handleStats(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleStats(w http.ResponseWriter, r *http.Request, st *Storage) {
 	days := 30
 	if v := r.URL.Query().Get("days"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -16,7 +16,7 @@ func (s *server) handleStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	res, err := ComputeStats(s.ctx(), s.storage, s.lang, days)
+	res, err := ComputeStats(s.ctx(), st, s.lang, days)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 			"success": false, "error": err.Error(),

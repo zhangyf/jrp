@@ -13,7 +13,7 @@ import (
 //
 // 存在的意义：回写成功后到期日被推到未来，「今日练习」就空了，老师当天练了什么、
 // 哪题写错，从此查不到。快照在 /api/record 回写成功时自动写，这里只负责读。
-func (s *server) handleReview(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleReview(w http.ResponseWriter, r *http.Request, st *Storage) {
 	date := r.URL.Query().Get("date")
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
@@ -31,7 +31,7 @@ func (s *server) handleReview(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		snap, err := s.storage.DownloadReview(s.ctx(), date, mode)
+		snap, err := st.DownloadReview(s.ctx(), date, mode)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": err.Error(),
@@ -39,13 +39,13 @@ func (s *server) handleReview(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// 词性 / 备注同样只在读的时候 join，不落进快照
-		s.enrichReviewMeta(s.ctx(), snap)
+		s.enrichReviewMeta(s.ctx(), st, snap)
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"success": true, "review": snap, "date": date, "mode": mode, "dry_run": s.dryRun,
 		})
 
 	case http.MethodDelete:
-		if err := s.storage.DeleteReview(s.ctx(), date, mode); err != nil {
+		if err := st.DeleteReview(s.ctx(), date, mode); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": err.Error(),
 			})

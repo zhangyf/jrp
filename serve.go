@@ -72,18 +72,18 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 	// 静态资源不鉴权：浏览器第一次打开要能拿到页面，token 在页面里输入后存 localStorage。
 	mux.Handle("/", staticHandler(sub))
 
-	mux.HandleFunc("/api/plan", srv.requireAuth(srv.handlePlan))
-	mux.HandleFunc("/api/hard", srv.requireAuth(srv.handleHard))
-	mux.HandleFunc("/api/record", srv.requireAuth(srv.handleRecord))
-	mux.HandleFunc("/api/export", srv.requireAuth(srv.handleExport))
-	mux.HandleFunc("/api/import", srv.requireAuth(srv.handleImport))
-	mux.HandleFunc("/api/stats", srv.requireAuth(srv.handleStats))
-	mux.HandleFunc("/api/draft", srv.requireAuth(srv.handleDraft))
-	mux.HandleFunc("/api/review", srv.requireAuth(srv.handleReview))
-	mux.HandleFunc("/api/lexicon", srv.requireAuth(srv.handleLexicon))
-	mux.HandleFunc("/api/conjugation", srv.requireAuth(srv.handleConjugation))
-	mux.HandleFunc("/api/judge-sentence", srv.requireAuth(srv.handleJudgeSentence))
-	mux.HandleFunc("/api/judge-prompt", srv.requireAuth(srv.handleJudgePrompt))
+	mux.HandleFunc("/api/plan", srv.withUser(srv.handlePlan))
+	mux.HandleFunc("/api/hard", srv.withUser(srv.handleHard))
+	mux.HandleFunc("/api/record", srv.withUser(srv.handleRecord))
+	mux.HandleFunc("/api/export", srv.withUser(srv.handleExport))
+	mux.HandleFunc("/api/import", srv.withUser(srv.handleImport))
+	mux.HandleFunc("/api/stats", srv.withUser(srv.handleStats))
+	mux.HandleFunc("/api/draft", srv.withUser(srv.handleDraft))
+	mux.HandleFunc("/api/review", srv.withUser(srv.handleReview))
+	mux.HandleFunc("/api/lexicon", srv.withUser(srv.handleLexicon))
+	mux.HandleFunc("/api/conjugation", srv.withUser(srv.handleConjugation))
+	mux.HandleFunc("/api/judge-sentence", srv.withUser(srv.handleJudgeSentence))
+	mux.HandleFunc("/api/judge-prompt", srv.withUser(srv.handleJudgePrompt))
 
 	listen := fmt.Sprintf("%s:%d", *addr, *port)
 	authNote := "（无鉴权，仅本机）"
@@ -173,22 +173,32 @@ func etagMatch(header, etag string) bool {
 	return false
 }
 
-// requireAuth 校验 Authorization: Bearer <token>。未设 token 时直接放行（本机场景）。
-func (s *server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
+// authedHandler 是需要登录的 API handler 的形状：st 已经绑好了本次请求的 uid。
+//
+// 之所以把 *Storage 硬塞进签名（而不是塞进 context）：只要有一个 handler 忘了取、
+// 继续用 s.storage（= owner 的存储），就是「儿子的进度写进老师档案」的静默数据事故。
+// 改签名 ⇒ 漏改直接编译不过，把这类事故挡在编译期。
+type authedHandler func(w http.ResponseWriter, r *http.Request, st *Storage)
+
+// withUser 做两件事：沿用 --auth-token 的校验，再把带 uid 的 Storage 交给 handler。
+func (s *server) withUser(next authedHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if s.token == "" {
-			next(w, r)
-			return
-		}
-		if subtle.ConstantTimeCompare([]byte(bearerToken(r)), []byte(s.token)) != 1 {
+		if s.token != "" && subtle.ConstantTimeCompare([]byte(bearerToken(r)), []byte(s.token)) != 1 {
 			writeJSON(w, http.StatusUnauthorized, map[string]interface{}{
 				"success": false, "error": "unauthorized：缺少或错误的 token",
 			})
 			return
 		}
-		next(w, r)
+		next(w, r, s.storage.ForUser(s.resolveUID(r)))
 	}
 }
+
+// resolveUID 从请求里认出用户。
+//
+// 阶段 1（当前）：账号体系还没接上，恒返回 ""（owner）—— 所以 COS key 与改造前
+// 逐字节相同，线上行为完全不变。阶段 2 会在这里查会话表
+// （cookie jrp_sid 或 Authorization: Bearer 的会话 token）。
+func (s *server) resolveUID(r *http.Request) string { return "" }
 
 func bearerToken(r *http.Request) string {
 	h := r.Header.Get("Authorization")

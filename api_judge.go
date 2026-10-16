@@ -75,6 +75,7 @@ func loadLLMConfig() (llmConfig, bool) {
 //   - 「拿不准就判正确」改成「拿不准就看要素齐不齐」：要素齐全只是写法不同 → 判对；
 //     要素缺失（尤其助词缺失导致格关系不明）→ 判错。
 //     没写成「拿不准就判错」，是因为那样会把 へ↔に 这类同样成立的替换一起拖下水。
+//
 // 第 4 条（感叹词/语气词不算错）和第 5 条（没学过的表达也算对）不能删 ——
 // 删了模型就变成语法警察，会判一堆老师本来会的句子是错的。
 // TestJudgePromptKeepsConservativeRules 盯着这几条不许删。
@@ -291,7 +292,9 @@ func callLLM(cfg llmConfig, prompt string) (string, error) {
 	}
 	var apiResp struct {
 		Choices []struct {
-			Message struct{ Content string `json:"content"` } `json:"message"`
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(raw, &apiResp); err != nil {
@@ -355,7 +358,7 @@ func judgeWithCache(ctx context.Context, st *Storage, cfg llmConfig, answer, chi
 //	→ { enabled:true,  correct, reason, by:"llm"|"literal" }
 //	→ { enabled:false }                       没配密钥，前端关掉这个功能
 //	→ { enabled:true, correct:false, by:"literal", error }   模型挂了，按字面判
-func (s *server) handleJudgeSentence(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleJudgeSentence(w http.ResponseWriter, r *http.Request, st *Storage) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
 			"success": false, "error": "只用 POST",
@@ -400,13 +403,13 @@ func (s *server) handleJudgeSentence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, ver, model, err := judgeWithCache(r.Context(), s.storage, cfg, in.Answer, in.Chinese, in.Input)
+	res, ver, model, err := judgeWithCache(r.Context(), st, cfg, in.Answer, in.Chinese, in.Input)
 	if err != nil {
 		// 模型不可用不是业务错误：不返回 5xx，让前端退回字面判定继续练
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"success": true, "enabled": true, "correct": false, "by": "literal",
 			"reason": "模型不可用，按字面判定",
-			"chain": append([]string{cfg.Model}, cfg.Fallback...),
+			"chain":  append([]string{cfg.Model}, cfg.Fallback...),
 		})
 		return
 	}
@@ -424,7 +427,7 @@ func (s *server) handleJudgeSentence(w http.ResponseWriter, r *http.Request) {
 //
 // 只回版本不回内容：前端拿它判断草稿里的旧结论还能不能用。
 // 顺带把「有没有配模型」告诉前端，省得前端非要发一次判定才知道。
-func (s *server) handleJudgePrompt(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleJudgePrompt(w http.ResponseWriter, r *http.Request, st *Storage) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
 			"success": false, "error": "只用 GET",
@@ -432,7 +435,7 @@ func (s *server) handleJudgePrompt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, enabled := loadLLMConfig()
-	tpl, ver, src := resolveJudgePrompt(r.Context(), s.storage)
+	tpl, ver, src := resolveJudgePrompt(r.Context(), st)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"enabled": enabled,

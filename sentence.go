@@ -83,9 +83,15 @@ type SentenceResult struct {
 
 // ---------- COS key ----------
 
-func (s *Storage) sentenceBankKey() string    { return s.cosPrefix() + "/plans/sentence_bank.json" }
-func (s *Storage) sentenceHistoryKey() string { return s.cosPrefix() + "/plans/sentence_history.json" }
-func (s *Storage) sentenceWrongKey() string   { return s.cosPrefix() + "/plans/sentence_wrong.json" }
+// sentenceBankKey 主句库 = 教材，全站共享。
+func (s *Storage) sentenceBankKey() string { return s.sharedBase() + "/plans/sentence_bank.json" }
+
+// sentenceHistoryKey / sentenceWrongKey 是练习痕迹（谁做过哪句、哪句错了），
+// 按用户隔离 —— 共享的话儿子做过的句子老师就练不到了。
+func (s *Storage) sentenceHistoryKey() string {
+	return s.personalBase() + "/plans/sentence_history.json"
+}
+func (s *Storage) sentenceWrongKey() string { return s.personalBase() + "/plans/sentence_wrong.json" }
 
 // ---------- 归一化 ----------
 

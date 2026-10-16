@@ -43,7 +43,7 @@ type ReviewItem struct {
 
 // reviewKey 快照的 COS 键：reviews/review_<date>_<mode>.json
 func (s *Storage) reviewKey(date, mode string) string {
-	return fmt.Sprintf("%s/reviews/review_%s_%s.json", s.cosPrefix(), date, mode)
+	return fmt.Sprintf("%s/reviews/review_%s_%s.json", s.personalBase(), date, mode)
 }
 
 // UploadReview 合并写入快照。

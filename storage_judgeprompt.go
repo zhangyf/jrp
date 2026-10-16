@@ -21,7 +21,7 @@ import (
 const judgePromptCosKey = "configs/judge_prompt.txt"
 
 func (s *Storage) judgePromptKey() string {
-	return s.cosPrefix() + "/" + judgePromptCosKey
+	return s.sharedBase() + "/" + judgePromptCosKey
 }
 
 // DownloadJudgePrompt 读模板。不存在或读失败返回空串 —— 调用方据此回退内置模板。
