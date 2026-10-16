@@ -865,12 +865,15 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
 2. Reorganize following the style rules above — this is the key step
 3. Save to local file
 4. Run: `jrp --lang ja save-lesson --file /tmp/lesson.md --name 第N课知识点.md`
-5. **把课文句子加进句库**（`jrp --lang ja sentence-import --lesson N --apply`）
-   —— ⚠️ 这步以前不在流程里，2026-10-16 才发现第19课的知识点 / 汇编 / 单词都在，
-   **唯独句库没有第19课**，造句永远练不到。现在有自动抽句：从两份「课本原文汇编」
+5. **课文句子进句库：不用单独敲命令** —— `save-lesson` 存的是汇编文档时会自动跑一遍：
+   输出里的 `lessons_in_doc` 是文档里有哪几课，`auto_import.new_count` 是新加几句，
+   `auto_import.per_lesson` 每课每份文档 `rows_in_doc / new_count / skipped`。
+   ⚠️ 这步以前不在流程里，2026-10-16 才发现第19课的知识点 / 汇编 / 单词都在，
+   **唯独句库没有第19课**，造句永远练不到。现在抽句逻辑：从两份「课本原文汇编」
    文档里按 `## 第N课` 段落抽表格里的句子，生词表和「待补」占位自动跳过，
    与已有句库按归一化去重，ID 连号（L19B001…/L19A001…）。
-   **默认只干跑预览，加 `--apply` 才写回**。写完照旧能过 `sentence-lint`。
+   想手动重跑/只看不写：`jrp --lang ja sentence-import --lesson N`（默认干跑，`--apply` 才写回）。
+   写完照旧能过 `sentence-lint`。
    规则就两条，**不做覆盖**：① 句库已有一模一样的（归一化比，句号/空格/斜杠
    差异都算同一句）→ 跳过，所以重复导入不涨条目；② 其余一律追加。
    ⚠️ 别再加「很像就覆盖」的逻辑（2026-10-16 加了又被老师否掉）：
@@ -1333,7 +1336,7 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 | `dedupe` | `--dry-run` | Remove duplicate word entries from archive (byte-identical text only). Keeps the one with highest reviewCount. Backs up to `history/` first. **Always dry-run first** |
 | `merge-words` | `--input <json>` `--dry-run` | Merge two entries that are the same word under different forms (e.g. `すし` → `すし(寿司)`) — the case `dedupe` cannot catch. Sums ReviewCount/ErrorCount, max's ConsecutiveCorrect, later LastReview. Backs up to `history/` first. **Always dry-run first** |
 | `stats` | `--days <N>` | Show statistics for last N days |
-| `save-lesson` | `--file <path> --name <name>` | Save knowledge doc to COS（存的是汇编文档时，会提示把哪几课补进句库） |
+| `save-lesson` | `--file <path> --name <name>` | Save knowledge doc to COS（存的是汇编文档时，**自动**把里面每课的句子导进句库，见输出 `auto_import`） |
 | `list-knowledge` | (none) | List all knowledge documents in COS |
 | `get-knowledge` | `--name <filename>` | Download a knowledge document from COS |
 | `sentence-import` | `--lesson <N>` `--apply` `--doc <name>` | 从「课本原文汇编」自动抽第N课的课文句子进句库。**默认干跑**，`--apply` 才写回。查重（一模一样就跳过）+ 直接追加，不做覆盖 |
