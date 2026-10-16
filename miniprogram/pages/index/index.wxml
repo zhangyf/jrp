@@ -1,0 +1,25 @@
+<view class="wrap">
+  <view class="card">
+    <view class="title">jrp</view>
+    <view class="sub">日语每日练习</view>
+  </view>
+
+  <view class="card" wx:if="{{logged}}">
+    <view class="title">已登录</view>
+    <view class="sub">角色：{{roleText}}</view>
+    <view class="sub" wx:if="{{uid}}">ID：{{uid}}</view>
+  </view>
+
+  <view class="card" wx:else>
+    <view class="sub">正在登录…</view>
+    <view class="err" wx:if="{{message}}">{{message}}</view>
+  </view>
+
+  <view class="card">
+    <view class="sub">
+      练习功能正在路上（列表复习 / 造句 / 钉子户 / 统计）。<br/>
+      现在可以先在电脑上用：用微信扫网页上的二维码，在这里点「确认登录」即可。
+    </view>
+    <button class="btn ghost" bindtap="onCopyWeb">复制网页版网址</button>
+  </view>
+</view>

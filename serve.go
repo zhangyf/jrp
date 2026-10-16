@@ -59,6 +59,7 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 	// 演练模式掐在 Storage 层：所有 Upload* 变空操作，读取照旧。
 	// 这样 ApplyRecord 的判分、序号匹配、版本号 bump 全都是真的，只是不落盘。
 	storage.SetDryRun(*dryRun)
+	loadWXConfig() // 小程序凭证；没配就是没开登录，其余功能照常
 
 	srv := &server{storage: storage, lang: lang, token: strings.TrimSpace(*token), dryRun: *dryRun}
 
@@ -84,6 +85,15 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 	mux.HandleFunc("/api/conjugation", srv.withUser(srv.handleConjugation))
 	mux.HandleFunc("/api/judge-sentence", srv.withUser(srv.handleJudgeSentence))
 	mux.HandleFunc("/api/judge-prompt", srv.withUser(srv.handleJudgePrompt))
+
+	// 登录：小程序码确认登录。这几个都不走 withUser —— 它们自己就是登录入口。
+	mux.HandleFunc("/api/auth/ticket", srv.handleAuthTicket)
+	mux.HandleFunc("/api/auth/qr", srv.handleAuthQR)
+	mux.HandleFunc("/api/auth/status", srv.handleAuthStatus)
+	mux.HandleFunc("/api/auth/wxlogin", srv.handleAuthWXLogin)
+	mux.HandleFunc("/api/auth/confirm", srv.handleAuthConfirm)
+	mux.HandleFunc("/api/auth/me", srv.handleAuthMe)
+	mux.HandleFunc("/api/auth/logout", srv.handleAuthLogout)
 
 	listen := fmt.Sprintf("%s:%d", *addr, *port)
 	authNote := "（无鉴权，仅本机）"
@@ -180,25 +190,49 @@ func etagMatch(header, etag string) bool {
 // 改签名 ⇒ 漏改直接编译不过，把这类事故挡在编译期。
 type authedHandler func(w http.ResponseWriter, r *http.Request, st *Storage)
 
-// withUser 做两件事：沿用 --auth-token 的校验，再把带 uid 的 Storage 交给 handler。
+// withUser 认出用户、校验权限，再把带 uid 的 Storage 交给 handler。
+//
+// 三道门：
+//  1. 会话（cookie jrp_sid 或 Bearer）—— 正常登录的用户走这里；
+//  2. 共享 token（--auth-token）—— CLI 和脚本，仍然有效；
+//  3. authRequired() 打开后，两者都没有 → 401。
+//
+// ⚠️ 红线：匿名请求绝不能退回 owner。没开登录时（还没人扫码绑过 owner）
+// uid 为空 = owner，那正是今天的行为；一旦开了，匿名就是 401。
 func (s *server) withUser(next authedHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if s.token != "" && subtle.ConstantTimeCompare([]byte(bearerToken(r)), []byte(s.token)) != 1 {
+		sess, logged := s.sessionUser(r)
+		tokenOK := s.token != "" &&
+			subtle.ConstantTimeCompare([]byte(bearerToken(r)), []byte(s.token)) == 1
+
+		if s.authRequired() && !logged && !tokenOK {
+			writeJSON(w, http.StatusUnauthorized, map[string]interface{}{
+				"success": false, "error": "unauthorized", "login": "/login.html",
+			})
+			return
+		}
+		if s.token != "" && !logged && !tokenOK {
 			writeJSON(w, http.StatusUnauthorized, map[string]interface{}{
 				"success": false, "error": "unauthorized：缺少或错误的 token",
 			})
 			return
 		}
-		next(w, r, s.storage.ForUser(s.resolveUID(r)))
+
+		uid := ""
+		if logged {
+			uid = sess.UID
+			// 角色改了（被禁用 / 还没批准）要让存量会话立刻失效。
+			if u, ok := findUserByUID(cachedUsers(r.Context(), s.storage), uid); ok &&
+				(u.Role == rolePending || u.Role == roleDisabled) {
+				writeJSON(w, http.StatusForbidden, map[string]interface{}{
+					"success": false, "error": "账号未启用，等管理员批准",
+				})
+				return
+			}
+		}
+		next(w, r, s.storage.ForUser(uid))
 	}
 }
-
-// resolveUID 从请求里认出用户。
-//
-// 阶段 1（当前）：账号体系还没接上，恒返回 ""（owner）—— 所以 COS key 与改造前
-// 逐字节相同，线上行为完全不变。阶段 2 会在这里查会话表
-// （cookie jrp_sid 或 Authorization: Bearer 的会话 token）。
-func (s *server) resolveUID(r *http.Request) string { return "" }
 
 func bearerToken(r *http.Request) string {
 	h := r.Header.Get("Authorization")

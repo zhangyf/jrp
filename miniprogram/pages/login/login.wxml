@@ -1,0 +1,25 @@
+<view class="wrap">
+  <view class="card">
+    <view class="title">登录 jrp</view>
+
+    <block wx:if="{{state === 'loading'}}">
+      <view class="sub">正在登录…</view>
+    </block>
+
+    <block wx:elif="{{state === 'confirm'}}">
+      <view class="sub">
+        用这个微信登录 jrp？<text wx:if="{{roleText}}">{{roleText}}</text>
+      </view>
+      <button class="btn" type="primary" bindtap="onConfirm">确认登录</button>
+      <button class="btn ghost" bindtap="onCancel">取消</button>
+    </block>
+
+    <block wx:elif="{{state === 'done'}}">
+      <view class="ok">{{message}}</view>
+    </block>
+
+    <block wx:else>
+      <view class="err">{{message}}</view>
+    </block>
+  </view>
+</view>

@@ -1,0 +1,52 @@
+page {
+  background: #f7f7f5;
+  color: #23231f;
+  font-size: 15px;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.card {
+  margin: 24rpx;
+  padding: 32rpx;
+  background: #ffffff;
+  border: 1rpx solid #e2e2dd;
+  border-radius: 16rpx;
+}
+
+.title {
+  font-size: 34rpx;
+  font-weight: 600;
+  margin-bottom: 12rpx;
+}
+
+.sub {
+  color: #8a8a80;
+  font-size: 26rpx;
+  line-height: 1.7;
+}
+
+.btn {
+  margin-top: 32rpx;
+  background: #2f6f4f;
+  color: #ffffff;
+  border-radius: 12rpx;
+  font-size: 30rpx;
+}
+
+.btn.ghost {
+  background: #ffffff;
+  color: #2f6f4f;
+  border: 1rpx solid #2f6f4f;
+}
+
+.err {
+  color: #b4392f;
+  font-size: 26rpx;
+  margin-top: 16rpx;
+}
+
+.ok {
+  color: #2f6f4f;
+  font-size: 30rpx;
+  margin-top: 16rpx;
+}

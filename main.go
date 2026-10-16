@@ -41,6 +41,7 @@ Commands:
   plan-config       View / change daily sentence quotas (no redeploy needed): --set / --reset
   sentence-import   Pull one lesson's sentences out of the 汇编 docs into the bank (--lesson N, --apply)
   lesson-status     One-shot check: 知识点 / 汇编 / 单词 / 句库 四件套齐不齐 (--lesson N | --all)
+  user              Manage login accounts: list | approve <uid> | set-role <uid> <role> | disable <uid> | rename <uid> <name>
 
 Global flags:
   --lang string   Language code: ja (Japanese), en (English), fr (French) (required)
@@ -64,6 +65,8 @@ Examples:
   jrp --lang ja lesson-status --lesson 19
   jrp --lang ja sentence-import --lesson 19
   jrp --lang ja sentence-import --lesson 19 --apply
+  jrp --lang ja user list
+  jrp --lang ja user approve u_7f3a2b9c
 `
 
 func main() {
@@ -172,6 +175,8 @@ func main() {
 		runSentenceImport(fs, lang)
 	case "lesson-status":
 		runLessonStatus(fs, lang)
+	case "user":
+		runUser(fs, lang)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		fmt.Print(usage)

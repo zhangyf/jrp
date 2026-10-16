@@ -1,0 +1,15 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/login/login"
+  ],
+  "window": {
+    "navigationBarTitleText": "jrp",
+    "navigationBarBackgroundColor": "#2f6f4f",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#f7f7f5",
+    "backgroundTextStyle": "dark"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}
