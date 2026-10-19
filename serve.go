@@ -222,13 +222,19 @@ func (s *server) withUser(next authedHandler) http.HandlerFunc {
 		if logged {
 			uid = sess.UID
 			// 角色改了（被禁用 / 还没批准）要让存量会话立刻失效。
-			if u, ok := findUserByUID(cachedUsers(r.Context(), s.storage), uid); ok &&
-				(u.Role == rolePending || u.Role == roleDisabled) {
+		if u, ok := findUserByUID(cachedUsers(r.Context(), s.storage), uid); ok {
+			if u.Role == rolePending || u.Role == roleDisabled {
 				writeJSON(w, http.StatusForbidden, map[string]interface{}{
 					"success": false, "error": "账号未启用，等管理员批准",
 				})
 				return
 			}
+			// owner 恒用空 uid 走老路径。存量会话里存的是旧 uid（历史上给 owner 也发过
+			// u_xxx），这里自愈一下，免得老师还得重新扫码。
+			if u.Role == roleOwner {
+				uid = ""
+			}
+		}
 		}
 		next(w, r, s.storage.ForUser(uid))
 	}

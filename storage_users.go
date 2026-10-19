@@ -59,6 +59,10 @@ func (s *Storage) usersKey() string { return s.authBase() + "/users.json" }
 
 // ListUsers 读用户表。COS 读不到（还没人登过）返回空表，不算错误。
 func (s *Storage) ListUsers(ctx context.Context) ([]User, error) {
+	// store 为 nil 只在测试里出现（dryRun 也要能读真实用户表，只是不写）。
+	if s.store == nil {
+		return nil, nil
+	}
 	data, err := s.store.GetAll(ctx, s.usersKey())
 	if err != nil || len(data) == 0 {
 		return nil, nil
@@ -157,10 +161,7 @@ func upsertUser(ctx context.Context, st *Storage, openid string) (User, error) {
 		return u, nil
 	}
 
-	role := rolePending
-	if len(users) == 0 {
-		role = roleOwner
-	}
+	role := roleForNewUser(users)
 	u := User{
 		UID:       newUID(),
 		OpenID:    openid,
@@ -169,12 +170,27 @@ func upsertUser(ctx context.Context, st *Storage, openid string) (User, error) {
 		Created:   time.Now().Format("2006-01-02 15:04:05"),
 		LastLogin: time.Now().Format("2006-01-02 15:04:05"),
 	}
+	// ⚠️ owner 的 uid 恒为空。personalBase() 靠 uid=="" 走老路径（零迁移），
+	// 给 owner 也发 u_xxx 的话，老师一登录就读 users/u_xxx/archives/（空目录），
+	// 表现就是「档案全没了」—— 数据其实还在老位置，只是读错了地方。
+	if role == roleOwner {
+		u.UID = ""
+	}
 	users = append(users, u)
 	if err := st.SaveUsers(ctx, users); err != nil {
 		return User{}, err
 	}
 	invalidateUserCache()
 	return u, nil
+}
+
+// roleForNewUser 决定新用户进来时给什么角色：一个都没有 → owner，其余 → pending
+// （pending 要 owner 用 `jrp user approve` 放行，防止谁扫一下就能读数据）。
+func roleForNewUser(users []User) string {
+	if len(users) == 0 {
+		return roleOwner
+	}
+	return rolePending
 }
 
 // usersMu 包住用户表的读-改-写。COS 的 PutObject 没有 If-Match，做不了乐观锁，

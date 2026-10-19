@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 // 加账号体系时最怕的一件事：owner（老师）的 COS key 被改动，等于老数据一夜之间
 // 「消失」。这组测试把「owner 的 key 与 2026-10 之前逐字节相同」钉死，
@@ -125,3 +128,39 @@ func TestForUserIsolatesPersonalKeepsTextbookShared(t *testing.T) {
 // 这两个 key 函数未导出且带参数，测试里包一层避免重复拼日期。
 func draftKeyOf(s *Storage) string  { return s.draftKey("2026-10-20", "words") }
 func reviewKeyOf(s *Storage) string { return s.reviewKey("2026-10-20", "words") }
+
+// TestFirstUserIsOwnerWithEmptyUID：第一个登录的人必须是 owner，且 uid 为空。
+// ⚠️ 这是零迁移的命门：owner 一旦拿到 u_xxx，personalBase() 就会去读
+// users/u_xxx/archives/（空目录），老师登录完会发现「档案全没了」（2026-10-19 线上踩到）。
+func TestFirstUserIsOwnerWithEmptyUID(t *testing.T) {
+	st := &Storage{dryRun: true}
+	ctx := context.Background()
+
+	first, err := upsertUser(ctx, st, "openid-first")
+	if err != nil {
+		t.Fatalf("第一个用户创建失败：%v", err)
+	}
+	if first.Role != roleOwner {
+		t.Errorf("第一个用户应是 owner，实际 %q", first.Role)
+	}
+	if first.UID != "" {
+		t.Fatalf("owner 的 uid 必须为空（否则读不到老档案），实际 %q", first.UID)
+	}
+
+	// owner 的 Storage 走的必须还是老路径
+	if !st.ForUser(first.UID).IsOwner() {
+		t.Errorf("owner 的 Storage IsOwner() 应为 true")
+	}
+
+}
+
+// TestRoleForNewUser：第一个 owner，其余 pending（要 owner approve 才能用）。
+// dryRun 的 Storage 写不进用户表，所以这条逻辑单独用纯函数测。
+func TestRoleForNewUser(t *testing.T) {
+	if got := roleForNewUser(nil); got != roleOwner {
+		t.Errorf("空用户表应给 owner，实际 %q", got)
+	}
+	if got := roleForNewUser([]User{{UID: "u_1", Role: roleOwner}}); got != rolePending {
+		t.Errorf("已有用户应给 pending，实际 %q", got)
+	}
+}
