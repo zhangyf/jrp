@@ -186,6 +186,7 @@ Page({
           trendFirst: (first && first.date || '').slice(5),
           trendLast: (last && last.date || '').slice(5),
           hard: d.hard_words || null,
+          hardRows: hardRows(d.hard_words),
           dist,
           distTotal: distVals.reduce((a, b) => a + b, 0),
           top,
@@ -197,6 +198,17 @@ Page({
 });
 
 function share(a, b) { return b ? Math.round((a * 100) / b) + '%' : '—'; }
+
+// 钉子户三档的显示行。⚠️ 「<」必须从 JS 给 —— WXML 不解析 HTML 实体，
+// 标签文本里写 &lt; 会原样显示成 "&lt;"（2026-10-19 老师截图抓到）。
+function hardRows(hw) {
+  if (!hw || !hw.total) return [];
+  return [
+    { label: '严重（<30%）', value: hw.severe || 0 },
+    { label: '中度（30-45%）', value: hw.moderate || 0 },
+    { label: '轻度（≥45%）', value: hw.mild || 0 }
+  ];
+}
 
 // JLPT 进度百分比。
 //

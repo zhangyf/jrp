@@ -103,9 +103,11 @@
 
   <view class="card" wx:if="{{hard && hard.total}}">
     <view class="title">钉子户分布<text class="sub">正确率低且复习次数够多</text></view>
-    <view class="kv"><text>严重（&lt;30%）</text><text class="num">{{hard.severe}}</text></view>
-    <view class="kv"><text>中度（30-45%）</text><text class="num">{{hard.moderate}}</text></view>
-    <view class="kv"><text>轻度（≥45%）</text><text class="num">{{hard.mild}}</text></view>
+    <!-- ⚠️ WXML 不解析 HTML 实体：&lt; 会原样显示成 "&lt;"。
+         小于号从 JS 的 hardRows 里来，别直接写在标签文本里 -->
+    <view class="kv" wx:for="{{hardRows}}" wx:for-item="h" wx:key="label">
+      <text>{{h.label}}</text><text class="num">{{h.value}}</text>
+    </view>
     <view class="kv total"><text>合计</text><text class="num">{{hard.total}}</text></view>
   </view>
 
