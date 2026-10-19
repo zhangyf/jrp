@@ -14,11 +14,13 @@
       <text class="cn">{{item.chinese}}</text>
     </view>
 
+    <!-- ⚠️ 不用 auto-height：textarea 是原生组件，auto-height 首帧按默认尺寸渲染，
+         等异步测量完才缩回去 —— 老师看到的「刚进去特别宽、几秒后恢复」就是它。
+         固定高度，首帧就是最终尺寸。 -->
     <textarea class="answer"
               placeholder="写日语整句"
               value="{{item.input}}"
               disabled="{{item.graded}}"
-              auto-height
               data-index="{{index}}"
               bindinput="onInput" />
 

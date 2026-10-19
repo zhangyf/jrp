@@ -92,8 +92,11 @@
 
 .answer {
   /* ⚠️ 小程序 input/textarea 的默认宽度不是 100%：不加 width 会从白格里伸出去。
-     box-sizing 让边框和内边距算进 100% 里，不然照样超 2 个内边距的宽度。 */
+     box-sizing 让边框和内边距算进 100% 里，不然照样超 2 个内边距的宽度。
+     ⚠️ 高度也必须显式给：input 复用重建（比如回看态切巩固轮）时，
+     不给 height 会被原生组件压成一条窄缝，placeholder 都显示不全。 */
   width: 100%;
+  height: 84rpx;
   box-sizing: border-box;
   margin-top: 14rpx;
   border: 1rpx solid #d3d1c7;

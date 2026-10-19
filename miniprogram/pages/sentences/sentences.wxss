@@ -85,8 +85,10 @@
 
 .answer {
   /* ⚠️ textarea 默认宽度是固定 300px（input 才是 100%）—— 窄屏上会伸出白格。
-     width:100% + box-sizing:border-box 让边框内边距都算进去，正好贴满格子。 */
+     显式给 width + height：auto-height 首帧按默认尺寸渲染、几秒后才量好，
+     就是老师看到的「刚进去特别宽」。固定高度没有首帧跳变。 */
   width: 100%;
+  height: 180rpx;
   box-sizing: border-box;
   margin-top: 14rpx;
   border: 1rpx solid #d3d1c7;
