@@ -98,19 +98,23 @@
   font-size: 30rpx;
 }
 
+/* 「不会」胶囊：默认就是暖色（琥珀底 + 深琥珀字），不能做成灰的 ——
+   老师在输入框下面那版里根本没看见它。标了之后变红底白字，一眼能扫出来。 */
 .unknown {
   font-size: 26rpx;
-  color: #8a8a86;
-  border: 1rpx solid #d3d1c7;
+  font-weight: 500;
+  color: #a35a00;
+  background: #fff4e2;
+  border: 1rpx solid #f0b357;
   border-radius: 999rpx;
-  padding: 4rpx 18rpx;
+  padding: 6rpx 22rpx;
   white-space: nowrap; /* 胶囊按钮禁止折行，保险 */
 }
 
 .unknown.on {
-  color: #a32d2d;
+  color: #ffffff;
+  background: #e24b4a;
   border-color: #e24b4a;
-  background: #fcebeb;
 }
 
 .reveal {
