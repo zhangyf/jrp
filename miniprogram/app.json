@@ -11,5 +11,6 @@
     "backgroundTextStyle": "dark"
   },
   "style": "v2",
+  "lazyCodeLoading": "requiredComponents",
   "sitemapLocation": "sitemap.json"
 }
