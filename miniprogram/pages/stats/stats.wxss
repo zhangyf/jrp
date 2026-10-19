@@ -1,0 +1,102 @@
+/* 统计页样式。.card / .title / .err 复用 app.wxss 的全局定义。 */
+
+.tabs {
+  display: flex;
+  gap: 16rpx;
+  padding: 20rpx 24rpx 0;
+}
+
+.tab {
+  font-size: 26rpx;
+  color: #8a8a86;
+  background: #ffffff;
+  border: 1rpx solid #e2e2dd;
+  border-radius: 999rpx;
+  padding: 8rpx 28rpx;
+}
+
+.tab.on {
+  color: #ffffff;
+  background: #2f6f4f;
+  border-color: #2f6f4f;
+}
+
+.empty {
+  padding: 60rpx 0;
+  text-align: center;
+  font-size: 28rpx;
+  color: #8a8a86;
+}
+
+.kv {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 14rpx 0;
+  font-size: 28rpx;
+  border-bottom: 1rpx solid #f1f1ed;
+}
+
+.kv:last-child {
+  border-bottom: none;
+}
+
+.kv.total {
+  border-top: 1rpx solid #e2e2dd;
+  margin-top: 6rpx;
+  font-weight: 600;
+}
+
+.kv .num {
+  font-size: 30rpx;
+  font-weight: 500;
+}
+
+.lesson {
+  color: #4a4a44;
+}
+
+.bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 20rpx;
+}
+
+.bar-label {
+  font-size: 26rpx;
+  color: #8a8a86;
+  min-width: 44rpx;
+}
+
+.bar {
+  flex: 1;
+  height: 16rpx;
+  background: #eeede9;
+  border-radius: 999rpx;
+  overflow: hidden;
+}
+
+.bar-in {
+  height: 100%;
+  background: #2f6f4f;
+  border-radius: 999rpx;
+}
+
+.bar-in.n4 {
+  background: #3b82c4;
+}
+
+.bar-num {
+  font-size: 24rpx;
+  color: #8a8a86;
+  min-width: 76rpx;
+  text-align: right;
+}
+
+.hint {
+  margin-top: 16rpx;
+  font-size: 22rpx;
+  color: #a0a09a;
+  line-height: 1.6;
+}

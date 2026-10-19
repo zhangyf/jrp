@@ -1,0 +1,155 @@
+.wrap {
+  padding: 20rpx 24rpx 160rpx;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  font-size: 26rpx;
+  color: #8a8a86;
+  margin-bottom: 12rpx;
+}
+
+.link {
+  margin-left: auto;
+  color: #2f6f4f;
+}
+
+.item {
+  margin-bottom: 18rpx;
+}
+
+.item.right {
+  border-left: 6rpx solid #1d9e75;
+}
+
+.item.wrong {
+  border-left: 6rpx solid #e24b4a;
+}
+
+.q {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+}
+
+.num {
+  font-size: 24rpx;
+  color: #b4b2a9;
+  min-width: 40rpx;
+}
+
+.def {
+  font-size: 32rpx;
+  font-weight: 500;
+}
+
+.pos {
+  font-size: 22rpx;
+  color: #8a8a86;
+  background: #f1efe8;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+}
+
+.meta {
+  margin-top: 8rpx;
+  font-size: 23rpx;
+  color: #8a8a86;
+}
+
+.note {
+  display: block;
+  margin-top: 4rpx;
+}
+
+.cn {
+  font-size: 30rpx;
+  font-weight: 500;
+}
+
+.reason {
+  margin-top: 8rpx;
+  font-size: 25rpx;
+  color: #8a8a86;
+  line-height: 1.6;
+}
+
+/* 底部按钮条：app.wxss 的 .btn 带 margin-top，在 flex 里会被顶歪 */
+.bar .btn {
+  flex: 1;
+  margin-top: 0;
+  font-size: 30rpx;
+}
+
+.answer {
+  margin-top: 14rpx;
+  border: 1rpx solid #d3d1c7;
+  border-radius: 8rpx;
+  padding: 14rpx 16rpx;
+  font-size: 30rpx;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  margin-top: 12rpx;
+  font-size: 26rpx;
+}
+
+.unknown {
+  color: #8a8a86;
+  border: 1rpx solid #d3d1c7;
+  border-radius: 999rpx;
+  padding: 4rpx 18rpx;
+}
+
+.unknown.on {
+  color: #a32d2d;
+  border-color: #e24b4a;
+  background: #fcebeb;
+}
+
+.flag {
+  margin-left: auto;
+  font-weight: 500;
+}
+
+.reveal {
+  margin-top: 10rpx;
+  font-size: 28rpx;
+  color: #0f6e56;
+}
+
+.bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 20rpx;
+  padding: 20rpx 24rpx calc(20rpx + env(safe-area-inset-bottom));
+  background: #ffffff;
+  border-top: 1rpx solid #eeede9;
+}
+
+.tip {
+  margin-top: 24rpx;
+  font-size: 23rpx;
+  color: #a0a09a;
+  line-height: 1.6;
+}
+
+.empty,
+.err {
+  padding: 40rpx 0;
+  text-align: center;
+  font-size: 28rpx;
+  color: #8a8a86;
+}
+
+.err {
+  color: #a32d2d;
+}

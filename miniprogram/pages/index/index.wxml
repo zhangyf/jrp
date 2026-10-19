@@ -1,25 +1,46 @@
 <view class="wrap">
-  <view class="card">
+  <view class="card status">
     <view class="title">jrp</view>
     <view class="sub">日语每日练习</view>
-  </view>
-
-  <view class="card" wx:if="{{logged}}">
-    <view class="title">已登录</view>
-    <view class="sub">角色：{{roleText}}</view>
-    <view class="sub" wx:if="{{uid}}">ID：{{uid}}</view>
-  </view>
-
-  <view class="card" wx:else>
-    <view class="sub">正在登录…</view>
+    <view class="row" wx:if="{{logged}}">
+      <text class="tag ok">已登录</text>
+      <text class="sub">{{roleText}}</text>
+    </view>
+    <view class="row" wx:else>
+      <text class="tag wait">正在登录…</text>
+    </view>
     <view class="err" wx:if="{{message}}">{{message}}</view>
   </view>
 
-  <view class="card">
-    <view class="sub">
-      练习功能正在路上（列表复习 / 造句 / 钉子户 / 统计）。<br/>
-      现在可以先在电脑上用：用微信扫网页上的二维码，在这里点「确认登录」即可。
+  <view class="card entry" data-mode="words" bindtap="go">
+    <view class="entry-main">
+      <view class="entry-title">列表复习</view>
+      <view class="entry-desc">今天该复习的词，一屏全列</view>
     </view>
-    <button class="btn ghost" bindtap="onCopyWeb">复制网页版网址</button>
+    <view class="arrow">›</view>
+  </view>
+
+  <view class="card entry" data-mode="sentences" bindtap="go">
+    <view class="entry-main">
+      <view class="entry-title">造句</view>
+      <view class="entry-desc">看中文写整句，写完判意思</view>
+    </view>
+    <view class="arrow">›</view>
+  </view>
+
+  <view class="card entry" data-mode="hard" bindtap="go">
+    <view class="entry-main">
+      <view class="entry-title">钉子户</view>
+      <view class="entry-desc">反复出错的词，专项重练</view>
+    </view>
+    <view class="arrow">›</view>
+  </view>
+
+  <view class="card entry" data-mode="conj" bindtap="go">
+    <view class="entry-main">
+      <view class="entry-title">活用练习</view>
+      <view class="entry-desc">动词 / 形容词变形，只练不计档</view>
+    </view>
+    <view class="arrow">›</view>
   </view>
 </view>

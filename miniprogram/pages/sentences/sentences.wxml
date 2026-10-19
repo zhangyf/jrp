@@ -1,0 +1,34 @@
+<view class="wrap">
+  <view class="head">
+    <text class="count">共 {{items.length}} 句</text>
+    <text class="link" bindtap="load">刷新</text>
+  </view>
+
+  <view class="err" wx:if="{{err}}">{{err}}</view>
+  <view class="empty" wx:if="{{!loading && !err && items.length === 0}}">今天没有造句任务。</view>
+
+  <view class="card item {{item.graded ? (item.correct ? 'right' : 'wrong') : ''}}"
+        wx:for="{{items}}" wx:key="number">
+    <view class="q">
+      <text class="num">{{item.number}}</text>
+      <text class="cn">{{item.chinese}}</text>
+    </view>
+
+    <textarea class="answer"
+              placeholder="写日语整句"
+              value="{{item.input}}"
+              disabled="{{item.graded}}"
+              auto-height
+              data-index="{{index}}"
+              bindinput="onInput" />
+
+    <view class="flag" wx:if="{{item.graded}}">{{item.correct ? '✓ 对' : '✗ 错'}}</view>
+    <view class="reason" wx:if="{{item.graded && item.reason}}">{{item.reason}}</view>
+    <view class="reveal" wx:if="{{item.graded && !item.correct}}">课本原文：{{item.answer}}</view>
+  </view>
+
+  <view class="bar" wx:if="{{items.length}}">
+    <button class="btn ghost" bindtap="grade" loading="{{grading}}">对答案</button>
+    <button class="btn primary" bindtap="submit" loading="{{submitting}}">提交</button>
+  </view>
+</view>

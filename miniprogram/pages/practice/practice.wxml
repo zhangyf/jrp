@@ -1,0 +1,50 @@
+<view class="wrap">
+  <view class="head">
+    <text class="count">共 {{items.length}} 题</text>
+    <text class="count">已写 {{answered}}</text>
+    <text class="link" bindtap="load">刷新</text>
+  </view>
+
+  <view class="err" wx:if="{{err}}">{{err}}</view>
+  <view class="empty" wx:if="{{!loading && !err && items.length === 0}}">今天没有要练的词。</view>
+
+  <view class="card item {{item.graded ? (item.correct ? 'right' : 'wrong') : ''}}" wx:for="{{items}}" wx:key="number">
+    <view class="q">
+      <text class="num">{{item.number}}</text>
+      <text class="def">{{item.definition}}</text>
+      <text class="pos" wx:if="{{item.pos}}">{{item.pos}}</text>
+    </view>
+
+    <view class="meta" wx:if="{{item.group || item.note}}">
+      <text class="group" wx:if="{{item.group}}">{{item.group}}</text>
+      <text class="note" wx:if="{{item.note}}">备注：{{item.note}}</text>
+    </view>
+
+    <input class="answer"
+           placeholder="写日语"
+           value="{{item.answer}}"
+           disabled="{{item.graded}}"
+           data-index="{{index}}"
+           bindinput="onInput" />
+
+    <view class="actions">
+      <text class="unknown {{item.unknown ? 'on' : ''}}" data-index="{{index}}" bindtap="onUnknown">
+        {{item.unknown ? '已标不会' : '不会'}}
+      </text>
+      <text class="flag" wx:if="{{item.graded}}">
+        {{item.correct ? '✓ 对' : '✗ 错'}}
+      </text>
+    </view>
+
+    <view class="reveal" wx:if="{{item.graded && !item.correct}}">答案：{{item.word}}</view>
+  </view>
+
+  <view class="bar" wx:if="{{items.length}}">
+    <button class="btn ghost" bindtap="grade">对答案</button>
+    <button class="btn primary" bindtap="submit" loading="{{submitting}}">提交</button>
+  </view>
+
+  <view class="tip" wx:if="{{items.length}}">
+    写完先点「对答案」再看结果，提交后才会记进档案。没写的题会留在今天，可以分几次做完。
+  </view>
+</view>

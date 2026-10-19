@@ -1,0 +1,59 @@
+<view class="wrap">
+  <view class="tabs">
+    <text class="tab {{days === d.key ? 'on' : ''}}"
+          wx:for="{{dayOpts}}" wx:for-item="d" wx:key="key"
+          data-days="{{d.key}}" bindtap="onDays">{{d.label}}</text>
+  </view>
+
+  <view class="err" wx:if="{{err}}">{{err}}</view>
+  <view class="empty" wx:if="{{loading}}">加载中…</view>
+
+  <view class="card" wx:if="{{jlpt}}">
+    <view class="title">JLPT 进度</view>
+    <view class="kv">
+      <text>词库总量</text><text class="num">{{jlpt.vocab_total}}</text>
+    </view>
+    <view class="kv">
+      <text>熟练词（正确率≥80%）</text><text class="num">{{jlpt.vocab_firm}}</text>
+    </view>
+    <view class="kv">
+      <text>当前课次</text><text class="num">第 {{jlpt.lesson}} 课</text>
+    </view>
+
+    <view class="bar-wrap">
+      <view class="bar-label">N5</view>
+      <view class="bar"><view class="bar-in" style="width:{{n5Pct}}%"></view></view>
+      <view class="bar-num">{{n5Pct}}%</view>
+    </view>
+    <view class="bar-wrap">
+      <view class="bar-label">N4</view>
+      <view class="bar"><view class="bar-in n4" style="width:{{n4Pct}}%"></view></view>
+      <view class="bar-num">{{n4Pct}}%</view>
+    </view>
+    <view class="hint">
+      N5 门槛 {{jlpt.n5.vocab}} 词 / 第 {{jlpt.n5.lesson}} 课　·　N4 门槛 {{jlpt.n4.vocab}} 词 / 第 {{jlpt.n4.lesson}} 课
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{hard}}">
+    <view class="title">钉子户</view>
+    <view class="kv"><text>严重</text><text class="num">{{hard.severe}}</text></view>
+    <view class="kv"><text>中等</text><text class="num">{{hard.moderate}}</text></view>
+    <view class="kv"><text>轻度</text><text class="num">{{hard.mild}}</text></view>
+    <view class="kv total"><text>合计</text><text class="num">{{hard.total}}</text></view>
+  </view>
+
+  <view class="card" wx:if="{{lessons.length}}">
+    <view class="title">按课分布</view>
+    <view class="kv" wx:for="{{lessons}}" wx:for-item="l" wx:key="lesson">
+      <text class="lesson">{{l.lesson}}</text><text class="num">{{l.count}}</text>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{dist.length}}">
+    <view class="title">正确率分布</view>
+    <view class="kv" wx:for="{{dist}}" wx:for-item="x" wx:key="label">
+      <text>{{x.label}}</text><text class="num">{{x.value}}</text>
+    </view>
+  </view>
+</view>

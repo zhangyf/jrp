@@ -21,3 +21,6 @@ Thumbs.db
 # Tools
 .workbuddy/
 jrp_linux
+
+# 小程序：开发工具生成的本地配置（每人一份，不入库）
+miniprogram/project.private.config.json

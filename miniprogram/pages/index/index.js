@@ -1,14 +1,16 @@
-// 占位首页。第一版只放登录状态和一个「打开网页版」入口 ——
-// 小程序审核要求有个能看的首页，练习页（列表复习 / 造句 / 钉子户 / 统计）是下一批。
+// 首页：练习入口。
+//
+// 老师的日常是先做列表复习，再做造句，钉子户和活用是加餐。顺序就照这个排。
+// 这里不自己发请求拿数据，各页面自己拉 —— 首页只负责跳。
 
 const app = getApp();
 
 Page({
   data: {
     logged: false,
-    uid: '',
     role: '',
     roleText: '',
+    pending: false,
     message: ''
   },
 
@@ -16,7 +18,6 @@ Page({
     const g = app.globalData;
     this.setData({
       logged: !!g.logged,
-      uid: g.uid || '',
       role: g.role || '',
       roleText: this.roleOf(g.role)
     });
@@ -28,7 +29,6 @@ Page({
         }
         this.setData({
           logged: true,
-          uid: app.globalData.uid,
           role: app.globalData.role,
           roleText: this.roleOf(app.globalData.role),
           message: ''
@@ -45,12 +45,30 @@ Page({
     return '';
   },
 
-  onCopyWeb() {
-    wx.setClipboardData({
-      data: 'https://jrp.110105.xyz',
-      success: () => {
-        wx.showToast({ title: '网址已复制', icon: 'none' });
-      }
-    });
+  go(e) {
+    const mode = e.currentTarget.dataset.mode;
+    if (!this.data.logged) {
+      wx.showToast({ title: '正在登录…', icon: 'none' });
+      return;
+    }
+    if (this.data.role === 'pending') {
+      wx.showModal({
+        title: '账号待批准',
+        content: '要让管理员在服务器上跑一次 jrp user approve 才能开始练习。',
+        showCancel: false
+      });
+      return;
+    }
+    if (this.data.role === 'disabled') {
+      wx.showModal({ title: '账号已停用', content: '找管理员开通。', showCancel: false });
+      return;
+    }
+    if (mode === 'sentences') {
+      wx.navigateTo({ url: '/pages/sentences/sentences' });
+    } else if (mode === 'conj') {
+      wx.navigateTo({ url: '/pages/conj/conj' });
+    } else {
+      wx.navigateTo({ url: '/pages/practice/practice?mode=' + (mode || 'words') });
+    }
   }
 });

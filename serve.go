@@ -83,6 +83,7 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 	mux.HandleFunc("/api/review", srv.withUser(srv.handleReview))
 	mux.HandleFunc("/api/lexicon", srv.withUser(srv.handleLexicon))
 	mux.HandleFunc("/api/conjugation", srv.withUser(srv.handleConjugation))
+	mux.HandleFunc("/api/grade", srv.withUser(srv.handleGrade)) // 小程序端判分（web 端仍在浏览器本地判）
 	mux.HandleFunc("/api/judge-sentence", srv.withUser(srv.handleJudgeSentence))
 	mux.HandleFunc("/api/judge-prompt", srv.withUser(srv.handleJudgePrompt))
 

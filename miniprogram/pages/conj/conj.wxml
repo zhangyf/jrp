@@ -1,0 +1,43 @@
+<view class="wrap">
+  <view class="tabs">
+    <text class="tab {{type === t.key ? 'on' : ''}}"
+          wx:for="{{types}}" wx:for-item="t" wx:key="key"
+          data-type="{{t.key}}" bindtap="onType">{{t.label}}</text>
+    <text class="link" bindtap="load">换一批</text>
+  </view>
+
+  <view class="head">
+    <text class="count">共 {{items.length}} 题，词池 {{pool}}</text>
+  </view>
+
+  <view class="err" wx:if="{{err}}">{{err}}</view>
+  <view class="empty" wx:if="{{!loading && !err && items.length === 0}}">档案里没有可用于活用练习的词条。</view>
+
+  <view class="card item" wx:for="{{items}}" wx:for-item="it" wx:for-index="i" wx:key="idx">
+    <view class="q">
+      <text class="word">{{it.word}}</text>
+      <text class="def">{{it.definition}}</text>
+    </view>
+    <view class="meta" wx:if="{{it.pos}}">{{it.pos}}<text wx:if="{{it.sub}}"> · {{it.sub}}</text></view>
+
+    <view class="task" wx:for="{{it.tasks}}" wx:for-item="t" wx:for-index="j" wx:key="label">
+      <text class="label">{{t.label}}</text>
+      <input class="answer small"
+             placeholder="写活用形"
+             value="{{t.input}}"
+             disabled="{{graded}}"
+             data-index="{{i}}"
+             data-task="{{j}}"
+             bindinput="onInput" />
+      <text class="mark" wx:if="{{graded}}">{{t.correct ? '✓' : '✗'}}</text>
+      <text class="expect" wx:if="{{graded && !t.correct}}">{{t.expectedText}}</text>
+    </view>
+  </view>
+
+  <view class="bar" wx:if="{{items.length}}">
+    <button class="btn ghost" bindtap="load">换一批</button>
+    <button class="btn primary" bindtap="grade">对答案</button>
+  </view>
+
+  <view class="tip">活用练习只练不计档，不写档案、不进统计。</view>
+</view>

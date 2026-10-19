@@ -1,6 +1,10 @@
 {
   "pages": [
     "pages/index/index",
+    "pages/practice/practice",
+    "pages/sentences/sentences",
+    "pages/conj/conj",
+    "pages/stats/stats",
     "pages/login/login"
   ],
   "window": {
@@ -9,6 +13,16 @@
     "navigationBarTextStyle": "white",
     "backgroundColor": "#f7f7f5",
     "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "color": "#8a8a86",
+    "selectedColor": "#2f6f4f",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      { "pagePath": "pages/index/index", "text": "练习" },
+      { "pagePath": "pages/stats/stats", "text": "统计" }
+    ]
   },
   "style": "v2",
   "lazyCodeLoading": "requiredComponents",
