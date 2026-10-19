@@ -55,7 +55,7 @@ var app = {
 
     // 两个码各自独立：拿到任一个就显示浮动层，拿不到的那块自己藏着，不留破图。
     // 拿不到都是正常情况 —— 小程序码：未登录(401) / 没配微信凭证(503)；
-    // 公众号：web/mp_qr.png 还没放上去(404)。
+    // 公众号：web/mp_qr.jpg 还没放上去(404)。
     var show = function () { dock.classList.remove('hidden'); };
     img.onload = show;
     img.src = '/api/mini-qr';
@@ -63,7 +63,7 @@ var app = {
     if (mpBlock && mpImg) {
       mpImg.onload = function () { mpBlock.classList.remove('hidden'); show(); };
       mpImg.onerror = function () { mpBlock.classList.add('hidden'); };
-      mpImg.src = 'mp_qr.png';
+      mpImg.src = 'mp_qr.jpg';
     }
   },
 
