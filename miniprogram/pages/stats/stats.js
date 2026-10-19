@@ -45,7 +45,8 @@ const MAX_BARS = 30; // 90 天全画出来柱子太密，抽样到 30 根
 Page({
   data: {
     dayOpts: DAY_OPTS,
-    days: 7,
+    // 默认 30 天：7 天样本太短，看不出走势（跟 web 统计页的下拉默认值一致）
+    days: 30,
     loading: true,
     err: '',
     period: '',
