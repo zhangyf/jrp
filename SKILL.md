@@ -1354,6 +1354,10 @@ for **active flashcard-style review** — one word at a time, answer by keyboard
   the latest is from a previous day; uploads the plan JSON so `record` can resolve numbers)
 - `POST /api/record` — applies results (same logic as CLI `record`), bumps version, uploads archive
 - `GET /api/conjugation?type=verb|adj&count=N` — 活用练习题（见下节）
+- `POST /api/grade` — 批量判分（2026-10-19 加，**给小程序用**）：
+  `{"mode":"kana|kanji|full|either","items":[{"word":"すし(寿司)","answer":"寿司"}]}`
+  → `{"success":true,"mode":"either","results":[true]}`。复用 Go 的 `GradeAnswer`，
+  web 端仍在浏览器本地用 `web/grade.js` 判，两边同一份口径。空 word/answer 直接 false。
 - Frontend `web/index.html` + `web/kanji/` (KanjiCanvas, MIT). Handwriting recognizes
   **kanji + hiragana + katakana** (kana patterns were generated from KanjiCanvas XML and appended
   to `ref-patterns.js`). Recognition is per-character → user taps candidate → assembled into the word.
@@ -1456,14 +1460,63 @@ web 登录后进原来的页面，微信里扫码后进小程序。
 切会话鉴权 + 摘 nginx Basic Auth 是**唯一的危险窗口**，顺序不可反：
 
 1. 先部署 Go（此时已强制登录，nginx Basic Auth 还开着 = 双重保护）
-2. 确认扫码能登录
-3. 再改 nginx 删掉 `auth_basic` / `auth_basic_user_file`（`outputs/deploy/nginx.conf.template`）
-4. `nginx -t && systemctl reload nginx`
+2. nginx **先放行登录链路**：`login.html` / `style.css` / `auth.js` + `/api/auth/`
+3. 扫码登录成功（用户表出现记录 = `authRequired()` 打开）
+4. 才摘掉全部 `auth_basic`
+
+⚠️ **原顺序里第 2 步做不了**（2026-10-19 发现）：`auth_basic` 在 443 **server 级**，
+连 `/api/*` 一起挡。Basic Auth 还开着时，小程序请求 `/api/auth/*` 会被 nginx 401，
+根本到不了 Go → 扫码验证无从谈起。所以必须先放行登录链路。
 
 **每一步都要老师单独点头。** 中间任何一步出问题就停在那一步，别往前推。
 
+### nginx 现状（2026-10-19）
+
+已走到第 3 步之后、第 4 步之前。线上 `auth_basic` 仍在 server 级，但多了两条放行：
+
+```nginx
+location ~ ^/(login\.html|style\.css|auth\.js)$ { auth_basic off; proxy_pass http://127.0.0.1:8080; include /etc/nginx/snippets/jrp_proxy.conf; }
+location /api/                                 { auth_basic off; proxy_pass http://127.0.0.1:8080; include /etc/nginx/snippets/jrp_proxy.conf; }
+```
+
+- 为什么 `/api/` 整体要放行：**小程序发不出 Basic Auth 口令**，它只有 Bearer token。
+  只要还有一条业务接口被 Basic Auth 挡着，练习页就是 401。
+- 放行不等于裸奔：`authRequired()` 恒为 true，没登录凭证的请求 Go 自己回
+  `{"error":"unauthorized","login":"/login.html"}`（2026-10-19 实测 `/api/plan` 公网 401 且无 Basic 挑战头）。
+- 页面文件（`/`、`/index.html`）**仍要口令**，第 4 步才摘。
+- 公共转发头抽到 `/etc/nginx/snippets/jrp_proxy.conf`（备份在
+  `outputs/deploy/jrp_proxy.snippet.conf`）—— 放行 location 和主 `location /`
+  必须用同一份，漏一个 `X-Forwarded-Proto` 就会出现「页面能开、接口怪错」。
+
 ### 小程序
 
-`miniprogram/` 目录，`project.config.json` 里的 appid 是占位串，用开发者工具打开时换成自己的。
-第一版 = 登录壳（`pages/login` 取 scene=ticket 调 `/api/auth/confirm`）+ 占位首页（`pages/index`）。
-完整练习（列表复习 / 造句 / 钉子户 / 统计）是 4B，还没做。
+`miniprogram/` 目录。`project.config.json` 里 appid 已填真值；
+⚠️ `project.private.config.json` 是开发工具本地配置，已加进 `.gitignore`，别提交。
+
+五个页面（2026-10-19 做完）：
+
+| 页 | 路径 | 拉什么 | 落不落档 |
+|---|---|---|---|
+| 首页 | `pages/index` | 不发请求，只跳 | — |
+| 列表复习 / 钉子户 | `pages/practice` | `/api/plan?mode=words` 或 `/api/hard`（`?mode=hard`） | 落，`/api/record` |
+| 造句 | `pages/sentences` | `/api/plan?mode=sentences` | 落，`sentence_results` |
+| 活用练习 | `pages/conj` | `/api/conjugation?type=verb\|verb_nai\|adj` | **不落**（只练不计档，跟网页端一致） |
+| 统计 | `pages/stats` | `/api/stats?days=7\|30\|90` | 只读 |
+
+tabBar 只有「练习 / 统计」两项。
+
+**判分只有一份实现**：新增 `POST /api/grade`（`api_grade.go`），复用 Go 的 `GradeAnswer`，
+小程序「对答案」整屏一次请求拿回 `results:[bool]`；web 端仍在浏览器本地用 `web/grade.js` 判。
+⚠️ 别在小程序里再抄一份判分规则，两份迟早漂移。
+
+写这五个页踩到的坑，都写进注释了：
+
+1. **JLPT 进度**：`jlpt.n5.vocab` / `n5.lesson` 是**门槛值**（800 词 / 第 22 课），
+   不是当前值，当前值是顶层的 `vocab_firm` 和 `lesson`。拿门槛当进度 → 进度条恒 100%。
+2. **拉计划不传 `date`**，日期一律由服务器按自己的时钟定。传设备本地日期看着更准，
+   但老师在东京时比服务器快 1 小时，会把「今天」算成未来日期 → `read_only=true`
+   → 不上传 plan → 回写时题号映射不到词，**等于白练**。
+3. **WXML 里不能调 `.join()`**（那是 WXS 的活）。活用页要显示多个正确写法，
+   得在 JS 里拼成 `expectedText` 再绑。
+4. **写了答案但没判分就提交 = 白练**（网页端那条红线一样适用）。
+   `practice` / `sentences` 都在 `submit()` 里先自动判一次再落库，不用老师多点一下。
