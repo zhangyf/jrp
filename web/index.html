@@ -237,6 +237,14 @@
   </section>
 </main>
 
+<!-- 左侧常驻小程序码：position:fixed，滚到哪儿都跟着。
+     拿不到码（未登录 / 服务端没配微信凭证）时整个隐藏，不留破图。 -->
+<div id="miniQrDock" class="mini-dock hidden">
+  <div class="mini-dock-title">手机练</div>
+  <img id="miniQrImg" alt="小程序码">
+  <div class="mini-dock-tip">微信扫码</div>
+</div>
+
 <div id="toast" class="hidden"></div>
 
 <script src="grade.js"></script>

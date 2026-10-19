@@ -32,6 +32,7 @@ var app = {
 
     practice.boot();
     hard.boot();
+    this.bootMiniQr();
 
     document.getElementById('tokenSave').addEventListener('click', function () {
       self.token = document.getElementById('tokenInput').value.trim();
@@ -41,6 +42,17 @@ var app = {
     });
 
     this.go('practice');
+  },
+
+  // 左侧常驻小程序码。拉不到就整个不显示 —— 不留一个破图在那儿。
+  // 拉不到的两种情况都是正常的：没登录（401）、服务端没配微信凭证（503）。
+  bootMiniQr: function () {
+    var dock = document.getElementById('miniQrDock');
+    var img = document.getElementById('miniQrImg');
+    if (!dock || !img) return;
+    img.onload = function () { dock.classList.remove('hidden'); };
+    img.onerror = function () { dock.classList.add('hidden'); };
+    img.src = '/api/mini-qr';
   },
 
   go: function (page) {

@@ -480,3 +480,25 @@ details[open] summary { margin-bottom: 10px; }
 .conj-feedback { margin-top: 6px; font-size: 13px; }
 .conj-ok { color: var(--good); }
 .conj-no { color: var(--bad); }
+
+/* ---- 左侧常驻小程序码 ----
+   position:fixed + transform 居中，页面怎么滚它都不动。
+   main 是 860px 居中，屏幕窄到两侧塞不下就整体隐藏，绝不压住练习内容。 */
+.mini-dock {
+  position: fixed;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 40;
+  width: 112px;
+  padding: 10px 10px 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .07);
+  text-align: center;
+}
+.mini-dock-title { font-size: 13px; font-weight: 600; color: var(--accent); }
+.mini-dock img { display: block; width: 90px; height: 90px; margin: 6px auto 4px; }
+.mini-dock-tip { font-size: 11px; color: var(--muted); }
+@media (max-width: 1200px) { .mini-dock { display: none; } }

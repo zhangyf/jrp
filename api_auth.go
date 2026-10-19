@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"sync"
 )
 
 // 登录接口。全部挂在 /api/auth/ 下，除了 status 的双凭证校验，都不需要会话。
@@ -22,6 +24,15 @@ import (
 // 不需要 unionid（那玩意儿要企业主体的开放平台才拿得到）。
 
 const loginPage = "pages/login/login"
+
+// 常驻小程序码：扫了直接进小程序首页，不带任何登录语义。
+//
+// scene 是 getwxacodeunlimit 的必填项（≤32 字符），这里塞个固定串当标识，
+// 小程序首页不读它，等于占位。
+const (
+	miniEntryPage = "pages/index/index"
+	miniScene     = "home"
+)
 
 func (s *server) handleAuthTicket(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -59,6 +70,64 @@ func (s *server) handleAuthQR(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", ct) // 微信给的是什么格式就用什么格式（现在是 JPEG）
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(img)
+}
+
+// handleMiniQR 返回「进小程序」的常驻小程序码图片。
+//
+//	GET /api/mini-qr
+//
+// 跟登录码（/api/auth/qr）的区别，别混用：
+//   - 登录码：scene 是一次性 ticket，5 分钟过期，扫了走确认页下发会话
+//   - 这个码：固定不变、永久有效，扫了直接进小程序首页
+//
+// 所以它能常驻在页面左侧当「手机上接着练」的快捷入口，不用每几分钟重画一次。
+// 微信的码本身永久有效，进程内缓存一份 —— 别每次刷新页面都去麻烦微信接口。
+// 换了 JRP_WX_ENV（trial→release）缓存自动失效重画。
+func (s *server) handleMiniQR(w http.ResponseWriter, r *http.Request, st *Storage) {
+	if !wxEnabled() {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
+			"success": false, "error": "未配置微信凭证（JRP_WX_APPID / JRP_WX_APPSECRET）",
+		})
+		return
+	}
+	img, ct, err := cachedMiniCode(r.Context(), wxEnv)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]interface{}{
+			"success": false, "error": err.Error(),
+		})
+		return
+	}
+	w.Header().Set("Content-Type", ct) // 微信给什么格式就用什么格式（现在是 JPEG）
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	_, _ = w.Write(img)
+}
+
+// cachedMiniCode 进程内缓存小程序码。并发下可能重复生成一次，无所谓（幂等）。
+var miniCodeCache = struct {
+	sync.Mutex
+	env string
+	img []byte
+	ct  string
+}{}
+
+func cachedMiniCode(ctx context.Context, env string) ([]byte, string, error) {
+	miniCodeCache.Lock()
+	if len(miniCodeCache.img) > 0 && miniCodeCache.env == env {
+		img, ct := miniCodeCache.img, miniCodeCache.ct
+		miniCodeCache.Unlock()
+		return img, ct, nil
+	}
+	miniCodeCache.Unlock()
+
+	img, ct, err := miniCode(ctx, miniScene, miniEntryPage, env)
+	if err != nil {
+		return nil, "", err
+	}
+
+	miniCodeCache.Lock()
+	miniCodeCache.env, miniCodeCache.img, miniCodeCache.ct = env, img, ct
+	miniCodeCache.Unlock()
+	return img, ct, nil
 }
 
 // handleAuthStatus PC 端轮询。

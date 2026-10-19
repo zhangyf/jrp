@@ -88,6 +88,7 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 	mux.HandleFunc("/api/judge-prompt", srv.withUser(srv.handleJudgePrompt))
 
 	// 登录：小程序码确认登录。这几个都不走 withUser —— 它们自己就是登录入口。
+	mux.HandleFunc("/api/mini-qr", srv.withUser(srv.handleMiniQR)) // 常驻小程序码（进小程序，不是登录码）
 	mux.HandleFunc("/api/auth/ticket", srv.handleAuthTicket)
 	mux.HandleFunc("/api/auth/qr", srv.handleAuthQR)
 	mux.HandleFunc("/api/auth/status", srv.handleAuthStatus)
