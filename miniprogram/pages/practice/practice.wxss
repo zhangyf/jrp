@@ -43,6 +43,32 @@
 .def {
   font-size: 32rpx;
   font-weight: 500;
+  /* 释义长时自己收缩，别把右上角的「不会」挤出卡片 */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 题干行右侧一组：判分标记 + 「不会」胶囊 */
+.q-right {
+  margin-left: auto;
+  align-self: center; /* .q 是 baseline 对齐，这组要自己居中，不然会被释义的基线顶偏 */
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+
+.mark {
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.mark.right {
+  color: #1d9e75;
+}
+
+.mark.wrong {
+  color: #e24b4a;
 }
 
 .pos {
@@ -72,15 +98,8 @@
   font-size: 30rpx;
 }
 
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 20rpx;
-  margin-top: 12rpx;
-  font-size: 26rpx;
-}
-
 .unknown {
+  font-size: 26rpx;
   color: #8a8a86;
   border: 1rpx solid #d3d1c7;
   border-radius: 999rpx;
@@ -92,11 +111,6 @@
   color: #a32d2d;
   border-color: #e24b4a;
   background: #fcebeb;
-}
-
-.flag {
-  margin-left: auto;
-  font-weight: 500;
 }
 
 .reveal {
