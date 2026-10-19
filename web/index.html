@@ -240,9 +240,18 @@
 <!-- 左侧常驻小程序码：position:fixed，滚到哪儿都跟着。
      拿不到码（未登录 / 服务端没配微信凭证）时整个隐藏，不留破图。 -->
 <div id="miniQrDock" class="mini-dock hidden">
-  <div class="mini-dock-title">手机练</div>
-  <img id="miniQrImg" alt="小程序码">
-  <div class="mini-dock-tip">微信扫码</div>
+  <div class="mini-dock-block">
+    <div class="mini-dock-title">小程序 · 手机练</div>
+    <img id="miniQrImg" alt="小程序码">
+    <div class="mini-dock-tip">微信扫码直接练</div>
+  </div>
+  <!-- 公众号二维码是静态图（web/mp_qr.png，公众号后台下载的那种），
+       没有图时这一块自己隐藏，不影响上面小程序码 -->
+  <div id="mpQrBlock" class="mini-dock-block hidden">
+    <div class="mini-dock-title">公众号</div>
+    <img id="mpQrImg" alt="公众号二维码">
+    <div class="mini-dock-tip">扫码关注</div>
+  </div>
 </div>
 
 <div id="toast" class="hidden"></div>
