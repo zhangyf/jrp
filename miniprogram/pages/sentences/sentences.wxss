@@ -84,6 +84,10 @@
 }
 
 .answer {
+  /* ⚠️ textarea 默认宽度是固定 300px（input 才是 100%）—— 窄屏上会伸出白格。
+     width:100% + box-sizing:border-box 让边框内边距都算进去，正好贴满格子。 */
+  width: 100%;
+  box-sizing: border-box;
   margin-top: 14rpx;
   border: 1rpx solid #d3d1c7;
   border-radius: 8rpx;

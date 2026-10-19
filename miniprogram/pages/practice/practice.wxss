@@ -91,11 +91,41 @@
 }
 
 .answer {
+  /* ⚠️ 小程序 input/textarea 的默认宽度不是 100%：不加 width 会从白格里伸出去。
+     box-sizing 让边框和内边距算进 100% 里，不然照样超 2 个内边距的宽度。 */
+  width: 100%;
+  box-sizing: border-box;
   margin-top: 14rpx;
   border: 1rpx solid #d3d1c7;
   border-radius: 8rpx;
   padding: 14rpx 16rpx;
   font-size: 30rpx;
+}
+
+/* 回看态：只读的「你写的」一行 */
+.ro-answer {
+  margin-top: 14rpx;
+  padding: 14rpx 16rpx;
+  border: 1rpx solid #eeede9;
+  border-radius: 8rpx;
+  background: #fafaf7;
+  font-size: 30rpx;
+}
+
+.ro-answer.muted {
+  color: #a0a09a;
+}
+
+.unk-line {
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  color: #a35a00;
+}
+
+.note-ok {
+  margin-bottom: 12rpx;
+  font-size: 24rpx;
+  color: #2f6f4f;
 }
 
 /* 「不会」胶囊：默认就是暖色（琥珀底 + 深琥珀字），不能做成灰的 ——

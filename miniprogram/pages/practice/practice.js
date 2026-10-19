@@ -3,10 +3,14 @@
 // 两个模式共用这一页：拉数据的接口不同（/api/plan vs /api/hard），
 // 提交时 hard 标志不同，其余交互完全一样。
 //
-// ⚠️ 两条跟网页端一致的红线：
-//   1. 填了答案但没点「对答案」就提交 = 白练（判分只在对答案时发生）。
-//      所以提交前如果发现还有没判分的，先自动判一次。
-//   2. review_items 快照必须跟着一起发，不然当天回看页看不到自己写了什么。
+// 跟网页端对齐的三件事（web 是 list.js + practice.js 的 showReview/loadDraft）：
+//   1. 回写后到期词被推到未来，/api/plan 会变空 —— 这时不是显示「没有要练的」，
+//      而是拉 /api/review 当天快照，整页变只读回看（练了什么、哪题错都在）。
+//   2. 写一半的答案存 /api/draft（COS），换设备能接着写；打开页面先回填草稿。
+//   3. 填了答案但没判分就提交 = 白练 —— 提交前自动先判一次。
+//
+// ⚠️ 拉计划不传 date：日期由服务器定。传设备本地日期在东京（快 1 小时）
+// 会把「今天」判成未来 → read_only → 回写题号映射不到词，白练。
 
 const app = getApp();
 
@@ -20,7 +24,10 @@ Page({
     graded: false,
     submitting: false,
     summary: null,
-    answered: 0
+    answered: 0,
+    // 只读回看：今天已回写完（plan 空了）时整页不可编辑，
+    // 显示当时的答案和对错 —— 跟 web 端列表模式的回看态一致。
+    reviewOnly: false
   },
 
   onLoad(q) {
@@ -30,17 +37,40 @@ Page({
     this.load();
   },
 
+  // 草稿 / 快照的模式名，跟服务端白名单（words / hard）对齐
+  serverMode() {
+    return this.data.mode === 'hard' ? 'hard' : 'words';
+  },
+
   load() {
     this.setData({ loading: true, err: '' });
-    // ⚠️ 不传 date：日期一律由服务器按自己的时钟定，跟网页端一致。
-    // 传设备本地日期在跨时区时（老师在东京比服务器快 1 小时）会把「今天」
-    // 算成未来日期 → 服务端走只读分支 → 不上传 plan → 回写时序号映射不到词，白练。
-    const path = this.data.mode === 'hard'
-      ? '/api/hard'
-      : '/api/plan?mode=words';
+    if (this.data.mode === 'hard') {
+      // ⚠️ 钉子户不做到期过滤，/api/hard 每次都返回同一批词 —— 所以跟 web 的
+      // hard.js 一样：先查今天有没有已回写的快照，有就直接只读回看。
+      // 否则会不知不觉把同一批词再练一遍，一回写就是二次改档案（间隔被改两次）。
+      app.request('/api/review?mode=hard', 'GET', {}, true)
+        .then((res) => {
+          const r = res.review;
+          if (r && r.items && r.items.length) { this.applyReview(r); return; }
+          this.loadPlan('/api/hard');
+        })
+        .catch((e) => this.setData({ err: e.message, loading: false }));
+      return;
+    }
+    this.loadPlan('/api/plan?mode=words');
+  },
+
+  loadPlan(path) {
     app.request(path, 'GET', {}, true)
       .then((res) => {
         const words = res.words || [];
+        this.setData({ date: res.date || '' });
+        if (!words.length) {
+          // plan 空 = 今天的到期词都回写过了 → 拉当天快照只读回看。
+          // 快照也没有（真的一天没练）才是真的「没有要练的」。
+          this.loadReview();
+          return;
+        }
         const items = words.map((w, i) => ({
           number: w.number || i + 1,
           word: w.word || '',
@@ -55,12 +85,122 @@ Page({
           graded: false,
           unknown: false
         }));
-        this.setData({ items, date: res.date || '', loading: false, graded: false, summary: null });
-        if (!items.length) {
-          wx.showToast({ title: '今天没有要练的', icon: 'none' });
-        }
+        this.setData({
+          items, loading: false, graded: false, summary: null,
+          answered: 0, reviewOnly: false
+        });
+        this.loadDraft();
       })
       .catch((e) => this.setData({ err: e.message, loading: false }));
+  },
+
+  // 只读回看：GET /api/review?mode=words|hard（回写成功时服务端存的当天快照）。
+  // 直接用快照里的判分结果，不重判 —— 回看显示的是当时发生了什么。
+  loadReview() {
+    app.request('/api/review?mode=' + this.serverMode(), 'GET', {}, true)
+      .then((res) => {
+        const r = res.review;
+        if (!r || !r.items || !r.items.length) {
+          this.setData({ loading: false, items: [], reviewOnly: false });
+          wx.showToast({ title: '今天没有要练的', icon: 'none' });
+          return;
+        }
+        this.applyReview(r);
+      })
+      .catch((e) => this.setData({ err: e.message, loading: false }));
+  },
+
+  applyReview(r) {
+    const items = r.items.map((x) => ({
+      number: x.number,
+      word: x.word || '',
+      definition: x.definition || '',
+      group: x.group || '',
+      status: x.status || '',
+      pos: x.pos || '',
+      sub: x.sub || '',
+      note: x.note || '',
+      answer: x.answer || '',
+      // graded = 这题参与过判分（没写的行只是跳过，不算对错）
+      graded: !x.blank,
+      correct: !!x.correct,
+      unknown: !!x.unknown,
+      blank: !!x.blank
+    }));
+    const done = items.filter((i) => !i.blank);
+    const ok = done.filter((i) => i.correct).length;
+    this.setData({
+      items,
+      date: r.date || this.data.date,
+      loading: false,
+      reviewOnly: true,
+      summary: {
+        total: items.length, ok, wrong: done.length - ok,
+        blank: items.length - done.length
+      }
+    });
+  },
+
+  // 草稿回填：GET /api/draft?mode=X&date=Y。手机写到一半、电脑上接着写（反之亦然）。
+  // 只回填答案和「不会」；对错不存，判分时重算。
+  loadDraft() {
+    const q = '?mode=' + this.serverMode() + '&date=' + encodeURIComponent(this.data.date);
+    app.request('/api/draft' + q, 'GET', {}, true)
+      .then((res) => {
+        const dr = res.draft;
+        if (!dr || !dr.items || !dr.items.length) return;
+        const by = {};
+        dr.items.forEach((x) => { by[x.number] = x; });
+        const patch = {};
+        let hit = 0;
+        this.data.items.forEach((it, i) => {
+          const x = by[it.number];
+          if (!x) return; // 词号对不上（换过题）就跳过
+          if (x.answer) patch['items[' + i + '].answer'] = x.answer;
+          if (x.unknown) {
+            patch['items[' + i + '].unknown'] = true;
+            patch['items[' + i + '].graded'] = true;
+            patch['items[' + i + '].correct'] = false; // 标「不会」就是错
+          }
+          hit++;
+        });
+        if (!hit) return;
+        this.setData(patch);
+        this.refreshAnswered();
+      })
+      .catch(() => { /* 读不到草稿 = 没有，不影响正常使用 */ });
+  },
+
+  // 草稿保存：防抖 1.2 秒（跟 web 一致，每敲一个字发一次太吵）。
+  // 静默失败 —— 草稿存不上不该打断练习。
+  scheduleDraft() {
+    if (this.data.reviewOnly || !this.data.date) return;
+    clearTimeout(this._draftTimer);
+    this._draftTimer = setTimeout(() => this.saveDraft(), 1200);
+  },
+
+  saveDraft() {
+    const items = this.data.items.map((it) => ({
+      number: it.number,
+      answer: it.answer || '',
+      unknown: !!it.unknown,
+      manual: false
+    }));
+    app.request('/api/draft', 'POST', {
+      date: this.data.date,
+      mode: this.serverMode(),
+      items
+    }, true).catch(() => {});
+  },
+
+  clearDraft() {
+    clearTimeout(this._draftTimer);
+    const q = '?mode=' + this.serverMode() + '&date=' + encodeURIComponent(this.data.date);
+    app.request('/api/draft' + q, 'DELETE', {}, true).catch(() => {});
+  },
+
+  onUnload() {
+    clearTimeout(this._draftTimer);
   },
 
   onInput(e) {
@@ -72,6 +212,7 @@ Page({
     patch['items[' + i + '].correct'] = false;
     this.setData(patch);
     this.refreshAnswered();
+    this.scheduleDraft();
   },
 
   onUnknown(e) {
@@ -83,6 +224,7 @@ Page({
     patch['items[' + i + '].correct'] = false; // 标「不会」就是错
     this.setData(patch);
     this.refreshAnswered();
+    this.scheduleDraft();
   },
 
   refreshAnswered() {
@@ -166,6 +308,8 @@ Page({
     }, true)
       .then(() => {
         this.setData({ submitting: false });
+        // 已落库，草稿没用了 —— 不删的话下次打开会恢复出一堆早就写完的答案
+        this.clearDraft();
         const ok = wordResults.filter((r) => r.correct).length;
         wx.showModal({
           title: '已提交 ' + wordResults.length + ' 题',

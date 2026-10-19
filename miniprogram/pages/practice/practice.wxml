@@ -1,9 +1,16 @@
 <view class="wrap">
   <view class="head">
-    <text class="count">共 {{items.length}} 题</text>
-    <text class="count">已写 {{answered}}</text>
+    <!-- ⚠️ <text> 会原样保留标签内的换行：{{}} 必须和标签写同一行 -->
+    <text class="count" wx:if="{{!reviewOnly}}">共 {{items.length}} 题</text>
+    <text class="count" wx:if="{{!reviewOnly}}">已写 {{answered}}</text>
+    <text class="count" wx:if="{{reviewOnly && summary}}">共 {{summary.total}} 题</text>
+    <text class="count" wx:if="{{reviewOnly && summary}}">对 {{summary.ok}}</text>
+    <text class="count" wx:if="{{reviewOnly && summary}}">错 {{summary.wrong}}</text>
+    <text class="count" wx:if="{{reviewOnly && summary && summary.blank}}">跳过 {{summary.blank}}</text>
     <text class="link" bindtap="load">刷新</text>
   </view>
+
+  <view class="note-ok" wx:if="{{reviewOnly}}">今天这轮已回写，下面是只读回看（不可修改）。</view>
 
   <view class="err" wx:if="{{err}}">{{err}}</view>
   <view class="empty" wx:if="{{!loading && !err && items.length === 0}}">今天没有要练的词。</view>
@@ -16,8 +23,7 @@
       <!-- 右上角一组：判分标记 + 「不会」。放输入框下面太不明显，装在题干行右侧 -->
       <view class="q-right">
         <text class="mark {{item.correct ? 'right' : 'wrong'}}" wx:if="{{item.graded}}">{{item.correct ? '✓' : '✗'}}</text>
-        <!-- ⚠️ <text> 会原样保留标签内的换行：{{}} 必须和标签写同一行 -->
-        <text class="unknown {{item.unknown ? 'on' : ''}}" data-index="{{index}}" bindtap="onUnknown">{{item.unknown ? '已标不会' : '不会'}}</text>
+        <text class="unknown {{item.unknown ? 'on' : ''}}" wx:if="{{!reviewOnly}}" data-index="{{index}}" bindtap="onUnknown">{{item.unknown ? '已标不会' : '不会'}}</text>
       </view>
     </view>
 
@@ -26,22 +32,31 @@
       <text class="note" wx:if="{{item.note}}">备注：{{item.note}}</text>
     </view>
 
-    <input class="answer"
-           placeholder="写日语"
-           value="{{item.answer}}"
-           disabled="{{item.graded}}"
-           data-index="{{index}}"
-           bindinput="onInput" />
+    <!-- 练习态：可编辑输入框 -->
+    <block wx:if="{{!reviewOnly}}">
+      <input class="answer"
+             placeholder="写日语"
+             value="{{item.answer}}"
+             disabled="{{item.graded}}"
+             data-index="{{index}}"
+             bindinput="onInput" />
+      <view class="reveal" wx:if="{{item.graded && !item.correct}}">答案：{{item.word}}</view>
+    </block>
 
-    <view class="reveal" wx:if="{{item.graded && !item.correct}}">答案：{{item.word}}</view>
+    <!-- 回看态：只读，显示当时写了什么、正确答案是什么 -->
+    <block wx:else>
+      <view class="ro-answer {{item.answer ? '' : 'muted'}}">{{item.answer ? '你写的：' + item.answer : '没写，跳过'}}</view>
+      <view class="unk-line" wx:if="{{item.unknown}}">不会（按答错记入档案）</view>
+      <view class="reveal">正确答案：{{item.word}}</view>
+    </block>
   </view>
 
-  <view class="bar" wx:if="{{items.length}}">
+  <view class="bar" wx:if="{{items.length && !reviewOnly}}">
     <button class="btn ghost" bindtap="grade">对答案</button>
     <button class="btn primary" bindtap="submit" loading="{{submitting}}">提交</button>
   </view>
 
-  <view class="tip" wx:if="{{items.length}}">
+  <view class="tip" wx:if="{{items.length && !reviewOnly}}">
     写完先点「对答案」再看结果，提交后才会记进档案。没写的题会留在今天，可以分几次做完。
   </view>
 </view>

@@ -65,6 +65,9 @@
 }
 
 .answer {
+  /* 同 practice/sentences：不设 width 的话控件按默认宽度走，窄屏会伸出白格 */
+  width: 100%;
+  box-sizing: border-box;
   margin-top: 14rpx;
   border: 1rpx solid #d3d1c7;
   border-radius: 8rpx;
