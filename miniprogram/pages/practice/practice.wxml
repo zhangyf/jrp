@@ -12,6 +12,14 @@
 
   <view class="note-ok" wx:if="{{reviewOnly}}">今天这轮已回写，下面是只读回看（不可修改）。</view>
 
+  <!-- 回看态的错词巩固入口：跟 web 回看卡上「再练这 N 个错词」一个意思 -->
+  <view class="requeue" wx:if="{{reviewOnly && summary.wrong > 0}}">
+    <text class="rq-text">今天错了 {{summary.wrong}} 个</text>
+    <button class="btn rq-btn" bindtap="onRequeue">再练这 {{summary.wrong}} 个错词</button>
+  </view>
+
+  <view class="note-ok" wx:if="{{requeue}}">错词巩固轮：只练今天错的词，不回写档案。</view>
+
   <view class="err" wx:if="{{err}}">{{err}}</view>
   <view class="empty" wx:if="{{!loading && !err && items.length === 0}}">今天没有要练的词。</view>
 
@@ -53,10 +61,15 @@
 
   <view class="bar" wx:if="{{items.length && !reviewOnly}}">
     <button class="btn ghost" bindtap="grade">对答案</button>
-    <button class="btn primary" bindtap="submit" loading="{{submitting}}">提交</button>
+    <!-- 巩固轮不给「提交」：今天的成绩已经写过一次了 -->
+    <button class="btn primary" wx:if="{{!requeue}}" bindtap="submit" loading="{{submitting}}">提交</button>
+    <button class="btn ghost" wx:if="{{requeue}}" bindtap="load">结束巩固</button>
   </view>
 
-  <view class="tip" wx:if="{{items.length && !reviewOnly}}">
+  <view class="tip" wx:if="{{items.length && !reviewOnly && !requeue}}">
     写完先点「对答案」再看结果，提交后才会记进档案。没写的题会留在今天，可以分几次做完。
+  </view>
+  <view class="tip" wx:if="{{items.length && requeue}}">
+    这是今天的错词巩固，只当场练一遍，不回写档案 —— 同一天回写两次会把间隔改两遍。
   </view>
 </view>

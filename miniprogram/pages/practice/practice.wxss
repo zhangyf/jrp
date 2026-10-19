@@ -128,6 +128,33 @@
   color: #2f6f4f;
 }
 
+/* 回看态的错词巩固条：暖色底，跟「不会」胶囊一个色系，扫一眼能看到 */
+.requeue {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 12rpx;
+  padding: 16rpx 20rpx;
+  background: #fff8ec;
+  border: 1rpx solid #f0d9a8;
+  border-radius: 12rpx;
+}
+
+.rq-text {
+  flex: 1;
+  font-size: 26rpx;
+  color: #a35a00;
+}
+
+/* .btn 带 margin-top，在这条横排里会被顶歪 */
+.rq-btn {
+  flex: none;
+  margin-top: 0;
+  padding: 0 24rpx;
+  font-size: 26rpx;
+  line-height: 2;
+}
+
 /* 「不会」胶囊：默认就是暖色（琥珀底 + 深琥珀字），不能做成灰的 ——
    老师在输入框下面那版里根本没看见它。标了之后变红底白字，一眼能扫出来。 */
 .unknown {

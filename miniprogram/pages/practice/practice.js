@@ -27,7 +27,10 @@ Page({
     answered: 0,
     // 只读回看：今天已回写完（plan 空了）时整页不可编辑，
     // 显示当时的答案和对错 —— 跟 web 端列表模式的回看态一致。
-    reviewOnly: false
+    reviewOnly: false,
+    // 第二轮：只练今天的错词。⚠️ 不回写 —— 同一个词一天只能进档案一次，
+    // 回写两次会把艾宾浩斯间隔和 LastReview 各改一遍（web 的 list.js 同样处理）。
+    requeue: false
   },
 
   onLoad(q) {
@@ -43,7 +46,7 @@ Page({
   },
 
   load() {
-    this.setData({ loading: true, err: '' });
+    this.setData({ loading: true, err: '', requeue: false });
     if (this.data.mode === 'hard') {
       // ⚠️ 钉子户不做到期过滤，/api/hard 每次都返回同一批词 —— 所以跟 web 的
       // hard.js 一样：先查今天有没有已回写的快照，有就直接只读回看。
@@ -108,6 +111,40 @@ Page({
         this.applyReview(r);
       })
       .catch((e) => this.setData({ err: e.message, loading: false }));
+  },
+
+  // 「再练这 N 个错词」：回看态里的入口，跟 web 回看卡上那个按钮一个意思。
+  // 只取判错的行（含主动标「不会」的），不回写 —— 见 data 里 requeue 的说明。
+  onRequeue() {
+    const wrongs = this.data.items.filter((it) => !it.blank && !it.correct);
+    if (!wrongs.length) {
+      wx.showToast({ title: '今天没有错的词', icon: 'none' });
+      return;
+    }
+    const items = wrongs.map((it) => ({
+      number: it.number,
+      word: it.word,
+      definition: it.definition,
+      group: it.group,
+      status: it.status,
+      pos: it.pos,
+      sub: it.sub,
+      note: it.note,
+      answer: '',
+      correct: false,
+      graded: false,
+      unknown: false,
+      blank: false
+    }));
+    this.setData({
+      items,
+      requeue: true,
+      reviewOnly: false,
+      graded: false,
+      answered: 0,
+      summary: null
+    });
+    wx.pageScrollTo({ scrollTop: 0, duration: 200 });
   },
 
   applyReview(r) {
@@ -261,6 +298,11 @@ Page({
   },
 
   submit() {
+    // 巩固轮不进档案 —— 双保险：按钮层已经藏了，这里再挡一次
+    if (this.data.requeue) {
+      wx.showToast({ title: '巩固轮不计入档案', icon: 'none' });
+      return;
+    }
     const items = this.data.items;
     const touched = (it) => it.graded || (it.answer || '').trim() !== '' || it.unknown;
     if (!items.some(touched)) {
