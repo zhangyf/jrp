@@ -28,12 +28,10 @@
            bindinput="onInput" />
 
     <view class="actions">
-      <text class="unknown {{item.unknown ? 'on' : ''}}" data-index="{{index}}" bindtap="onUnknown">
-        {{item.unknown ? '已标不会' : '不会'}}
-      </text>
-      <text class="flag" wx:if="{{item.graded}}">
-        {{item.correct ? '✓ 对' : '✗ 错'}}
-      </text>
+      <!-- ⚠️ <text> 会原样保留标签内的换行：{{}} 必须和标签写同一行，
+           否则内容混进换行符被折成两行，配上 border-radius:999rpx 就是个圆框 -->
+      <text class="unknown {{item.unknown ? 'on' : ''}}" data-index="{{index}}" bindtap="onUnknown">{{item.unknown ? '已标不会' : '不会'}}</text>
+      <text class="flag" wx:if="{{item.graded}}">{{item.correct ? '✓ 对' : '✗ 错'}}</text>
     </view>
 
     <view class="reveal" wx:if="{{item.graded && !item.correct}}">答案：{{item.word}}</view>

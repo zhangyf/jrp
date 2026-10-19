@@ -85,6 +85,7 @@
   border: 1rpx solid #d3d1c7;
   border-radius: 999rpx;
   padding: 4rpx 18rpx;
+  white-space: nowrap; /* 胶囊按钮禁止折行，保险 */
 }
 
 .unknown.on {
