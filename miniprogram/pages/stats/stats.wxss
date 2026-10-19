@@ -100,3 +100,276 @@
   color: #a0a09a;
   line-height: 1.6;
 }
+
+/* ---------- 区间说明 + KPI ---------- */
+
+.period {
+  padding: 12rpx 32rpx 0;
+  font-size: 23rpx;
+  color: #8a8a86;
+}
+
+.kpi-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  padding: 16rpx 24rpx 0;
+}
+
+.kpi {
+  flex: 1 1 calc(50% - 8rpx);
+  min-width: 0;
+  padding: 18rpx 20rpx;
+  background: #ffffff;
+  border: 1rpx solid #e2e2dd;
+  border-radius: 12rpx;
+}
+
+.kpi-label {
+  font-size: 23rpx;
+  color: #8a8a86;
+}
+
+.kpi-value {
+  font-size: 44rpx;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.kpi-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+  font-size: 22rpx;
+}
+
+.delta {
+  font-size: 22rpx;
+  font-weight: 500;
+}
+
+.delta.up {
+  color: #2f6f4f;
+}
+
+.delta.down {
+  color: #b4392f;
+}
+
+.delta.flat,
+.muted {
+  color: #a0a09a;
+}
+
+/* ---------- 掌握度构成 ---------- */
+
+.sub {
+  margin-left: 12rpx;
+  font-size: 22rpx;
+  font-weight: 400;
+  color: #a0a09a;
+}
+
+.share-bar {
+  display: flex;
+  height: 24rpx;
+  margin-top: 16rpx;
+  border-radius: 999rpx;
+  overflow: hidden;
+  background: #f1f1ed;
+}
+
+.share-seg {
+  height: 100%;
+}
+
+.legend,
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx 24rpx;
+  margin-top: 16rpx;
+  font-size: 23rpx;
+  color: #8a8a86;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.dot {
+  width: 18rpx;
+  height: 18rpx;
+  border-radius: 4rpx;
+}
+
+.bold {
+  font-weight: 600;
+  color: #23231f;
+}
+
+/* ---------- 词库走势：每日一根堆叠柱 ---------- */
+
+.chart {
+  display: flex;
+  align-items: stretch;
+  gap: 4rpx;
+  height: 300rpx;
+  margin-top: 16rpx;
+}
+
+.col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.col-plot {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+}
+
+.col-bar {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 4rpx 4rpx 0 0;
+  overflow: hidden;
+}
+
+.seg {
+  width: 100%;
+}
+
+/* 从上往下：未测试 → 待巩固 → 基本掌握 → 已掌握（跟 web 的堆叠顺序一致） */
+.seg.un { background: #e2e2dd; }
+.seg.nd { background: #d9a13b; }
+.seg.bs { background: #7ba05b; }
+.seg.ms { background: #2f6f4f; }
+
+.col-day {
+  height: 32rpx;
+  font-size: 18rpx;
+  color: #a0a09a;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.empty.sm {
+  padding: 40rpx 0;
+  font-size: 25rpx;
+}
+
+.title.row {
+  display: flex;
+  align-items: baseline;
+}
+
+/* ---------- 正确率分布 ---------- */
+
+.dist-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 14rpx;
+}
+
+.dist-label {
+  width: 110rpx;
+  font-size: 24rpx;
+  color: #8a8a86;
+}
+
+.dist-bar {
+  flex: 1;
+  height: 18rpx;
+  background: #f1f1ed;
+  border-radius: 999rpx;
+  overflow: hidden;
+}
+
+.dist-in {
+  height: 100%;
+  border-radius: 999rpx;
+}
+
+.dist-num {
+  width: 70rpx;
+  font-size: 25rpx;
+  text-align: right;
+}
+
+/* ---------- 复习最多的词 ---------- */
+
+.top-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid #f1f1ed;
+}
+
+.top-row:last-child {
+  border-bottom: none;
+}
+
+.top-word {
+  width: 200rpx;
+  font-size: 28rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.top-cnt {
+  width: 190rpx;
+  font-size: 22rpx;
+  color: #8a8a86;
+}
+
+.acc-bar {
+  flex: 1;
+  height: 14rpx;
+  background: #f1f1ed;
+  border-radius: 999rpx;
+  overflow: hidden;
+}
+
+.acc-in {
+  height: 100%;
+  border-radius: 999rpx;
+}
+
+.top-acc {
+  width: 70rpx;
+  font-size: 24rpx;
+  text-align: right;
+}
+
+/* ---------- 每日明细 ---------- */
+
+.day-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 12rpx 0;
+  font-size: 24rpx;
+  border-bottom: 1rpx solid #f1f1ed;
+}
+
+.day-row:last-child {
+  border-bottom: none;
+}
+
+.day-date {
+  color: #8a8a86;
+  white-space: nowrap;
+}
+
+.day-num {
+  color: #4a4a44;
+}

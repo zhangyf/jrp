@@ -8,6 +8,62 @@
   <view class="err" wx:if="{{err}}">{{err}}</view>
   <view class="empty" wx:if="{{loading}}">加载中…</view>
 
+  <view class="period" wx:if="{{!loading && period}}">{{period}}</view>
+
+  <!-- KPI：当前值 + 区间增量。涨是好事的项（总量/已掌握）绿，涨是坏事的（待巩固/错误）红 -->
+  <view class="kpi-grid" wx:if="{{kpis.length}}">
+    <view class="kpi" wx:for="{{kpis}}" wx:for-item="k" wx:key="label">
+      <view class="kpi-label">{{k.label}}</view>
+      <view class="kpi-value">{{k.value}}</view>
+      <view class="kpi-foot">
+        <text class="delta {{k.delta === null ? 'flat' : (k.delta === 0 ? 'flat' : ((k.up ? k.delta > 0 : k.delta < 0) ? 'up' : 'down'))}}">{{k.delta === null ? '无对比' : (k.delta === 0 ? '持平' : (k.delta > 0 ? '+' + k.delta : k.delta))}}</text>
+        <text class="muted" wx:if="{{k.sub}}">{{k.sub}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 掌握度构成：一条横条按四档切分 -->
+  <view class="card" wx:if="{{shareTotal}}">
+    <view class="title">掌握度构成<text class="sub">共 {{shareTotal}} 词</text></view>
+    <view class="share-bar">
+      <view class="share-seg" wx:for="{{share}}" wx:for-item="s" wx:key="label"
+            style="width:{{s.w}}%;background:{{s.color}}"></view>
+    </view>
+    <view class="legend">
+      <view class="legend-item" wx:for="{{share}}" wx:for-item="s" wx:key="label">
+        <view class="dot" style="background:{{s.color}}"></view>
+        <text>{{s.label}} <text class="bold">{{s.value}}</text></text>
+        <text class="muted">{{s.pct}}%</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 词库走势：一根柱 = 一个存档点，四档堆叠，柱顶即当天总词量 -->
+  <view class="card" wx:if="{{!loading}}">
+    <view class="title">词库走势<text class="sub">最高 {{trendMax}} 词</text></view>
+    <view class="chart" wx:if="{{trendHas}}">
+      <view class="col" wx:for="{{bars}}" wx:for-item="b" wx:key="day">
+        <view class="col-plot">
+          <view class="col-bar" style="height:{{b.h}}%">
+            <view class="seg un" style="height:{{b.untested}}%"></view>
+            <view class="seg nd" style="height:{{b.needs}}%"></view>
+            <view class="seg bs" style="height:{{b.basic}}%"></view>
+            <view class="seg ms" style="height:{{b.mastered}}%"></view>
+          </view>
+        </view>
+        <view class="col-day">{{b.showLabel ? b.day : ''}}</view>
+      </view>
+    </view>
+    <view class="empty sm" wx:else>至少两个存档点才能画走势</view>
+    <view class="chart-legend" wx:if="{{trendHas}}">
+      <view class="legend-item"><view class="dot" style="background:#2f6f4f"></view><text>已掌握</text></view>
+      <view class="legend-item"><view class="dot" style="background:#7ba05b"></view><text>基本掌握</text></view>
+      <view class="legend-item"><view class="dot" style="background:#d9a13b"></view><text>待巩固</text></view>
+      <view class="legend-item"><view class="dot" style="background:#e2e2dd"></view><text>未测试</text></view>
+    </view>
+    <view class="hint" wx:if="{{trendHas}}">{{trendFirst}} → {{trendLast}}，柱顶轮廓就是总词量的走向。</view>
+  </view>
+
   <view class="card" wx:if="{{jlpt}}">
     <view class="title">JLPT 进度</view>
     <view class="kv">
@@ -35,25 +91,45 @@
     </view>
   </view>
 
-  <view class="card" wx:if="{{hard}}">
-    <view class="title">钉子户</view>
-    <view class="kv"><text>严重</text><text class="num">{{hard.severe}}</text></view>
-    <view class="kv"><text>中等</text><text class="num">{{hard.moderate}}</text></view>
-    <view class="kv"><text>轻度</text><text class="num">{{hard.mild}}</text></view>
+  <!-- 正确率分布：只看复习过的词 -->
+  <view class="card" wx:if="{{dist.length}}">
+    <view class="title">正确率分布<text class="sub">共 {{distTotal}} 个复习过的词</text></view>
+    <view class="dist-row" wx:for="{{dist}}" wx:for-item="x" wx:key="label">
+      <text class="dist-label">{{x.label}}</text>
+      <view class="dist-bar"><view class="dist-in" style="width:{{x.w}}%;background:{{x.color}}"></view></view>
+      <text class="dist-num">{{x.value}}</text>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{hard && hard.total}}">
+    <view class="title">钉子户分布<text class="sub">正确率低且复习次数够多</text></view>
+    <view class="kv"><text>严重（&lt;30%）</text><text class="num">{{hard.severe}}</text></view>
+    <view class="kv"><text>中度（30-45%）</text><text class="num">{{hard.moderate}}</text></view>
+    <view class="kv"><text>轻度（≥45%）</text><text class="num">{{hard.mild}}</text></view>
     <view class="kv total"><text>合计</text><text class="num">{{hard.total}}</text></view>
   </view>
 
-  <view class="card" wx:if="{{lessons.length}}">
-    <view class="title">按课分布</view>
-    <view class="kv" wx:for="{{lessons}}" wx:for-item="l" wx:key="lesson">
-      <text class="lesson">{{l.lesson}}</text><text class="num">{{l.count}}</text>
+  <view class="card" wx:if="{{top.length}}">
+    <view class="title">复习最多的词<text class="sub">Top {{top.length}}</text></view>
+    <view class="top-row" wx:for="{{top}}" wx:for-item="t" wx:key="word">
+      <text class="top-word">{{t.word}}</text>
+      <text class="top-cnt">复习 {{t.reviews}} · 错 {{t.errors}}</text>
+      <view class="acc-bar"><view class="acc-in" style="width:{{t.acc}}%;background:{{t.color}}"></view></view>
+      <text class="top-acc">{{t.acc}}%</text>
     </view>
   </view>
 
-  <view class="card" wx:if="{{dist.length}}">
-    <view class="title">正确率分布</view>
-    <view class="kv" wx:for="{{dist}}" wx:for-item="x" wx:key="label">
-      <text>{{x.label}}</text><text class="num">{{x.value}}</text>
+  <!-- 每日明细：默认折叠，走势图已经表达了主要信息 -->
+  <view class="card" wx:if="{{daily.length}}">
+    <view class="title row" bindtap="onToggleDaily">
+      每日明细（{{daily.length}} 天）
+      <text class="sub">{{showDaily ? '收起' : '展开'}}</text>
     </view>
+    <block wx:if="{{showDaily}}">
+      <view class="day-row" wx:for="{{daily}}" wx:for-item="s" wx:key="date">
+        <text class="day-date">{{s.date}}</text>
+        <text class="day-num">总 {{s.total}}　掌握 {{s.mastered}}　待巩固 {{s.needs}}　错 {{s.errors}}</text>
+      </view>
+    </block>
   </view>
 </view>

@@ -1520,3 +1520,9 @@ tabBar 只有「练习 / 统计」两项。
    得在 JS 里拼成 `expectedText` 再绑。
 4. **写了答案但没判分就提交 = 白练**（网页端那条红线一样适用）。
    `practice` / `sentences` 都在 `submit()` 里先自动判一次再落库，不用老师多点一下。
+5. **统计页的趋势在 `snapshots` 里，不在 `detail` 里**（2026-10-19 老师反馈「看不出趋势」）。
+   `/api/stats` 返回 `snapshots`（每天一个存档点：total/mastered/basic/needs_consol/untested/errors）、
+   `changes`、`detail`、`jlpt` 四段；只用 `detail` + `jlpt` 就没有走势、没有区间增量。
+   小程序画不了 SVG → 走势用「每日堆叠柱」代替 web 的堆叠折线（一根柱 = 一个存档点，
+   柱顶即总词量），90 天抽样到 30 根。版面与 `web/stats.js` 对齐：
+   KPI（含增量）→ 掌握度构成 → 词库走势 → 正确率分布 → 钉子户 → 复习最多的词 → 每日明细（折叠）。
