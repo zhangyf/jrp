@@ -12,7 +12,7 @@
 
   <!-- KPI：当前值 + 区间增量。涨是好事的项（总量/已掌握）绿，涨是坏事的（待巩固/错误）红 -->
   <view class="kpi-grid" wx:if="{{kpis.length}}">
-    <view class="kpi" wx:for="{{kpis}}" wx:for-item="k" wx:key="label">
+    <view class="kpi {{index === 4 ? 'wide' : ''}}" wx:for="{{kpis}}" wx:for-item="k" wx:key="label">
       <view class="kpi-label">{{k.label}}</view>
       <view class="kpi-value">{{k.value}}</view>
       <view class="kpi-foot">
