@@ -42,9 +42,10 @@
   color: #854f0b;
 }
 
-/* 登录徽章顶到最右 */
+/* 登录徽章收到胶囊左侧（右侧留位由 navPadRight 动态给），且不被压扁 */
 .nav-row .tag {
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 /* 双列色块入口：width:49% + space-between（calc() 在部分机型 WebView 会退化成单列） */

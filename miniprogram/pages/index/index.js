@@ -14,7 +14,9 @@ Page({
     message: '',
     // 自定义导航栏（原生导航栏放不了图片，logo 画在自己画的导航里）
     statusBarH: 20,
-    navH: 44
+    navH: 44,
+    // 右侧要给微信胶囊按钮（… ◎）留位，默认 96px 兜底
+    navPadRight: 96
   },
 
   onLoad() {
@@ -24,7 +26,9 @@ Page({
       const caps = wx.getMenuButtonBoundingClientRect();
       const statusBarH = win.statusBarHeight || 20;
       const navH = Math.max((caps.top - statusBarH) * 2 + caps.height, 40);
-      this.setData({ statusBarH, navH });
+      // 胶囊左边到屏幕右缘 + 8px 间距：登录徽章收在这里面，不能再往右
+      const navPadRight = Math.max(win.windowWidth - caps.left + 8, 96);
+      this.setData({ statusBarH, navH, navPadRight });
     } catch (e) { /* 取不到就用默认值 */ }
   },
 
