@@ -214,8 +214,13 @@ func lessonLabel(n int) string {
 	return fmt.Sprintf("第%d课", n)
 }
 
-// groupProtosByLesson 把原型句按课号分组，组内按「基本课文优先 + 短句优先」排序
-// —— 短句好改造，基本课文是课本里最典型的句型。
+// groupProtosByLesson 把原型句按课号分组，组内按「基本课文优先 + 长句优先」排序
+// —— 基本课文是课本里最典型的句型。
+//
+// ⚠️ 2026-10-20 老师反馈：变形句偏简单（平均 13.8 字，主句库 15.9；1-7 课占 64%）。
+// 原来这里按「短句优先」排（短句好改造），结果造出来的全是短句。
+// 改成「长句优先」：骨架本身有内容，换进去的那个词才练得到东西。
+// 真正决定顺序的是 protoScore（见下），这里只作为同分时的稳定次序。
 func groupProtosByLesson(sentences []BankSentence) map[int][]BankSentence {
 	out := map[int][]BankSentence{}
 	for _, s := range sentences {
@@ -232,7 +237,7 @@ func groupProtosByLesson(sentences []BankSentence) map[int][]BankSentence {
 			if bi != bj {
 				return bi
 			}
-			return len([]rune(list[i].Answer)) < len([]rune(list[j].Answer))
+			return len([]rune(list[i].Answer)) > len([]rune(list[j].Answer))
 		})
 	}
 	return out
@@ -247,11 +252,18 @@ func protoScore(s BankSentence, pos string) int {
 	a := s.Answer
 	n := len([]rune(a))
 	score := 0
-	if n < 7 {
-		score -= 30 // 没槽位可换
-	}
-	if n > 22 {
-		score -= 8 // 太长难改造
+	// 长度偏好：**中长句优先**。
+	// 2026-10-20 之前是「短句优先」（n>22 扣分），造出来的变形句平均只有 13.8 字、
+	// 比主句库 15.9 字短一截，老师练着觉得太简单。现在反过来：
+	// 太短的句子没内容可练（换进去也没练到什么），14-26 字是最合适的骨架，
+	// 超过 26 字改造时容易把助词序列改坏，轻扣。
+	switch {
+	case n < 10:
+		score -= 30 // 没槽位可换，也没内容
+	case n >= 14 && n <= 26:
+		score += 15 // 够料的句子
+	case n > 26:
+		score -= 6 // 太长难改造
 	}
 	switch {
 	case strings.Contains(pos, "名词"):
@@ -305,7 +317,10 @@ func pickPrototypes(byLesson map[int][]BankSentence, lesson int, n int, pos stri
 		if d == 0 {
 			ls = []int{lesson}
 		} else {
-			ls = []int{lesson - d, lesson + d}
+			// ⚠️ 先往高课扩、再往低课扩（2026-10-20 改）。
+			// 原来先 -d 再 +d，结果跨课补的句子都来自更简单的老课。
+			// 高课的句型更复杂，先拿高课的骨架才不会把变形句越造越简单。
+			ls = []int{lesson + d, lesson - d}
 		}
 		for _, l := range ls {
 			if l <= 0 {

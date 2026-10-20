@@ -42,8 +42,9 @@ func TestGroupProtosByLesson(t *testing.T) {
 	if len(by[3]) != 3 || len(by[5]) != 1 || len(by[0]) != 1 {
 		t.Fatalf("分组不对：%v", by)
 	}
-	// 同课内：基本课文在前，短的在前
-	if by[3][0].ID != "B1" || by[3][1].ID != "B2" || by[3][2].ID != "A1" {
+	// 同课内：基本课文在前，长的在前（2026-10-20 起长句优先 —— 骨架有内容，
+	// 换进去的那个词才练得到东西；变形句原来偏简单就是短句优先排出来的）
+	if by[3][0].ID != "B2" || by[3][1].ID != "B1" || by[3][2].ID != "A1" {
 		t.Errorf("第3课排序不对：%+v", by[3])
 	}
 }
@@ -82,8 +83,9 @@ func TestPickPrototypesFallsBackToNearbyLesson(t *testing.T) {
 	if got[0].ID != "P1" {
 		t.Errorf("第一条应该是同课的 P1，实际 %s", got[0].ID)
 	}
-	// 距离 7 相等时先减后加：第6课 在 第8课 前面
-	if got[1].ID != "P2" || got[2].ID != "P3" {
+	// 距离 7 相等时先加后减：第8课 在 第6课 前面
+	// （2026-10-20 改：跨课补句先往高课扩，别把变形句越造越简单）
+	if got[1].ID != "P3" || got[2].ID != "P2" {
 		t.Errorf("跨课顺序不对：%s %s", got[1].ID, got[2].ID)
 	}
 }
