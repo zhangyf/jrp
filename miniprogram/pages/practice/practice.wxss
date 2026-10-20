@@ -183,6 +183,37 @@
   color: #0f6e56;
 }
 
+/* 判错行的结果条：正确答案 + 「算对」胶囊（跟「不会」一个尺寸、一样显眼） */
+.result-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 10rpx;
+}
+
+.result-row .reveal {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.pick {
+  flex: none;
+  font-size: 26rpx;
+  font-weight: 500;
+  color: #2f6f4f;
+  background: #ffffff;
+  border: 1rpx solid #2f6f4f;
+  border-radius: 999rpx;
+  padding: 6rpx 22rpx;
+  white-space: nowrap;
+}
+
+.pick.on {
+  color: #ffffff;
+  background: #2f6f4f;
+}
+
 .bar {
   position: fixed;
   left: 0;

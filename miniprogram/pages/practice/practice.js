@@ -86,7 +86,8 @@ Page({
           answer: '',
           correct: false,
           graded: false,
-          unknown: false
+          unknown: false,
+          manual: false
         }));
         this.setData({
           items, loading: false, graded: false, summary: null,
@@ -134,6 +135,7 @@ Page({
       correct: false,
       graded: false,
       unknown: false,
+      manual: false,
       blank: false
     }));
     this.setData({
@@ -162,6 +164,7 @@ Page({
       graded: !x.blank,
       correct: !!x.correct,
       unknown: !!x.unknown,
+      manual: !!x.manual,
       blank: !!x.blank
     }));
     const done = items.filter((i) => !i.blank);
@@ -198,6 +201,14 @@ Page({
             patch['items[' + i + '].unknown'] = true;
             patch['items[' + i + '].graded'] = true;
             patch['items[' + i + '].correct'] = false; // 标「不会」就是错
+            patch['items[' + i + '].manual'] = false;
+          }
+          // 勾过「算对」的行没有可重算的对错（重判要跳过 manual），
+          // correct 必须一并恢复，否则提交时会被当成未判漏掉。
+          if (x.manual && !x.unknown) {
+            patch['items[' + i + '].manual'] = true;
+            patch['items[' + i + '].correct'] = true;
+            patch['items[' + i + '].graded'] = true;
           }
           hit++;
         });
@@ -221,7 +232,7 @@ Page({
       number: it.number,
       answer: it.answer || '',
       unknown: !!it.unknown,
-      manual: false
+      manual: !!it.manual
     }));
     app.request('/api/draft', 'POST', {
       date: this.data.date,
@@ -259,9 +270,58 @@ Page({
     patch['items[' + i + '].unknown'] = !it.unknown;
     patch['items[' + i + '].graded'] = !it.unknown;
     patch['items[' + i + '].correct'] = false; // 标「不会」就是错
+    patch['items[' + i + '].manual'] = false;  // 「不会」与「算对」互斥
     this.setData(patch);
     this.refreshAnswered();
     this.scheduleDraft();
+  },
+
+  // 「算对」：判错的行可以人工改判成对 —— 老师写了汉字被判错、或判分档位
+  // 的问题，不是真不会。跟 web 的复选框一个意思（manual = 老师动过手）：
+  //   · 勾上：按对记，重判时不覆盖
+  //   · 取消：回到「按写的判」，这一题重新判一次
+  // ⚠️ 主动标了「不会」的行不给改判（web 也是这样）。
+  onPick(e) {
+    const i = e.currentTarget.dataset.index;
+    const it = this.data.items[i];
+    if (!it.manual) {
+      this.setData({
+        ['items[' + i + '].manual']: true,
+        ['items[' + i + '].correct']: true,
+        ['items[' + i + '].unknown']: false,
+        ['items[' + i + '].graded']: true
+      });
+      this.scheduleDraft();
+      return;
+    }
+    this.setData({ ['items[' + i + '].manual']: false });
+    this.regradeOne(i);
+    this.scheduleDraft();
+  },
+
+  // 取消「算对」后重判这一题（只发这一题，别整屏重判把别的改判冲掉）
+  regradeOne(i) {
+    const it = this.data.items[i];
+    const answer = (it.answer || '').trim();
+    if (!answer) {
+      // 没写答案就没什么可判的：恢复成「没写」
+      this.setData({
+        ['items[' + i + '].correct']: false,
+        ['items[' + i + '].graded']: false
+      });
+      return;
+    }
+    app.request('/api/grade', 'POST', {
+      mode: 'either',
+      items: [{ word: it.word, answer: answer }]
+    }, true)
+      .then((res) => {
+        this.setData({
+          ['items[' + i + '].correct']: !!(res.results || [])[0],
+          ['items[' + i + '].graded']: true
+        });
+      })
+      .catch(() => {});
   },
 
   refreshAnswered() {
@@ -285,6 +345,8 @@ Page({
         const patch = {};
         items.forEach((it, i) => {
           patch['items[' + i + '].graded'] = true;
+          // ⚠️ 老师勾过「算对」的行不重判，否则手动改判会被冲掉
+          if (it.manual) { patch['items[' + i + '].correct'] = true; return; }
           patch['items[' + i + '].correct'] = it.unknown ? false : !!rs[i];
         });
         patch.graded = true;
@@ -336,6 +398,7 @@ Page({
         answer: it.answer,
         correct: correct,
         unknown: !!it.unknown,
+        manual: !!it.manual,
         blank: (it.answer || '').trim() === '' && !it.unknown
       });
     });

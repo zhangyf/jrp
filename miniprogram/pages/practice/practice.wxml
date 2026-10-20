@@ -48,7 +48,12 @@
              disabled="{{item.graded}}"
              data-index="{{index}}"
              bindinput="onInput" />
-      <view class="reveal" wx:if="{{item.graded && !item.correct}}">答案：{{item.word}}</view>
+      <!-- 判错（或已人工改判）的行：给正确答案 + 「算对」。
+           ⚠️ 勾了算对就 correct=true，所以条件要带上 manual，否则按钮点了就消失 -->
+      <view class="result-row" wx:if="{{item.graded && (!item.correct || item.manual)}}">
+        <text class="reveal">答案：{{item.word}}</text>
+        <text class="pick {{item.manual ? 'on' : ''}}" wx:if="{{!item.unknown}}" data-index="{{index}}" bindtap="onPick">{{item.manual ? '已算对' : '算对'}}</text>
+      </view>
     </block>
 
     <!-- 回看态：只读，显示当时写了什么、正确答案是什么 -->
