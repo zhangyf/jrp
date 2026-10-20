@@ -29,6 +29,37 @@
     <view class="reveal" wx:if="{{item.graded && !item.correct}}">课本原文：{{item.answer}}</view>
   </view>
 
+  <!-- 语法知识卡：两张表（助词用法 / 词语修饰），默认收起、点标题展开，
+       放题目下面不挡练习。内容与 web 造句页同一份，改要两处同步。 -->
+  <view class="grammar">
+    <view class="g-head" bindtap="toggleGrammar">
+      <text class="g-title">语法知识（助词用法 · 词语修饰）</text>
+      <text class="g-arrow">{{grammarOpen ? '收起 ▴' : '展开 ▾'}}</text>
+    </view>
+    <view class="g-body" wx:if="{{grammarOpen}}">
+      <view class="g-sec">① 助词的用法</view>
+      <view class="p-row" wx:for="{{particles}}" wx:for-item="r" wx:key="p">
+        <text class="p-word">{{r.p}}</text>
+        <view class="p-main">
+          <text class="p-uses">{{r.uses}}</text>
+          <text class="p-ex" wx:for="{{r.ex}}" wx:for-item="e" wx:key="*this">{{e}}</text>
+        </view>
+      </view>
+
+      <view class="g-sec">② 词语的修饰（名词 · 动词 · 形容词互接）</view>
+      <view class="m-tr m-th">
+        <text class="m-c0">词类</text>
+        <text class="m-c1">接续</text>
+        <text class="m-c2">例</text>
+      </view>
+      <view class="m-tr" wx:for="{{modify}}" wx:for-item="r" wx:key="k">
+        <text class="m-c0 {{r.contC ? 'cont' : ''}}">{{r.cls}}</text>
+        <text class="m-c1">{{r.joint}}</text>
+        <text class="m-c2">{{r.ex}}</text>
+      </view>
+    </view>
+  </view>
+
   <view class="bar" wx:if="{{items.length}}">
     <button class="btn ghost" bindtap="grade" loading="{{grading}}">对答案</button>
     <button class="btn primary" bindtap="submit" loading="{{submitting}}">提交</button>

@@ -101,6 +101,46 @@
   <!-- 造句 -->
   <section id="page-sentence" class="page hidden">
     <div id="sentenceSummary" class="summary"></div>
+
+    <!-- 语法知识卡：老师 2026-10-20 给的两张表（助词用法 / 词语修饰）。
+         与小程序造句页同一份内容，改要两处同步。默认收起，点标题展开。 -->
+    <details class="conj-grammar g-blue">
+      <summary>语法知识（助词用法 · 词语修饰）</summary>
+      <p class="gsub">① 助词的用法</p>
+      <table class="gtable ltable">
+        <thead>
+          <tr><th class="c-p">助词</th><th class="c-u">用法</th><th>例</th></tr>
+        </thead>
+        <tbody>
+          <tr><th rowspan="6">に</th><td>· 时间<br>· 存在的场所<br>· 行为的对象<br>· 移动的目的<br>· 附着点<br>· 移动的目的地</td>
+              <td>森さんは7時に起きます。（第5课）<br>部屋に机といすがあります。（第4课）<br>私は小野さんにお土産をあげます。（第8课）<br>荷物を出しに行きます。（第13课）<br>李さんは電車に乗りました。（第15课）<br>李さんは病院に行きました。（第15课）</td></tr>
+          <tr><th rowspan="6">で</th><td>· 手段、方法<br>· 工具、原材料<br>· 动作发生的场所<br>· 范围<br>· 基准<br>· 主体样态</td>
+              <td>上海まで飛行機で行きます。（第6课）<br>新聞紙で紙飛行機を作りました。（第8课）<br>李さんは図書館で勉強します。（第7课）<br>日本で一番高い山は富士山です。（第12课）<br>はがきは5枚で500円です。（第13课）<br>一人でご飯を食べます。（第20课）</td></tr>
+          <tr><th>へ</th><td>· 移动的方向</td><td>吉田さんは来月中国へ行きます。（第6课）</td></tr>
+          <tr><th>と</th><td>· 共同参与者</td><td>小野さんは友達と帰りました。（第6课）</td></tr>
+          <tr><th>から・まで</th><td>· 时间 / 空间的起点 · 终点</td><td>東京から広島まで新幹線で行きます。（第5/6课）</td></tr>
+          <tr><th>を</th><td>· 动作的对象<br>· 经过、离开的地点</td><td>李さんは毎日コーヒーを飲みます。（第7课）<br>李さんは毎日7時に家を出ます。</td></tr>
+        </tbody>
+      </table>
+      <p class="gsub">② 词语的修饰（名词 · 动词 · 形容词互接）</p>
+      <table class="gtable ltable">
+        <thead>
+          <tr><th class="c-p">词类</th><th class="c-m">接续</th><th>例</th></tr>
+        </thead>
+        <tbody>
+          <tr><th rowspan="2">名词</th><td>N ＋ で ＋ N</td><td>会社員で 部長です（第16课）</td></tr>
+          <tr><td>N ＋ に ＋ V</td><td>医者に なりました（第18课）</td></tr>
+          <tr><th>动词</th><td>Vて ＋ V</td><td>帰って 勉強します（第14课）</td></tr>
+          <tr><th rowspan="6">形容词</th><td>Aい ＋ N</td><td>辛い 料理（第9课）</td></tr>
+          <tr><td>ANな ＋ N</td><td>綺麗な 町（第10课）</td></tr>
+          <tr><td>Aく ＋ V</td><td>大きく なります（第18课）</td></tr>
+          <tr><td>ANに ＋ V</td><td>綺麗に します（第18课）</td></tr>
+          <tr><td>Aく＋て＋Aい/AN</td><td>安くて おいしい（第16课）</td></tr>
+          <tr><td>ANで＋Aい/AN</td><td>静かで 広い（第16课）</td></tr>
+        </tbody>
+      </table>
+    </details>
+
     <div id="sentenceList"></div>
     <div id="sentenceDone" class="hidden">
       <button id="sentenceCommit" class="primary">回写造句结果</button>

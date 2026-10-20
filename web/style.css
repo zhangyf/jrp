@@ -534,6 +534,45 @@ details[open] summary { margin-bottom: 10px; }
   line-height: 1.75;
 }
 
+/* 造句页语法卡：蓝色变体（跟首页造句色块同色）+ 例句左对齐 */
+.conj-grammar.g-blue > summary {
+  color: #2f6fa8;
+}
+
+.g-blue .gtable thead th {
+  background: #eaf2f9;
+  color: #2a5a86;
+}
+
+.g-blue .gtable tbody th {
+  background: #2f6fa8;
+}
+
+/* 例句、用法这类长文本左对齐，别跟着居中 */
+.gtable.ltable td {
+  text-align: left;
+  line-height: 1.6;
+}
+
+.c-p {
+  width: 84px;
+}
+
+.c-u {
+  width: 32%;
+}
+
+.c-m {
+  width: 190px;
+}
+
+.gsub {
+  margin: 12px 0 4px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #2a5a86;
+}
+
 /* ---- 左侧常驻小程序码 ----
    position:fixed + transform 居中，页面怎么滚它都不动。
    main 是 860px 居中，屏幕窄到两侧塞不下就整体隐藏，绝不压住练习内容。 */
