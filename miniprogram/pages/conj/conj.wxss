@@ -167,6 +167,110 @@
   color: #ffffff;
 }
 
+/* 动词活用速查表（て形・ます形・ない形 三表合并） */
+.grammar {
+  background: #ffffff;
+  border: 1rpx solid #eeede9;
+  border-radius: 12rpx;
+  margin-bottom: 16rpx;
+  overflow: hidden;
+}
+
+.g-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 20rpx;
+  background: #2f6f4f;
+}
+
+.g-title {
+  font-size: 27rpx;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.g-arrow {
+  font-size: 23rpx;
+  color: #cfe3d8;
+}
+
+.g-body {
+  padding: 14rpx;
+}
+
+.g-table {
+  border: 1rpx solid #d8d6cc;
+  border-radius: 8rpx;
+  overflow: hidden;
+}
+
+.g-tr {
+  display: flex;
+  align-items: stretch;
+}
+
+.g-tr + .g-tr {
+  border-top: 1rpx solid #e6e4da;
+}
+
+.g-tr text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 10rpx 4rpx;
+  font-size: 22rpx;
+  line-height: 1.35;
+  border-left: 1rpx solid #e6e4da;
+  word-break: break-all;
+}
+
+.g-tr text:first-child {
+  border-left: none;
+}
+
+.g-trh text {
+  background: #eef4e9;
+  font-weight: 500;
+  color: #3d6b52;
+}
+
+/* 词类列：深绿底白字，跨行连成一条（延续行不写字，靠同色底拼起来） */
+.c0 {
+  width: 100rpx;
+  background: #2f6f4f;
+  color: #ffffff;
+}
+
+/* 基本形（词尾分组）列 */
+.c1 {
+  width: 148rpx;
+  background: #f6f8f2;
+}
+
+.c2 {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 上行规则的延续格：去掉左边框、藏文字，视觉上与上行合成一格 */
+.cont {
+  border-left: none;
+  color: transparent;
+}
+
+.g-notes {
+  margin-top: 14rpx;
+}
+
+.g-note {
+  display: block;
+  font-size: 23rpx;
+  color: #5f5e5a;
+  line-height: 1.7;
+}
+
 .word {
   font-size: 32rpx;
   font-weight: 500;

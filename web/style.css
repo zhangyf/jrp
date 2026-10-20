@@ -481,6 +481,59 @@ details[open] summary { margin-bottom: 10px; }
 .conj-ok { color: var(--good); }
 .conj-no { color: var(--bad); }
 
+/* ---- 动词活用速查表（て形・ます形・ない形 三表合并，与小程序活用页同一份内容） ---- */
+.conj-grammar {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 14px 10px;
+  margin-bottom: 10px;
+}
+
+.conj-grammar > summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 4px 0;
+}
+
+.conj-grammar .gtable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.gtable th,
+.gtable td {
+  border: 1px solid var(--line);
+  padding: 6px 8px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.gtable thead th {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* 词类列：深绿底白字，rowspan 跨行连成一条 */
+.gtable tbody th {
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.conj-grammar .gnotes {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
 /* ---- 左侧常驻小程序码 ----
    position:fixed + transform 居中，页面怎么滚它都不动。
    main 是 860px 居中，屏幕窄到两侧塞不下就整体隐藏，绝不压住练习内容。 */

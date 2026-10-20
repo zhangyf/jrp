@@ -173,6 +173,36 @@
       <button id="conjClear" class="ghost">清空</button>
       <span id="conjPool" class="muted"></span>
     </div>
+
+    <!-- 动词活用速查表：て形／ます形／ない形 三张表共用「一类五段/二类一段/サ变/カ变」
+         骨架，合并成一张（内容与小程序活用练习页一致）。
+         原生 <details> 折叠，默认收起（老师 2026-10-20 要求）：点标题才展开，不挡题目。 -->
+    <details class="conj-grammar">
+      <summary>动词活用速查（て形・ます形・ない形）</summary>
+      <table class="gtable">
+        <thead>
+          <tr><th>词类</th><th>基本形</th><th>て形</th><th>ます形</th><th>ない形</th></tr>
+        </thead>
+        <tbody>
+          <tr><th rowspan="4">一类（五段）</th><td>う・つ・る</td><td>って（促音便）</td><td rowspan="4">词尾う段→い段＋ます</td><td rowspan="4">词尾う段→あ段＋ない＊</td></tr>
+          <tr><td>ぬ・ぶ・む</td><td>んで（拨音便）</td></tr>
+          <tr><td>く・ぐ</td><td>いて／いで（イ音便）</td></tr>
+          <tr><td>す</td><td>して</td></tr>
+          <tr><th>二类（一段）</th><td>見る 等</td><td>去词尾る＋て</td><td>去词尾る＋ます</td><td>去词尾る＋ない</td></tr>
+          <tr><th>三类 サ变</th><td>する</td><td>して</td><td>します</td><td>しない</td></tr>
+          <tr><th>三类 カ变</th><td>来る</td><td>きて</td><td>きます</td><td>こない</td></tr>
+        </tbody>
+      </table>
+      <p class="gnotes">
+        ＊う结尾的动词，ない形变「わ」不变「あ」：買う → 買わない（✗買あない）<br>
+        例・買う → 買って／買います／買わない<br>
+        例・飲む → 飲んで／飲みます／飲まない<br>
+        例・書く → 書いて／書きます／書かない<br>
+        例・話す → 話して／話します／話さない<br>
+        例・見る → 見て／見ます／見ない　｜　する → して／します／しない　｜　来る → きて／きます／こない
+      </p>
+    </details>
+
     <div id="conjSummary" class="summary"></div>
     <div id="conjBody"></div>
     <div id="conjMsg" class="feedback"></div>

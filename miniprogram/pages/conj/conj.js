@@ -12,6 +12,31 @@ const TYPES = [
   { key: 'adj', label: '形容词' }
 ];
 
+// 动词活用速查表：把 て形／ます形／ない形 三张表合并成一张。
+// 三个表共用「一类（五段）/二类（一段）/サ变/カ变」骨架，
+// 一类动词的 ます形・ない形四行规则相同，模仿原表的合并单元格——
+// contM/contN 为 true 的格子是上行规则的延续，只留底色不写字。
+const GRAMMAR_ROWS = [
+  { k: 'a1', t: '一类（五段）', tail: 'う・つ・る', te: 'って（促音便）', masu: '词尾う段→い段＋ます', nai: '词尾う段→あ段＋ない＊' },
+  { k: 'a2', t: '', tail: 'ぬ・ぶ・む', te: 'んで（拨音便）', masu: '', nai: '', contM: true, contN: true },
+  { k: 'a3', t: '', tail: 'く・ぐ', te: 'いて／いで（イ音便）', masu: '', nai: '', contM: true, contN: true },
+  { k: 'a4', t: '', tail: 'す', te: 'して', masu: '', nai: '', contM: true, contN: true },
+  { k: 'b1', t: '二类（一段）', tail: '見る 等', te: '去词尾る＋て', masu: '去词尾る＋ます', nai: '去词尾る＋ない' },
+  { k: 'c1', t: '三类 サ变', tail: 'する', te: 'して', masu: 'します', nai: 'しない' },
+  { k: 'c2', t: '三类 カ变', tail: '来る', te: 'きて', masu: 'きます', nai: 'こない' }
+];
+
+// 注意事项 + 例词：每条一行（<text> 逐条渲染）。行首别用空格对齐——
+// text 会合并连续空格，统一用「例・」前缀。
+const GRAMMAR_NOTES = [
+  '＊う结尾的动词，ない形变「わ」不变「あ」：買う → 買わない（✗買あない）',
+  '例・買う → 買って／買います／買わない',
+  '例・飲む → 飲んで／飲みます／飲まない',
+  '例・書く → 書いて／書きます／書かない',
+  '例・話す → 話して／話します／話さない',
+  '例・見る → 見て／見ます／見ない｜する → して／します／しない｜来る → きて／きます／こない'
+];
+
 Page({
   data: {
     types: TYPES,
@@ -21,11 +46,19 @@ Page({
     loading: true,
     err: '',
     graded: false,
-    pool: 0
+    pool: 0,
+    // 默认收起（老师 2026-10-20 要求）：点标题才展开，别一进页就挡住题
+    grammarOpen: false,
+    grammar: GRAMMAR_ROWS,
+    grammarNotes: GRAMMAR_NOTES
   },
 
   onLoad() {
     this.load();
+  },
+
+  toggleGrammar() {
+    this.setData({ grammarOpen: !this.data.grammarOpen });
   },
 
   onType(e) {
