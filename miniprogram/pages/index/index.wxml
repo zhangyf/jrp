@@ -1,11 +1,9 @@
 <view class="wrap">
   <!-- 自定义导航栏：原生导航栏放不了图片，logo 画在这里（浅底，logo 才看得清） -->
   <view class="nav" style="padding-top:{{statusBarH}}px">
-    <view class="nav-row" style="height:{{navH}}px;padding-right:{{navPadRight}}px">
+    <view class="nav-row" style="height:{{navH}}px">
       <image class="nav-logo" src="/images/logo.png" mode="aspectFit" />
       <text class="nav-title">每日练习</text>
-      <text class="tag ok" wx:if="{{logged}}">{{roleText}}</text>
-      <text class="tag wait" wx:else>正在登录…</text>
     </view>
   </view>
   <view class="err" wx:if="{{message}}">{{message}}</view>

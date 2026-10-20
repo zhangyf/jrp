@@ -9,14 +9,11 @@ Page({
   data: {
     logged: false,
     role: '',
-    roleText: '',
     pending: false,
     message: '',
     // 自定义导航栏（原生导航栏放不了图片，logo 画在自己画的导航里）
     statusBarH: 20,
-    navH: 44,
-    // 右侧要给微信胶囊按钮（… ◎）留位，默认 96px 兜底
-    navPadRight: 96
+    navH: 44
   },
 
   onLoad() {
@@ -26,42 +23,22 @@ Page({
       const caps = wx.getMenuButtonBoundingClientRect();
       const statusBarH = win.statusBarHeight || 20;
       const navH = Math.max((caps.top - statusBarH) * 2 + caps.height, 40);
-      // 胶囊左边到屏幕右缘 + 8px 间距：登录徽章收在这里面，不能再往右
-      const navPadRight = Math.max(win.windowWidth - caps.left + 8, 96);
-      this.setData({ statusBarH, navH, navPadRight });
+      this.setData({ statusBarH, navH });
     } catch (e) { /* 取不到就用默认值 */ }
   },
 
   onShow() {
     const g = app.globalData;
-    this.setData({
-      logged: !!g.logged,
-      role: g.role || '',
-      roleText: this.roleOf(g.role)
-    });
+    this.setData({ logged: !!g.logged, role: g.role || '' });
     if (!g.logged) {
       app.login((err) => {
         if (err) {
           this.setData({ message: '登录失败：' + err.message });
           return;
         }
-        this.setData({
-          logged: true,
-          role: app.globalData.role,
-          roleText: this.roleOf(app.globalData.role),
-          message: ''
-        });
+        this.setData({ logged: true, role: app.globalData.role, message: '' });
       });
     }
-  },
-
-  roleOf(role) {
-    // 顶部徽章空间小，文案要短；pending 的完整解释在 go() 的弹窗里
-    if (role === 'owner') return '站点所有者';
-    if (role === 'member') return '成员';
-    if (role === 'pending') return '待批准';
-    if (role === 'disabled') return '已停用';
-    return '';
   },
 
   go(e) {
