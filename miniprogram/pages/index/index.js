@@ -11,7 +11,21 @@ Page({
     role: '',
     roleText: '',
     pending: false,
-    message: ''
+    message: '',
+    // 自定义导航栏（原生导航栏放不了图片，logo 画在自己画的导航里）
+    statusBarH: 20,
+    navH: 44
+  },
+
+  onLoad() {
+    // 状态栏高度 + 胶囊按钮位置 → 自定义导航行的真实高度
+    try {
+      const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+      const caps = wx.getMenuButtonBoundingClientRect();
+      const statusBarH = win.statusBarHeight || 20;
+      const navH = Math.max((caps.top - statusBarH) * 2 + caps.height, 40);
+      this.setData({ statusBarH, navH });
+    } catch (e) { /* 取不到就用默认值 */ }
   },
 
   onShow() {

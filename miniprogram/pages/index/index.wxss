@@ -2,23 +2,28 @@
   padding: 24rpx 24rpx 40rpx;
 }
 
-/* 顶部一行式状态条：标题 + 副标 + 登录徽章，不再用大卡片 */
-.statusbar {
+/* 自定义导航栏：浅底，logo 与登录徽章同一行 */
+.nav {
+  background: #f7f7f5;
+  border-bottom: 1rpx solid #e6e4da;
+}
+
+.nav-row {
   display: flex;
   align-items: center;
   gap: 14rpx;
-  padding: 8rpx 6rpx 22rpx;
+  padding: 0 24rpx;
 }
 
-/* logo：透明底 PNG，比例约 1.05，宽 84 → 高 80 */
-.logo {
-  width: 84rpx;
-  height: 80rpx;
+/* logo：透明底 PNG，比例约 1.05，宽 88 → 高 84 */
+.nav-logo {
+  width: 88rpx;
+  height: 84rpx;
 }
 
-.statusbar .sub {
-  font-size: 26rpx;
-  color: #8a8a86;
+.nav-title {
+  font-size: 34rpx;
+  font-weight: 600;
 }
 
 .tag {
@@ -38,7 +43,7 @@
 }
 
 /* 登录徽章顶到最右 */
-.statusbar .tag {
+.nav-row .tag {
   margin-left: auto;
 }
 
