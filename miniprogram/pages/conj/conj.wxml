@@ -8,7 +8,7 @@
 
   <view class="grammar">
     <view class="g-head" bindtap="toggleGrammar">
-      <text class="g-title">动词活用速查（て形・ます形・ない形）</text>
+      <text class="g-title">动词活用速查（ます形・て形・ない形）</text>
       <text class="g-arrow">{{grammarOpen ? '收起 ▴' : '展开 ▾'}}</text>
     </view>
     <view class="g-body" wx:if="{{grammarOpen}}">
@@ -16,15 +16,15 @@
         <view class="g-tr g-trh">
           <text class="c0">词类</text>
           <text class="c1">基本形</text>
-          <text class="c2">て形</text>
           <text class="c2">ます形</text>
+          <text class="c2">て形</text>
           <text class="c2">ない形</text>
         </view>
         <view class="g-tr" wx:for="{{grammar}}" wx:for-item="r" wx:key="k">
           <text class="c0 {{r.contT ? 'cont' : ''}}">{{r.t}}</text>
           <text class="c1">{{r.tail}}</text>
-          <text class="c2">{{r.te}}</text>
           <text class="c2 {{r.contM ? 'cont' : ''}}">{{r.masu}}</text>
+          <text class="c2">{{r.te}}</text>
           <text class="c2 {{r.contN ? 'cont' : ''}}">{{r.nai}}</text>
         </view>
       </view>
