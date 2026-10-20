@@ -2,22 +2,22 @@
   padding: 24rpx 24rpx 40rpx;
 }
 
-.status .title {
-  font-size: 40rpx;
-  font-weight: 500;
-}
-
-.status .sub {
-  font-size: 26rpx;
-  color: #8a8a86;
-  margin-top: 6rpx;
-}
-
-.row {
+/* 顶部一行式状态条：标题 + 副标 + 登录徽章，不再用大卡片 */
+.statusbar {
   display: flex;
   align-items: center;
-  gap: 16rpx;
-  margin-top: 16rpx;
+  gap: 14rpx;
+  padding: 8rpx 6rpx 22rpx;
+}
+
+.statusbar .title {
+  font-size: 38rpx;
+  font-weight: 600;
+}
+
+.statusbar .sub {
+  font-size: 26rpx;
+  color: #8a8a86;
 }
 
 .tag {
@@ -36,31 +36,66 @@
   color: #854f0b;
 }
 
-.entry {
+/* 登录徽章顶到最右 */
+.statusbar .tag {
+  margin-left: auto;
+}
+
+/* 双列色块入口：width:49% + space-between（calc() 在部分机型 WebView 会退化成单列） */
+.grid {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
-  margin-top: 20rpx;
 }
 
-.entry-title {
-  font-size: 32rpx;
-  font-weight: 500;
+.tile {
+  width: 49%;
+  height: 170rpx;
+  box-sizing: border-box;
+  border-radius: 16rpx;
+  margin-bottom: 18rpx;
+  padding: 24rpx 26rpx;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10rpx;
 }
 
-.entry-desc {
-  font-size: 25rpx;
-  color: #8a8a86;
-  margin-top: 6rpx;
+.tile-title {
+  font-size: 34rpx;
+  font-weight: 600;
 }
 
-.arrow {
-  font-size: 40rpx;
-  color: #c8c8c4;
+.tile-desc {
+  font-size: 24rpx;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+/* 按下反馈：轻微压暗，让「能点」更明显 */
+.tile-press {
+  opacity: 0.82;
+}
+
+/* 每个版块一个颜色：绿=日常主打的列表复习，蓝=造句，砖红=钉子户（错词），紫=活用 */
+.t-words {
+  background: #2f6f4f;
+}
+
+.t-sentences {
+  background: #2f6fa8;
+}
+
+.t-hard {
+  background: #b4543c;
+}
+
+.t-conj {
+  background: #7a5aa0;
 }
 
 .err {
-  margin-top: 16rpx;
+  margin-bottom: 18rpx;
   font-size: 26rpx;
   color: #a32d2d;
 }

@@ -38,9 +38,10 @@ Page({
   },
 
   roleOf(role) {
+    // 顶部徽章空间小，文案要短；pending 的完整解释在 go() 的弹窗里
     if (role === 'owner') return '站点所有者';
     if (role === 'member') return '成员';
-    if (role === 'pending') return '待批准（等管理员放行）';
+    if (role === 'pending') return '待批准';
     if (role === 'disabled') return '已停用';
     return '';
   },
