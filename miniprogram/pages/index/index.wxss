@@ -2,10 +2,9 @@
   padding: 24rpx 24rpx 40rpx;
 }
 
-/* 自定义导航栏：浅底，logo 与登录徽章同一行 */
+/* 自定义导航栏：浅底，logo 与标题同一行 */
 .nav {
   background: #f7f7f5;
-  border-bottom: 1rpx solid #e6e4da;
 }
 
 .nav-row {
