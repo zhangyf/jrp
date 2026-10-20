@@ -36,7 +36,12 @@ header {
   flex-wrap: wrap;
 }
 
-.brand { font-weight: 700; letter-spacing: .05em; }
+/* 页头 logo：透明底 PNG，高度跟导航文字对齐 */
+.brand-logo {
+  height: 40px;
+  width: auto;
+  display: block;
+}
 .spacer { flex: 1; }
 .muted { color: var(--muted); font-size: 13px; }
 .hidden { display: none !important; }

@@ -10,9 +10,10 @@
   padding: 8rpx 6rpx 22rpx;
 }
 
-.statusbar .title {
-  font-size: 38rpx;
-  font-weight: 600;
+/* logo：透明底 PNG，比例约 1.05，宽 84 → 高 80 */
+.logo {
+  width: 84rpx;
+  height: 80rpx;
 }
 
 .statusbar .sub {

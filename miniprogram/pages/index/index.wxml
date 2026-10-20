@@ -1,8 +1,8 @@
 <view class="wrap">
   <!-- 顶部只留一行状态条：标题 + 登录状态，别占大块（老师 2026-10-20） -->
   <view class="statusbar">
-    <text class="title">jrp</text>
-    <text class="sub">日语每日练习</text>
+    <image class="logo" src="/images/logo.png" mode="aspectFit" />
+    <text class="sub">每日练习</text>
     <text class="tag ok" wx:if="{{logged}}">{{roleText}}</text>
     <text class="tag wait" wx:else>正在登录…</text>
   </view>
