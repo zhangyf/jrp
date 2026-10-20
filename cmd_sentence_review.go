@@ -346,3 +346,165 @@ func protoList(ss []BankSentence) []protoSuggest {
 	}
 	return out
 }
+
+// runSentenceReviewStats —— 只读体检：回炉变形句库「覆盖到哪儿了、难不难」。
+//
+// 三个问题一次答完：
+//   1. 覆盖多少词：回炉库里有多少条、锚点词去重后多少个（跟 sentence-review-todo
+//      的 qualified / covered 对得上）。
+//   2. 覆盖多少课：变形句的 lesson 分布，旁边给主句库同课的句数做对照 ——
+//      某课主句库有 30 句、变形句只有 2 句，说明那课的旧词基本还没开始回炉。
+//   3. 难不难：变形句是「原型句换一个词」来的，长度跟原型句差不多，
+//      所以句长（去空格字符数）就是现成的难度代理。跟主句库同课的平均句长
+//      放一起比，就能看出变形句是不是集中在短句/低课次（= 偏简单）。
+//
+//	jrp --lang ja sentence-review-stats
+func runSentenceReviewStats(fs *flag.FlagSet, lang string) {
+	_ = fs.Parse(cmdArgs)
+
+	storage, err := NewStorage(lang)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	ctx := context.Background()
+
+	rb, err := storage.DownloadReviewBank(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: 读取回炉句库失败：%v\n", err)
+		os.Exit(1)
+	}
+	bank, err := storage.DownloadSentenceBank(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: 读取句库失败：%v\n", err)
+		os.Exit(1)
+	}
+
+	// 主句库按课：句数 + 平均句长，用来跟变形句对照
+	type lessonStat struct {
+		Count int
+		Len   int
+	}
+	bankBy := map[int]*lessonStat{}
+	bankTotal, bankLen := 0, 0
+	for _, s := range bank.Sentences {
+		if s.Answer == "" {
+			continue
+		}
+		n := groupLesson(s.Lesson)
+		if bankBy[n] == nil {
+			bankBy[n] = &lessonStat{}
+		}
+		l := jpLen(s.Answer)
+		bankBy[n].Count++
+		bankBy[n].Len += l
+		bankTotal++
+		bankLen += l
+	}
+
+	// 回炉库按课：句数 + 平均句长 + 覆盖词数
+	revBy := map[int]*lessonStat{}
+	words := map[int]map[string]bool{}
+	revTotal, revLen := 0, 0
+	seenWord := map[string]bool{}
+	bySource := map[string]int{}
+	for _, s := range rb.Sentences {
+		if s.Answer == "" {
+			continue
+		}
+		n := groupLesson(s.Lesson)
+		if revBy[n] == nil {
+			revBy[n] = &lessonStat{}
+			words[n] = map[string]bool{}
+		}
+		l := jpLen(s.Answer)
+		revBy[n].Count++
+		revBy[n].Len += l
+		if s.Word != "" {
+			words[n][s.Word] = true
+			seenWord[s.Word] = true
+		}
+		if s.Source != "" {
+			bySource[s.Source]++
+		}
+		revTotal++
+		revLen += l
+	}
+
+	// 课号并集，升序；课号 0（解析不出来）放最后标「未标课」
+	lessons := []int{}
+	seen := map[int]bool{}
+	for n := range bankBy {
+		if !seen[n] {
+			seen[n] = true
+			lessons = append(lessons, n)
+		}
+	}
+	for n := range revBy {
+		if !seen[n] {
+			seen[n] = true
+			lessons = append(lessons, n)
+		}
+	}
+	sort.Slice(lessons, func(i, j int) bool {
+		if lessons[i] == 0 {
+			return false
+		}
+		if lessons[j] == 0 {
+			return true
+		}
+		return lessons[i] < lessons[j]
+	})
+
+	rows := make([]map[string]interface{}, 0, len(lessons))
+	for _, n := range lessons {
+		name := lessonLabel(n)
+		if n == 0 {
+			name = "未标课"
+		}
+		b, r := bankBy[n], revBy[n]
+		row := map[string]interface{}{
+			"lesson": name, "review": 0, "review_words": 0,
+			"review_avg_len": 0, "bank": 0, "bank_avg_len": 0,
+		}
+		if r != nil && r.Count > 0 {
+			row["review"] = r.Count
+			row["review_words"] = len(words[n])
+			row["review_avg_len"] = roundAcc(float64(r.Len) / float64(r.Count))
+		}
+		if b != nil && b.Count > 0 {
+			row["bank"] = b.Count
+			row["bank_avg_len"] = roundAcc(float64(b.Len) / float64(b.Count))
+		}
+		rows = append(rows, row)
+	}
+
+	avg := func(total, n int) float64 {
+		if n == 0 {
+			return 0
+		}
+		return roundAcc(float64(total) / float64(n))
+	}
+
+	outputResult(map[string]interface{}{
+		"success":  true,
+		"command":  "sentence-review-stats",
+		"language": lang,
+		"note":     "只读体检，未写入任何数据。句长=去空格后的字符数，作为难度代理（越长一般越难）。",
+		"summary": map[string]interface{}{
+			"review_sentences": revTotal,
+			"review_words":     len(seenWord),
+			"review_avg_len":   avg(revLen, revTotal),
+			"bank_sentences":   bankTotal,
+			"bank_avg_len":     avg(bankLen, bankTotal),
+			"by_source":        bySource,
+		},
+		"by_lesson": rows,
+	})
+}
+
+// jpLen 日语句子的长度：去掉半角/全角空格再数字数，作为难度代理。
+func jpLen(s string) int {
+	s = strings.NewReplacer(" ", "", "\u3000", "", "\t", "").Replace(s)
+	return len([]rune(s))
+}

@@ -38,6 +38,7 @@ Commands:
   sentence-preview  Read-only dry run: which sentences would be picked today
   judge-prompt       View / upload / reset the LLM prompt template for 造句 judgement
   sentence-review-todo  List words that qualify for 回炉 but have no transformed sentence yet
+  sentence-review-stats  Read-only: 回炉变形句库覆盖多少词/多少课、平均句长（难度代理）
   plan-config       View / change daily sentence quotas (no redeploy needed): --set / --reset
   sentence-import   Pull one lesson's sentences out of the 汇编 docs into the bank (--lesson N, --apply)
   lesson-status     One-shot check: 知识点 / 汇编 / 单词 / 句库 四件套齐不齐 (--lesson N | --all)
@@ -169,6 +170,8 @@ func main() {
 		runJudgePrompt(fs, lang)
 	case "sentence-review-todo":
 		runSentenceReviewTodo(fs, lang)
+	case "sentence-review-stats":
+		runSentenceReviewStats(fs, lang)
 	case "plan-config":
 		runPlanConfig(fs, lang)
 	case "sentence-import":
