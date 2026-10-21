@@ -157,6 +157,14 @@ func (s *server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"success": false, "error": "用户不存在了"})
 		return
 	}
+	// 冻结的人扫了也不给会话（跟 wxlogin 一个口径）。
+	if u.Role == roleDisabled {
+		dropTicket(ticket)
+		writeJSON(w, http.StatusForbidden, map[string]interface{}{
+			"success": false, "error": "账号已被冻结，找管理员开通", "role": u.Role,
+		})
+		return
+	}
 	sid := s.createSession(u, r.UserAgent())
 	setSessionCookie(w, sid)
 	dropTicket(ticket)
@@ -187,6 +195,15 @@ func (s *server) handleAuthWXLogin(w http.ResponseWriter, r *http.Request) {
 	u, err := upsertUser(r.Context(), s.storage, openid)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+	// ⚠️ 冻结是在这里生效的：不发会话，等于扫了也进不来。
+	// 光靠 withUser 里那道 403 不够 —— 那只是「能登录但用不了」，
+	// 老师要的是「冻结后就无法扫码登录」。
+	if u.Role == roleDisabled {
+		writeJSON(w, http.StatusForbidden, map[string]interface{}{
+			"success": false, "error": "账号已被冻结，找管理员开通", "role": u.Role,
+		})
 		return
 	}
 	sid := s.createSession(u, r.UserAgent())

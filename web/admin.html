@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>管理后台 · jrp</title>
+<link rel="icon" href="favicon.ico?v=2">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* 管理后台自己那一小块。不进 style.css —— 主页面的 12 个 script 不加载到这里，
+     样式混进去用不上，还容易跟主页面类名撞。 */
+  .admin-wrap { max-width: 900px; margin: 40px auto; padding: 0 18px 60px; }
+  h1 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
+  p.sub { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px 24px; }
+  .msg { min-height: 22px; font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+  .msg.err { color: var(--bad); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-size: 12px; color: var(--muted); font-weight: 500; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  tr.pending { background: var(--unknown-soft); }
+  tr.disabled td { color: var(--muted); }
+  .empty { padding: 24px 0; color: var(--muted); font-size: 13px; text-align: center; }
+
+  .badge { display: inline-block; font-size: 12px; padding: 2px 10px; border-radius: 999px; white-space: nowrap; }
+  .r-owner { background: var(--accent-soft); color: var(--accent); }
+  .r-member { background: var(--accent-soft); color: var(--accent); }
+  .r-pending { background: var(--unknown-soft); color: var(--unknown); }
+  .r-disabled { background: #efefec; color: var(--muted); }
+
+  .act { white-space: nowrap; text-align: right; }
+  .btn { border: 1px solid var(--line); background: #fff; color: var(--ink);
+         padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-left: 6px; }
+  .btn:hover { border-color: var(--muted); }
+  .btn.ok { border-color: var(--accent); color: var(--accent); }
+  .btn.warn { border-color: var(--unknown); color: var(--unknown); }
+  .btn.bad { border-color: var(--bad); color: var(--bad); }
+
+  /* 未登录时摆的扫码框，跟 login.html 同一套结构（复用 auth.js） */
+  #gate .qr-box { width: 200px; height: 200px; margin: 0 auto 14px; display: flex;
+                  align-items: center; justify-content: center; background: var(--bg);
+                  border: 1px solid var(--line); border-radius: 10px; color: var(--muted); font-size: 13px; }
+  #gate .qr-box img { width: 200px; height: 200px; display: block; }
+  #gate .status { font-size: 14px; min-height: 22px; text-align: center; }
+  #gate .status.err { color: var(--bad); }
+  #gate .status.ok { color: var(--good); }
+  #gate a.retry { color: var(--accent); text-decoration: none; border-bottom: 1px dotted currentColor; }
+  .back { margin-top: 22px; font-size: 13px; }
+  .back a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="admin-wrap">
+  <h1>管理后台</h1>
+  <p class="sub">审批新用户 · 冻结或删除账号</p>
+
+  <!-- 1. 没登录：扫码 -->
+  <div class="card" id="gate" style="display:none">
+    <div class="qr-box" id="qr"><span id="qrHint">正在生成二维码…</span></div>
+    <div class="status" id="status">&nbsp;</div>
+    <p class="sub" style="margin:12px 0 0">
+      二维码 5 分钟内有效，过期了 <a class="retry" href="#" id="retry">点这里换一张</a>。
+    </p>
+  </div>
+
+  <!-- 2. 登录了但不是 owner -->
+  <div class="card" id="denied" style="display:none">
+    <p>当前登录的是 <b class="who"></b>，不是站点所有者，进不了管理后台。</p>
+    <p class="sub">请用所有者的微信扫码登录，或者
+      <a href="#" onclick="fetch('/api/auth/logout',{credentials:'same-origin'}).then(function(){location.reload()});return false">退出当前账号</a>。</p>
+  </div>
+
+  <!-- 3. owner：用户表 -->
+  <div id="panel" style="display:none">
+    <div class="msg" id="msg"></div>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>账号</th><th>微信尾号</th><th>状态</th><th>首次登录</th><th>最近登录</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="back"><a href="/index.html">← 回到 jrp</a></p>
+</div>
+<script src="auth.js"></script>
+<script src="admin.js"></script>
+<script>jrpAdmin.boot()</script>
+</body>
+</html>

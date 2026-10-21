@@ -76,7 +76,8 @@ var jrpAuth = {
           clearInterval(jrpAuth.timer);
           jrpAuth.timer = 0;
           jrpAuth.setStatus('登录成功，正在进入…', 'ok');
-          var next = '/index.html';
+          // 登录后去哪：管理后台会把 jrpAuth.next 设成自己（默认回首页）。
+          var next = jrpAuth.next || '/index.html';
           var m = /[?&]next=([^&]+)/.exec(location.search);
           if (m) { try { next = decodeURIComponent(m[1]); } catch (e) { /* 保持默认 */ } }
           location.href = next;

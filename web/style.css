@@ -60,6 +60,18 @@ nav { display: flex; gap: 4px; flex-wrap: wrap; }
 .tab.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
 .grade-mode { font-size: 13px; color: var(--muted); }
+
+/* 管理后台入口：跟旁边的下拉框一个调子，别在页头里抢戏 */
+.admin-link {
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fff;
+}
+.admin-link:hover { color: var(--accent); border-color: var(--accent); }
 .grade-mode select, label select, label input {
   font: inherit;
   padding: 3px 6px;

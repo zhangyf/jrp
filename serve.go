@@ -97,6 +97,10 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 	mux.HandleFunc("/api/auth/me", srv.handleAuthMe)
 	mux.HandleFunc("/api/auth/logout", srv.handleAuthLogout)
 
+	// 管理后台：只有 owner 能调（见 withAdmin 的注释）。页面是 /admin.html。
+	mux.HandleFunc("/api/admin/users", srv.withAdmin(srv.handleAdminUsers))
+	mux.HandleFunc("/api/admin/user", srv.withAdmin(srv.handleAdminUser))
+
 	listen := fmt.Sprintf("%s:%d", *addr, *port)
 	authNote := "（无鉴权，仅本机）"
 	if srv.token != "" {

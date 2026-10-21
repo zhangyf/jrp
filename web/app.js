@@ -33,6 +33,7 @@ var app = {
     practice.boot();
     hard.boot();
     this.bootMiniQr();
+    this.bootAdminLink();
 
     document.getElementById('tokenSave').addEventListener('click', function () {
       self.token = document.getElementById('tokenInput').value.trim();
@@ -65,6 +66,19 @@ var app = {
       mpImg.onerror = function () { mpBlock.classList.add('hidden'); };
       mpImg.src = 'mp_qr.jpg';
     }
+  },
+
+  // 管理后台入口：只有站点所有者看得见，其他人连这个链接都不出现。
+  // 拿不到身份（没登录 / 服务端没开登录）就整个不显示 —— 不留一个点了报错的链接。
+  bootAdminLink: function () {
+    var a = document.getElementById('adminLink');
+    if (!a) return;
+    fetch('/api/auth/me', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (j && j.success && j.is_owner) a.classList.remove('hidden');
+      })
+      .catch(function () { /* 拿不到身份就不显示 */ });
   },
 
   go: function (page) {

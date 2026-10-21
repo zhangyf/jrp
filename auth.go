@@ -293,6 +293,32 @@ func (s *server) loadSession(sid string) (*session, bool) {
 	return sess, true
 }
 
+// destroySessionsForUID 踢掉某人的所有会话（冻结 / 删号时用）。
+//
+// COS 上按 sid 存对象，没法按 uid 反查，所以这里只清内存表；落在 COS 上的那几份
+// 会在 sidTTL 之后自然过期，而被冻结的账号本来就在 withUser 里被拒，
+// 不会有实际风险。真要较真就等会话过期，不值得为这个再建一张索引。
+func (s *server) destroySessionsForUID(uid string) {
+	sessions.Lock()
+	doomed := make([]string, 0, 4)
+	for sid, sess := range sessions.m {
+		if sess.UID == uid {
+			doomed = append(doomed, sid)
+			delete(sessions.m, sid)
+		}
+	}
+	sessions.Unlock()
+	if len(doomed) == 0 {
+		return
+	}
+	st := s.storage
+	go func() {
+		for _, sid := range doomed {
+			_ = st.DeleteSession(context.Background(), sid)
+		}
+	}()
+}
+
 // 小程序凭证只从环境变量读：COS 上的对象是明文，secret 放进去等于账号体系被接管。
 // 服务器写在 /etc/jrp/jrp.env（chmod 600），由 jrp.service 的 EnvironmentFile 带进来。
 var (

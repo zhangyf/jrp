@@ -21,7 +21,7 @@ func runUser(fs *flag.FlagSet, lang string) {
 	_ = fs.Parse(cmdArgs)
 	args := fs.Args()
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: 需要子命令：list | approve <uid> | set-role <uid> <role> | disable <uid> | rename <uid> <名字>")
+		fmt.Fprintln(os.Stderr, "Error: 需要子命令：list | approve <uid> | set-role <uid> <role> | disable <uid> | rename <uid> <名字> | delete <uid>")
 		os.Exit(1)
 	}
 
@@ -52,7 +52,7 @@ func runUser(fs *flag.FlagSet, lang string) {
 			"note": "还没人扫码登录过就是空的；第一个登录的人自动是 owner",
 		})
 		return
-	case "approve", "set-role", "disable", "rename":
+	case "approve", "set-role", "disable", "rename", "delete":
 		if len(args) < 2 {
 			fmt.Fprintf(os.Stderr, "Error: %s 需要 <uid>\n", args[0])
 			os.Exit(1)
@@ -85,6 +85,24 @@ func runUser(fs *flag.FlagSet, lang string) {
 				os.Exit(1)
 			}
 			u.Name = strings.Join(args[2:], " ")
+		case "delete":
+			// 只删账号，users/<uid>/ 下的学习数据保留 —— 误删还能把人加回来接着用。
+			// ⚠️ owner（uid 为空）删不得：删了就没人能再批准任何人，只能上服务器改 COS。
+			if u.UID == "" {
+				fmt.Fprintln(os.Stderr, "Error: 不能删除站点所有者")
+				os.Exit(1)
+			}
+			users = removeUser(users, uid)
+			if err := storage.SaveUsers(ctx, users); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: 写回失败：%v\n", err)
+				os.Exit(1)
+			}
+			outputResult(map[string]interface{}{
+				"success": true, "command": "user", "language": lang,
+				"uid": uid, "action": "delete",
+				"next_step": "账号已删除，学习数据保留；他再用微信扫会重新变成待批准",
+			})
+			return
 		}
 		u.LastLogin = time.Now().Format("2006-01-02 15:04:05")
 		for i := range users {
