@@ -36,11 +36,42 @@ header {
   flex-wrap: wrap;
 }
 
-/* 页头 logo：透明底 PNG，高度跟导航文字对齐 */
+/* 页头 logo：透明底 PNG，高度跟导航文字对齐。
+   它同时是小程序码 / 公众号的开关 —— 带 hover 底色和小箭头，让人看得出能点。 */
 .brand-logo {
   height: 40px;
   width: auto;
   display: block;
+}
+
+.brand-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  margin: -4px 0 -4px -8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background .18s ease;
+}
+.brand-toggle:hover { background: var(--accent-soft); }
+.brand-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.brand-toggle[aria-expanded="true"] { background: var(--accent-soft); }
+
+/* 展开指示：一个朝下的小三角，展开时转 180° */
+.brand-caret {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--muted);
+  transition: transform .2s ease;
+}
+.brand-toggle[aria-expanded="true"] .brand-caret {
+  transform: rotate(180deg);
+  border-top-color: var(--accent);
 }
 .spacer { flex: 1; }
 .muted { color: var(--muted); font-size: 13px; }
@@ -590,14 +621,13 @@ details[open] summary { margin-bottom: 10px; }
   color: #2a5a86;
 }
 
-/* ---- 左侧常驻小程序码 ----
-   position:fixed + transform 居中，页面怎么滚它都不动。
-   main 是 860px 居中，屏幕窄到两侧塞不下就整体隐藏，绝不压住练习内容。 */
+/* ---- 小程序码 / 公众号：收进页头 logo，点开才露出来 ----
+   绝对定位挂在 header 下沿（header 是 sticky，所以滚动时它一直贴着页头）。
+   展开/收起走 opacity + 位移 + 轻微缩放，别用 display —— display 不能过渡。 */
 .mini-dock {
-  position: fixed;
-  left: 18px;
-  top: 50%;
-  transform: translateY(-50%);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 12px;
   z-index: 40;
   width: 152px;
   padding: 12px 12px 10px;
@@ -606,6 +636,20 @@ details[open] summary { margin-bottom: 10px; }
   border-radius: 12px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, .07);
   text-align: center;
+
+  opacity: 0;
+  transform: translateY(-8px) scale(.97);
+  transform-origin: top left;
+  pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease;
+}
+.mini-dock.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mini-dock { transition: none; }
 }
 .mini-dock-block + .mini-dock-block {
   margin-top: 12px;
@@ -615,5 +659,8 @@ details[open] summary { margin-bottom: 10px; }
 .mini-dock-title { font-size: 13px; font-weight: 600; color: var(--accent); }
 .mini-dock img { display: block; width: 126px; height: 126px; margin: 6px auto 4px; }
 .mini-dock-tip { font-size: 11px; color: var(--muted); }
-/* 容器变宽了，隐藏门槛跟着提高：屏幕窄到两侧放不下就整体不显示 */
-@media (max-width: 1280px) { .mini-dock { display: none; } }
+/* 收进 logo 之后不再占版面，窄屏也能用，只是面板收窄一点 */
+@media (max-width: 640px) {
+  .mini-dock { width: 132px; left: 8px; }
+  .mini-dock img { width: 108px; height: 108px; }
+}

@@ -33,6 +33,7 @@ var app = {
     practice.boot();
     hard.boot();
     this.bootMiniQr();
+    this.bootBrandToggle();
     this.bootAdminLink();
 
     document.getElementById('tokenSave').addEventListener('click', function () {
@@ -66,6 +67,38 @@ var app = {
       mpImg.onerror = function () { mpBlock.classList.add('hidden'); };
       mpImg.src = 'mp_qr.jpg';
     }
+  },
+
+  // 页头 logo 当开关：点一下把小程序码 / 公众号展开，再点收回去。
+  // 两个码都拿不到时 dock 还是 hidden（bootMiniQr 不会摘掉它），点了没反应，
+  // 别给出「点了什么都出不来」的错觉。
+  bootBrandToggle: function () {
+    var btn = document.getElementById('brandToggle');
+    var dock = document.getElementById('miniQrDock');
+    if (!btn || !dock) return;
+
+    var setOpen = function (open) {
+      dock.classList.toggle('open', open);
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (dock.classList.contains('hidden')) return;
+      setOpen(!dock.classList.contains('open'));
+    });
+
+    // 点页面别处收起（面板内和 logo 上除外）
+    document.addEventListener('click', function (e) {
+      if (!dock.classList.contains('open')) return;
+      if (dock.contains(e.target) || btn.contains(e.target)) return;
+      setOpen(false);
+    });
+
+    // ESC 收起
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' || e.key === 'Esc') setOpen(false);
+    });
   },
 
   // 管理后台入口：只有 owner 看得见，其他人连这个链接都不出现。
