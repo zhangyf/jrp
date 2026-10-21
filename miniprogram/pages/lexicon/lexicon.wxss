@@ -1,0 +1,160 @@
+.wrap {
+  padding: 20rpx 24rpx 60rpx;
+}
+
+.loading, .err, .empty, .more {
+  padding: 28rpx 0;
+  text-align: center;
+  font-size: 26rpx;
+  color: #8a8a80;
+}
+.err { color: #b4392f; }
+.more.end { color: #b0b0a6; }
+
+/* 搜索框：原生 input 的 width/height 必须显式给，别指望默认值 */
+.search {
+  width: 100%;
+  height: 72rpx;
+  box-sizing: border-box;
+  padding: 0 20rpx;
+  background: #ffffff;
+  border: 1rpx solid #e6e4da;
+  border-radius: 10rpx;
+  font-size: 28rpx;
+}
+
+.picks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16rpx;
+}
+.pick {
+  width: 31%;
+  height: 64rpx;
+  line-height: 64rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #6a6a60;
+  background: #ffffff;
+  border: 1rpx solid #e6e4da;
+  border-radius: 10rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pick.on {
+  color: #2f6f4f;
+  border-color: #2f6f4f;
+  background: #e7f1ea;
+}
+
+.count {
+  margin-top: 14rpx;
+  font-size: 24rpx;
+  color: #8a8a80;
+}
+.count .n { color: #23231f; font-weight: 600; }
+.count .reset {
+  float: right;
+  color: #2f6f4f;
+}
+
+.list { margin-top: 18rpx; }
+
+.row {
+  background: #ffffff;
+  border: 1rpx solid #e6e4da;
+  border-radius: 12rpx;
+  padding: 20rpx 22rpx;
+  margin-bottom: 16rpx;
+}
+.row.open { border-color: #2f6f4f; }
+
+.rline {
+  display: flex;
+  align-items: center;
+}
+.dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  margin-right: 12rpx;
+  flex-shrink: 0;
+  background: #cfcfc6;
+}
+.dot.st-ok { background: #2f6f4f; }
+.dot.st-mid { background: #c99a2e; }
+.dot.st-bad { background: #b4392f; }
+.dot.st-new { background: #9a9a90; }
+
+.word {
+  flex: 1;
+  font-size: 32rpx;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.word .kanji {
+  font-size: 26rpx;
+  font-weight: 400;
+  color: #6a6a60;
+}
+
+.pos {
+  font-size: 24rpx;
+  color: #8a8a80;
+  flex-shrink: 0;
+  margin-left: 12rpx;
+}
+.pos .sub { color: #a0a096; }
+
+.rline2 {
+  display: flex;
+  align-items: center;
+  margin-top: 8rpx;
+}
+.def {
+  flex: 1;
+  font-size: 27rpx;
+  color: #3a3a35;
+}
+/* 语法注释（さん（敬称）里的「敬称」）—— 灰色小字，别跟释义混在一起 */
+.nt {
+  font-size: 24rpx;
+  color: #9a9a90;
+  flex-shrink: 0;
+  margin-left: 6rpx;
+}
+.st {
+  font-size: 22rpx;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  flex-shrink: 0;
+  margin-left: 12rpx;
+  background: #efefec;
+  color: #6a6a60;
+}
+.st.st-ok { background: #e7f1ea; color: #2f6f4f; }
+.st.st-mid { background: #fdf1e3; color: #854f0b; }
+.st.st-bad { background: #fbeceb; color: #b4392f; }
+
+.detail {
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx dashed #e6e4da;
+}
+.dl {
+  display: flex;
+  justify-content: space-between;
+  font-size: 25rpx;
+  line-height: 1.9;
+  color: #6a6a60;
+}
+.dl text:last-child { color: #23231f; }
+.dnote {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  color: #8a8a80;
+  line-height: 1.6;
+}

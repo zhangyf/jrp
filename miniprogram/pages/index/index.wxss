@@ -80,6 +80,25 @@
   background: #7a5aa0;
 }
 
+/* 词汇总表：整行 + 中性墨蓝，跟上面四个练习色块不是一类东西 */
+.tile-wide {
+  width: 100%;
+  height: 132rpx;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.t-lex {
+  background: #3f5a70;
+}
+
+.tile-go {
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.82);
+  flex-shrink: 0;
+}
+
 .err {
   margin-bottom: 18rpx;
   font-size: 26rpx;

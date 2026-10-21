@@ -4,6 +4,7 @@
     "pages/practice/practice",
     "pages/sentences/sentences",
     "pages/conj/conj",
+    "pages/lexicon/lexicon",
     "pages/stats/stats",
     "pages/login/login"
   ],
