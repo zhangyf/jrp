@@ -99,6 +99,40 @@ func llmMarkResult(model string, ok bool, now time.Time) {
 
 // ---------- 切换 ----------
 
+// llmChat 通用的「问模型一句话」，按「主 → 备」顺序问，返回原文和生效的模型名。
+//
+// 跟 judgeWithFallback 的区别：那边要对答句做判定 JSON 解析，这边只要原文
+// （查中文释义这类用途），解析交给调用方。冷却和失败留痕两边共用。
+func llmChat(cfg llmConfig, prompt string) (string, string, error) {
+	order := append([]string{cfg.Model}, cfg.Fallback...)
+	var lastErr error
+	tried := 0
+	for _, m := range order {
+		now := time.Now()
+		if llmSkipModel(m, now) {
+			continue
+		}
+		tried++
+		c := cfg
+		c.Model = m
+		reply, err := callLLM(c, prompt)
+		if err == nil && strings.TrimSpace(reply) != "" {
+			llmMarkResult(m, true, now)
+			return strings.TrimSpace(reply), m, nil
+		}
+		lastErr = err
+		llmMarkResult(m, false, now)
+		log.Printf("llm-chat: 模型 %s 失败：%v", m, err)
+	}
+	if tried == 0 {
+		return "", "", errors.New("所有模型都在冷却中")
+	}
+	if lastErr == nil {
+		lastErr = errors.New("模型返回空内容")
+	}
+	return "", "", lastErr
+}
+
 // judgeWithFallback 按「主 → 备」顺序问，谁答得出来用谁。
 // 返回实际生效的模型名，写进响应里便于排查 —— 老师问「现在用的是哪个」时能一眼看到。
 // 全部失败返回 error，调用方退回字面判定。

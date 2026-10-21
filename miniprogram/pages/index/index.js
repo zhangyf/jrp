@@ -69,8 +69,6 @@ Page({
       wx.navigateTo({ url: '/pages/conj/conj' });
     } else if (mode === 'lexicon') {
       wx.navigateTo({ url: '/pages/lexicon/lexicon' });
-    } else if (mode === 'addword') {
-      wx.navigateTo({ url: '/pages/addword/addword' });
     } else {
       wx.navigateTo({ url: '/pages/practice/practice?mode=' + (mode || 'words') });
     }

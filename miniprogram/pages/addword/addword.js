@@ -5,62 +5,48 @@
 //
 // 加词的实现在服务端 words_add.go，跟 CLI 的 add-words 是同一份：
 // 重复词会跳过，中文释义撞车会在结果里点名（不阻断）。
+//
+// ⚠️ 两个「不用你填」的设计（2026-10-21 老师要求）：
+//   ① 不选课 —— 词不一定属于哪一课，服务端落「未分组」，出题时照样会被练到
+//      （出题遍历所有组，不按课过滤）。
+//   ② 不填中文 —— 服务端 POST /api/word-def 自己查（先查档案，再问模型）。
 
 const app = getApp();
 
-// 课按数字排：「第10课」要在「第2课」后面
-function lessonNo(s) {
-  const m = /(\d+)/.exec(s || '');
-  return m ? +m[1] : 9999;
-}
-
 Page({
   data: {
-    groups: ['未分组'],
-    groupIndex: 0,
-
     word: '',
-    def: '',
 
-    pending: [], // 待录入：{ word, def }
+    pending: [], // 待录入：{ word, def, editing }
     cands: [],   // OCR 候选：{ word, def, raw, checked }
 
     ocrBusy: false,
     ocrNote: '',
+    looking: false,
     saving: false,
     result: null // { added, duplicates, dup_definitions[], dup_core_definitions[] }
   },
 
-  onLoad() {
-    if (!app.globalData.logged) {
-      app.login(() => this.boot());
-    } else {
-      this.boot();
+  onShow() {
+    // 自定义 tabBar 每个页面各一份实例，切回来时要告诉它「现在是我在前面」
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ selected: 2 });
     }
   },
 
-  boot() {
-    // 课的下拉复用 /api/lexicon 的 groups（跟词汇总表同一份，不会多出口径）
-    app.request('/api/lexicon', 'GET', {}, true)
-      .then((res) => {
-        const gs = (res.groups || []).slice().sort((a, b) => lessonNo(a) - lessonNo(b));
-        this.setData({ groups: ['未分组'].concat(gs) });
-      })
-      .catch(() => { /* 拿不到就用「未分组」，不挡录入 */ });
-  },
-
-  onGroup(e) { this.setData({ groupIndex: +e.detail.value }); },
   onWord(e) { this.setData({ word: e.detail.value }); },
-  onDef(e) { this.setData({ def: e.detail.value }); },
 
+  // 手打：只写词形，中文让服务端查
   addManual() {
     const word = (this.data.word || '').trim();
-    const def = (this.data.def || '').trim();
     if (!word) { wx.showToast({ title: '先写词形', icon: 'none' }); return; }
-    if (!def) { wx.showToast({ title: '写一下中文意思', icon: 'none' }); return; }
-    this.setData({
-      pending: this.data.pending.concat([{ word: word, def: def }]),
-      word: '', def: ''
+    this.setData({ word: '', looking: true });
+    this.lookup([word], (defs) => {
+      this.setData({ looking: false });
+      this.pushPending([{ word: word, def: defs[word] || '' }]);
+      if (!defs[word]) {
+        wx.showToast({ title: '没查到中文，点条目补一下', icon: 'none' });
+      }
     });
   },
 
@@ -69,6 +55,17 @@ Page({
     const pending = this.data.pending.slice();
     pending.splice(i, 1);
     this.setData({ pending: pending });
+  },
+
+  // 列表里直接改中文：查不到 / 查得不准时不用删了重录
+  editDef(e) {
+    const i = +e.currentTarget.dataset.index;
+    this.setData({ ['pending[' + i + '].def']: e.detail.value });
+  },
+
+  toggleEdit(e) {
+    const i = +e.currentTarget.dataset.index;
+    this.setData({ ['pending[' + i + '].editing']: !this.data.pending[i].editing });
   },
 
   // 拍照 / 相册：一次最多 9 张，服务端逐张 OCR，认出来的行切成候选词
@@ -145,34 +142,72 @@ Page({
       .map((c) => ({ word: (c.word || '').trim(), def: (c.def || '').trim() }));
     if (!picked.length) { wx.showToast({ title: '先勾几个', icon: 'none' }); return; }
 
-    const seen = {};
-    this.data.pending.forEach((p) => { seen[p.word] = 1; });
-    const merged = this.data.pending.slice();
-    picked.forEach((p) => { if (!seen[p.word]) { seen[p.word] = 1; merged.push(p); } });
-
-    this.setData({ pending: merged, cands: [] });
-    wx.showToast({ title: '已加入 ' + merged.length + ' 条', icon: 'none' });
+    // OCR 没切出中文的那些，一并让服务端查
+    const need = picked.filter((p) => !p.def).map((p) => p.word);
+    const self = this;
+    const done = (defs) => {
+      picked.forEach((p) => { if (!p.def && defs[p.word]) p.def = defs[p.word]; });
+      self.setData({ looking: false });
+      self.pushPending(picked);
+      self.setData({ cands: [] });
+    };
+    if (!need.length) { done({}); return; }
+    this.setData({ looking: true });
+    this.lookup(need, done);
   },
 
   clearCands() { this.setData({ cands: [] }); },
 
+  // 合并进待录列表：同一个词不重复加（列表里已有的保留先加的那条）
+  pushPending(items) {
+    const seen = {};
+    const merged = this.data.pending.slice();
+    merged.forEach((p) => { seen[p.word] = 1; });
+    items.forEach((p) => {
+      if (seen[p.word]) return;
+      seen[p.word] = 1;
+      merged.push({ word: p.word, def: p.def || '', editing: !p.def });
+    });
+    this.setData({ pending: merged });
+  },
+
+  // 查中文：先档案后模型，全在服务端（保证跟复习时看到的中文是同一份）
+  lookup(words, cb) {
+    const self = this;
+    app.request('/api/word-def', 'POST', { words: words }, true)
+      .then((r) => cb(r.defs || {}))
+      .catch(() => { self.setData({ looking: false }); cb({}); });
+  },
+
   submit() {
     const n = this.data.pending.length;
     if (!n) { wx.showToast({ title: '还没有要录的词', icon: 'none' }); return; }
-    const group = this.data.groups[this.data.groupIndex] || '未分组';
+    const noDef = this.data.pending.filter((p) => !p.def).length;
+    const self = this;
+    if (noDef) {
+      wx.showModal({
+        title: '有 ' + noDef + ' 个词还没中文',
+        content: '没中文意思复习时没法出题。要继续录吗？',
+        success(r) { if (r.confirm) self.askSubmit(n); }
+      });
+      return;
+    }
+    this.askSubmit(n);
+  },
+
+  askSubmit(n) {
     const self = this;
     wx.showModal({
       title: '录入 ' + n + ' 个词',
-      content: '加进「' + group + '」。录完会生成一份新档案，旧的还在。',
-      success(r) { if (r.confirm) self.doSubmit(group); }
+      content: '会生成一份新档案，旧的还在。',
+      success(r) { if (r.confirm) self.doSubmit(); }
     });
   },
 
-  doSubmit(group) {
-    const self = this;
+  doSubmit() {
     const items = this.data.pending.map((p) => ({ word: p.word, def: p.def }));
     this.setData({ saving: true });
-    app.request('/api/words', 'POST', { group: group, items: items }, true)
+    app.request('/api/words', 'POST', { items: items }, true)
       .then((r) => {
         this.setData({
           saving: false,

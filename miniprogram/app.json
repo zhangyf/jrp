@@ -24,7 +24,8 @@
     "borderStyle": "black",
     "list": [
       { "pagePath": "pages/index/index", "text": "练习" },
-      { "pagePath": "pages/stats/stats", "text": "统计" }
+      { "pagePath": "pages/stats/stats", "text": "统计" },
+      { "pagePath": "pages/addword/addword", "text": "录入" }
     ]
   },
   "style": "v2",

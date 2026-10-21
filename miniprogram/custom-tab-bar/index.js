@@ -5,7 +5,10 @@
 // tabBar（app.json 里 "custom": true + 根目录 custom-tab-bar/）。
 //
 // ⚠️ 自定义 tabBar 每个 tab 页各有一份实例，切页后不会自己知道该高亮哪个
-// → 每个 tab 页的 onShow 里必须调 getTabBar().setData({ selected })（见 index.js / stats.js）。
+// → 每个 tab 页的 onShow 里必须调 getTabBar().setData({ selected })
+//   （见 index.js / stats.js / addword.js）。
+//
+// 「录入」是工具不是练习，所以放这里而不是首页色块（2026-10-21 老师要求）。
 // ⚠️ list 仍要在 app.json 的 tabBar 里写一份，wx.switchTab 靠它校验合法页面。
 
 Component({
@@ -13,7 +16,8 @@ Component({
     selected: 0,
     list: [
       { pagePath: '/pages/index/index', text: '练习' },
-      { pagePath: '/pages/stats/stats', text: '统计' }
+      { pagePath: '/pages/stats/stats', text: '统计' },
+      { pagePath: '/pages/addword/addword', text: '录入' }
     ]
   },
 

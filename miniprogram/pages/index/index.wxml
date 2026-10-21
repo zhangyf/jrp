@@ -27,14 +27,11 @@
       <view class="tile-title">活用练习</view>
       <view class="tile-desc">变形 · 只练不计档</view>
     </view>
-    <!-- 这两个是「查」和「录」，不是练，用中性色跟上面四个练习色块区分开；尺寸沿用 .tile -->
+    <!-- 词汇总表是查不是练，用中性色跟上面四个练习色块区分开；尺寸沿用 .tile。
+         录入新词不在这里 —— 它是工具，跟练习/统计一起放在底部导航。 -->
     <view class="tile t-lex" data-mode="lexicon" bindtap="go" hover-class="tile-press">
       <view class="tile-title">词汇总表</view>
       <view class="tile-desc">查词 · 看掌握情况</view>
-    </view>
-    <view class="tile t-add" data-mode="addword" bindtap="go" hover-class="tile-press">
-      <view class="tile-title">录入新词</view>
-      <view class="tile-desc">手打 · 拍照取词</view>
     </view>
   </view>
 </view>

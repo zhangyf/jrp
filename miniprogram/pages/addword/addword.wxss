@@ -1,5 +1,6 @@
+/* 底部 180rpx 给自定义 tabBar（108rpx + 安全区），它 fixed 在底部不占位 */
 .wrap {
-  padding: 24rpx 24rpx 60rpx;
+  padding: 24rpx 24rpx 180rpx;
 }
 
 .sec {
@@ -153,15 +154,33 @@
   padding: 14rpx 0;
   border-bottom: 1rpx solid #f1f1ed;
 }
+.p-l {
+  flex: 1;
+  min-width: 0;
+}
 .p-w {
-  width: 40%;
   font-size: 29rpx;
   font-weight: 600;
 }
 .p-d {
-  flex: 1;
   font-size: 26rpx;
   color: #6a6a60;
+  margin-top: 2rpx;
+}
+
+.ipt.tiny {
+  height: 60rpx;
+  font-size: 25rpx;
+  margin-top: 8rpx;
+  margin-bottom: 0;
+}
+
+.p-e {
+  width: 72rpx;
+  text-align: center;
+  font-size: 25rpx;
+  color: #2f6f4f;
+  flex-shrink: 0;
 }
 .p-x {
   width: 48rpx;

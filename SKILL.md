@@ -1354,13 +1354,21 @@ for **active flashcard-style review** — one word at a time, answer by keyboard
   the latest is from a previous day; uploads the plan JSON so `record` can resolve numbers)
 - `POST /api/record` — applies results (same logic as CLI `record`), bumps version, uploads archive
 - `GET /api/conjugation?type=verb|adj&count=N` — 活用练习题（见下节）
-- `POST /api/words` — 录入新词（2026-10-21 加，给小程序的「录入新词」用）：
-  `{"group":"第8课 生词表","items":[{"word":"みず(水)","def":"水"}]}`
+- `POST /api/words` — 录入新词（2026-10-21 加，给小程序的「录入」用）：
+  `{"items":[{"word":"みず(水)","def":"水"}]}`（`group` 可省略，省略落「未分组」）
   → `{"success":true,"added":1,"duplicates":0,"version":"v1.5","total_words":931,
   "dup_definitions":[…],"dup_core_definitions":[…]}`。
   **跟 CLI `add-words` 共用 `words_add.go` 一份实现**（重复词跳过、中文释义撞车点名、
-  20 词以上跳大版本）。撞车只点名不阻断 —— 录完要看 `dup_definitions`。
-  空 group 落到「未分组」，一次最多 200 词。
+  20 词以上跳大版本）。撞车只点名不阻断 —— 录完要看 `dup_definitions`。一次最多 200 词。
+  ⚠️ **不要求选课**：老师说词不一定属于哪一课。出题是 `AllWords()` 遍历所有组、
+  不按课过滤，所以「未分组」里的词照样会被练到。
+- `POST /api/word-def` — 查中文意思（2026-10-21 加，录入时不用手打释义）：
+  `{"words":["みず(水)","たべもの"]}` → `{"success":true,"enabled":true,
+  "defs":{"みず(水)":"水"},"missing":["たべもの"]}`。
+  **两条来源，按顺序**：① **档案里已有这个词 → 直接用它的释义**（最准、不要钱，
+  且保证跟复习时看到的中文是同一份 —— 同一个词两处释义不一样等于白练）② 剩下的问模型。
+  ⚠️ 模型没配（`JRP_LLM_*`）不是错误：返回 `enabled:false` + 档案里查到的那部分，
+  前端把缺的留在列表里让老师补。一次最多 60 词。
 - `POST /api/ocr` — 拍照取词（2026-10-21 加）：`{"images":[base64...]}`（最多 9 张、每张 ≤6MB）
   → `{"success":true,"enabled":true,"candidates":[{"word":"みず(水)","def":"水","raw":"…"}]}`。
   调腾讯云 `GeneralBasicOCR`（`LanguageType=jap`），签名是手写的 TC3-HMAC-SHA256
@@ -1517,9 +1525,10 @@ location /api/                                 { auth_basic off; proxy_pass http
 | 活用练习 | `pages/conj` | `/api/conjugation?type=verb\|verb_nai\|adj` | **不落**（只练不计档，跟网页端一致） |
 | 统计 | `pages/stats` | `/api/stats?days=7\|30\|90` | 只读 |
 | 词汇总表 | `pages/lexicon` | `/api/lexicon`（全量拉一次，本地搜） | 只读 |
-| 录入新词 | `pages/addword` | `/api/ocr`（取词）→ `/api/words`（写入） | **落**，写新档案 |
+| 录入新词 | `pages/addword` | `/api/ocr`（取词）→ `/api/word-def`（查中文）→ `/api/words`（写入） | **落**，写新档案 |
 
-tabBar 只有「练习 / 统计」两项。
+tabBar 三项：**练习 / 统计 / 录入**。
+⚠️ 「录入」是工具不是练习 —— 老师 2026-10-21 明确要求不放首页色块，跟练习、统计并列在底部。
 
 ⚠️ **tabBar 是自定义的**（2026-10-21）：原生 tabBar 的 `app.json` 只有
 `color` / `selectedColor` / `backgroundColor` / `borderStyle`，**没有 fontSize**，
