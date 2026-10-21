@@ -1,0 +1,38 @@
+/* 自定义底部导航。
+   ⚠️ 自定义 tabBar 不占位（跟原生不一样），是 fixed 在底部的 →
+   每个 tab 页必须自己留 padding-bottom，否则最后一块内容被压在下面。 */
+
+.tab-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 108rpx;
+  background: #ffffff;
+  border-top: 1rpx solid #e6e4da;
+  display: flex;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tab-bar-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 原生是 20rpx 左右，这里放到 34rpx */
+.tab-text {
+  font-size: 34rpx;
+  color: #8a8a86;
+}
+
+.tab-bar-item.on .tab-text {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #2f6f4f;
+}
+
+.tab-press {
+  opacity: 0.6;
+}

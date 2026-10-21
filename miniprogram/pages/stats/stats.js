@@ -74,6 +74,10 @@ Page({
   },
 
   onShow() {
+    // 自定义 tabBar 每个页面各一份实例，切回来时要告诉它「现在是我在前面」
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ selected: 1 });
+    }
     // 从练习页返回时刷新一次，刚练完的数字才对得上
     if (!this.data.loading) this.load();
   },

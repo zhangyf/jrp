@@ -1,0 +1,208 @@
+.wrap {
+  padding: 24rpx 24rpx 60rpx;
+}
+
+.sec {
+  background: #ffffff;
+  border: 1rpx solid #e2e2dd;
+  border-radius: 16rpx;
+  padding: 28rpx;
+  margin-bottom: 24rpx;
+}
+
+.sec-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  margin-bottom: 18rpx;
+}
+
+.sec-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sec-row .sec-title { margin-bottom: 18rpx; }
+
+.mini {
+  font-size: 25rpx;
+  color: #2f6f4f;
+  flex-shrink: 0;
+}
+
+/* 原生 input 的宽高必须显式给 */
+.ipt {
+  width: 100%;
+  height: 80rpx;
+  box-sizing: border-box;
+  padding: 0 20rpx;
+  margin-bottom: 16rpx;
+  background: #fbfbfa;
+  border: 1rpx solid #e6e4da;
+  border-radius: 10rpx;
+  font-size: 29rpx;
+}
+.ipt.sm {
+  height: 68rpx;
+  font-size: 27rpx;
+  margin-bottom: 0;
+}
+
+.sel {
+  height: 76rpx;
+  line-height: 76rpx;
+  padding: 0 20rpx;
+  background: #fbfbfa;
+  border: 1rpx solid #e6e4da;
+  border-radius: 10rpx;
+  font-size: 29rpx;
+  color: #2f6f4f;
+}
+
+.btn {
+  margin-top: 8rpx;
+  height: 84rpx;
+  line-height: 84rpx;
+  text-align: center;
+  background: #2f6f4f;
+  color: #ffffff;
+  border-radius: 12rpx;
+  font-size: 30rpx;
+}
+.btn.sm {
+  height: 72rpx;
+  line-height: 72rpx;
+  font-size: 28rpx;
+  margin-top: 16rpx;
+}
+.btn.ghost {
+  background: #ffffff;
+  color: #2f6f4f;
+  border: 1rpx solid #2f6f4f;
+}
+
+.row-btn {
+  display: flex;
+  justify-content: space-between;
+}
+.row-btn .btn.sm {
+  width: 48%;
+}
+
+.note {
+  margin-top: 14rpx;
+  font-size: 24rpx;
+  color: #8a8a80;
+  line-height: 1.6;
+}
+
+/* 候选词：勾上的绿边，没勾的灰着 */
+.cand {
+  border: 1rpx solid #e6e4da;
+  border-radius: 12rpx;
+  padding: 18rpx 20rpx;
+  margin-bottom: 16rpx;
+}
+.cand.on {
+  border-color: #2f6f4f;
+  background: #f4f9f6;
+}
+
+.c-head {
+  display: flex;
+  align-items: center;
+}
+.box {
+  width: 36rpx;
+  height: 36rpx;
+  line-height: 34rpx;
+  text-align: center;
+  border: 1rpx solid #b8bfb8;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+  color: #ffffff;
+  background: #ffffff;
+  flex-shrink: 0;
+  margin-right: 14rpx;
+}
+.cand.on .box {
+  background: #2f6f4f;
+  border-color: #2f6f4f;
+}
+.c-raw {
+  font-size: 25rpx;
+  color: #8a8a80;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.c-edit {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 14rpx;
+}
+.c-edit .ipt.sm {
+  width: 48%;
+}
+
+/* 待录列表 */
+.pend {
+  display: flex;
+  align-items: center;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid #f1f1ed;
+}
+.p-w {
+  width: 40%;
+  font-size: 29rpx;
+  font-weight: 600;
+}
+.p-d {
+  flex: 1;
+  font-size: 26rpx;
+  color: #6a6a60;
+}
+.p-x {
+  width: 48rpx;
+  text-align: center;
+  font-size: 32rpx;
+  color: #b4392f;
+  flex-shrink: 0;
+}
+
+/* 结果页 */
+.result {
+  background: #ffffff;
+  border: 1rpx solid #e2e2dd;
+  border-radius: 16rpx;
+  padding: 32rpx;
+}
+.r-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #2f6f4f;
+  margin-bottom: 12rpx;
+}
+.r-line {
+  font-size: 27rpx;
+  color: #3a3a35;
+  line-height: 1.8;
+}
+.r-line .n { font-weight: 600; }
+.r-warn {
+  margin-top: 20rpx;
+  padding-top: 18rpx;
+  border-top: 1rpx dashed #e6e4da;
+}
+.w-t {
+  font-size: 25rpx;
+  color: #b4392f;
+  font-weight: 600;
+}
+.w-i {
+  font-size: 24rpx;
+  color: #6a6a60;
+  line-height: 1.7;
+  margin-top: 6rpx;
+}

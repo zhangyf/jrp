@@ -1354,6 +1354,20 @@ for **active flashcard-style review** — one word at a time, answer by keyboard
   the latest is from a previous day; uploads the plan JSON so `record` can resolve numbers)
 - `POST /api/record` — applies results (same logic as CLI `record`), bumps version, uploads archive
 - `GET /api/conjugation?type=verb|adj&count=N` — 活用练习题（见下节）
+- `POST /api/words` — 录入新词（2026-10-21 加，给小程序的「录入新词」用）：
+  `{"group":"第8课 生词表","items":[{"word":"みず(水)","def":"水"}]}`
+  → `{"success":true,"added":1,"duplicates":0,"version":"v1.5","total_words":931,
+  "dup_definitions":[…],"dup_core_definitions":[…]}`。
+  **跟 CLI `add-words` 共用 `words_add.go` 一份实现**（重复词跳过、中文释义撞车点名、
+  20 词以上跳大版本）。撞车只点名不阻断 —— 录完要看 `dup_definitions`。
+  空 group 落到「未分组」，一次最多 200 词。
+- `POST /api/ocr` — 拍照取词（2026-10-21 加）：`{"images":[base64...]}`（最多 9 张、每张 ≤6MB）
+  → `{"success":true,"enabled":true,"candidates":[{"word":"みず(水)","def":"水","raw":"…"}]}`。
+  调腾讯云 `GeneralBasicOCR`（`LanguageType=jap`），签名是手写的 TC3-HMAC-SHA256
+  （`tencent_ocr.go`，没引 SDK —— 只用一个接口不值得拉整棵依赖树）。
+  ⚠️ 密钥读 `JRP_OCR_SECRET_ID` / `JRP_OCR_SECRET_KEY`；**没配就 `enabled:false` 并给
+  `enabled_note`，不报错**（跟 LLM 一个套路）。只认字切候选，**不写档案**，
+  老师勾完再走 `/api/words`。
 - `POST /api/grade` — 批量判分（2026-10-19 加，**给小程序用**）：
   `{"mode":"kana|kanji|full|either","items":[{"word":"すし(寿司)","answer":"寿司"}]}`
   → `{"success":true,"mode":"either","results":[true]}`。复用 Go 的 `GradeAnswer`，
@@ -1502,8 +1516,19 @@ location /api/                                 { auth_basic off; proxy_pass http
 | 造句 | `pages/sentences` | `/api/plan?mode=sentences` | 落，`sentence_results` |
 | 活用练习 | `pages/conj` | `/api/conjugation?type=verb\|verb_nai\|adj` | **不落**（只练不计档，跟网页端一致） |
 | 统计 | `pages/stats` | `/api/stats?days=7\|30\|90` | 只读 |
+| 词汇总表 | `pages/lexicon` | `/api/lexicon`（全量拉一次，本地搜） | 只读 |
+| 录入新词 | `pages/addword` | `/api/ocr`（取词）→ `/api/words`（写入） | **落**，写新档案 |
 
 tabBar 只有「练习 / 统计」两项。
+
+⚠️ **tabBar 是自定义的**（2026-10-21）：原生 tabBar 的 `app.json` 只有
+`color` / `selectedColor` / `backgroundColor` / `borderStyle`，**没有 fontSize**，
+老师嫌「练习 / 统计」字太小 → 改 `"custom": true` + 根目录 `custom-tab-bar/`。
+两个必须记住的点：
+① 自定义 tabBar **不占位是 fixed 的** → 每个 tab 页要自己留 `padding-bottom:180rpx`；
+② 每个 tab 页有**各自的实例**，`onShow` 里必须 `this.getTabBar().setData({selected:n})`，
+   否则从别的页切回来高亮还停在上一个。`app.json` 里 `tabBar.list` 仍要写全，
+   `wx.switchTab` 靠它校验合法页面。
 
 **判分只有一份实现**：新增 `POST /api/grade`（`api_grade.go`），复用 Go 的 `GradeAnswer`，
 小程序「对答案」整屏一次请求拿回 `results:[bool]`；web 端仍在浏览器本地用 `web/grade.js` 判。

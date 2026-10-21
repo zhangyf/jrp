@@ -1,5 +1,6 @@
+/* 底部 180rpx 是给自定义 tabBar 留的（108rpx + 安全区），它 fixed 在底部不占位 */
 .wrap {
-  padding: 24rpx 24rpx 40rpx;
+  padding: 24rpx 24rpx 180rpx;
 }
 
 /* 自定义导航栏：浅底，logo 与标题同一行 */
@@ -80,9 +81,13 @@
   background: #7a5aa0;
 }
 
-/* 词汇总表：中性墨蓝，跟上面四个练习色块不是一类东西（尺寸沿用 .tile，不另开一套） */
+/* 「查」和「录」用中性色，跟上面四个练习色块不是一类东西（尺寸沿用 .tile，不另开一套） */
 .t-lex {
   background: #3f5a70;
+}
+
+.t-add {
+  background: #6b6255;
 }
 
 .err {

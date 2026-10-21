@@ -28,6 +28,10 @@ Page({
   },
 
   onShow() {
+    // 自定义 tabBar 每个页面各一份实例，切回来时要告诉它「现在是我在前面」
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ selected: 0 });
+    }
     const g = app.globalData;
     this.setData({ logged: !!g.logged, role: g.role || '' });
     if (!g.logged) {
@@ -65,6 +69,8 @@ Page({
       wx.navigateTo({ url: '/pages/conj/conj' });
     } else if (mode === 'lexicon') {
       wx.navigateTo({ url: '/pages/lexicon/lexicon' });
+    } else if (mode === 'addword') {
+      wx.navigateTo({ url: '/pages/addword/addword' });
     } else {
       wx.navigateTo({ url: '/pages/practice/practice?mode=' + (mode || 'words') });
     }

@@ -1,5 +1,10 @@
 /* 统计页样式。.card / .title / .err 复用 app.wxss 的全局定义。 */
 
+/* 底部 180rpx 是给自定义 tabBar 留的（108rpx + 安全区），它 fixed 在底部不占位 */
+.wrap {
+  padding-bottom: 180rpx;
+}
+
 .tabs {
   display: flex;
   gap: 16rpx;

@@ -5,6 +5,7 @@
     "pages/sentences/sentences",
     "pages/conj/conj",
     "pages/lexicon/lexicon",
+    "pages/addword/addword",
     "pages/stats/stats",
     "pages/login/login"
   ],
@@ -16,6 +17,7 @@
     "backgroundTextStyle": "dark"
   },
   "tabBar": {
+    "custom": true,
     "color": "#8a8a86",
     "selectedColor": "#2f6f4f",
     "backgroundColor": "#ffffff",

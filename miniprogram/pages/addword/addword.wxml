@@ -1,0 +1,71 @@
+<view class="wrap">
+  <view class="result" wx:if="{{result}}">
+    <view class="r-title">录好了</view>
+    <view class="r-line">新增 <text class="n">{{result.added}}</text> 词<text wx:if="{{result.duplicates}}">，跳过重复 {{result.duplicates}} 个</text></view>
+    <view class="r-line" wx:if="{{result.version}}">档案 {{result.version}} · 共 {{result.total}} 词</view>
+    <view class="r-warn" wx:if="{{result.dupDefs.length}}">
+      <view class="w-t">释义撞车（建议加括号区分）：</view>
+      <view class="w-i" wx:for="{{result.dupDefs}}" wx:key="*this">{{item}}</view>
+    </view>
+    <view class="r-warn" wx:if="{{result.dupCores.length}}">
+      <view class="w-t">主释义相同（建议补区分点）：</view>
+      <view class="w-i" wx:for="{{result.dupCores}}" wx:key="*this">{{item}}</view>
+    </view>
+    <view class="btn" bindtap="again">继续录</view>
+  </view>
+
+  <block wx:else>
+    <view class="sec">
+      <view class="sec-title">加到哪一课</view>
+      <picker mode="selector" range="{{groups}}" value="{{groupIndex}}" bindchange="onGroup">
+        <view class="sel">{{groups[groupIndex]}}</view>
+      </picker>
+    </view>
+
+    <view class="sec">
+      <view class="sec-title">手打录入</view>
+      <input class="ipt" placeholder="词形，如 みず(水)" value="{{word}}" bindinput="onWord" />
+      <input class="ipt" placeholder="中文意思，如 水" value="{{def}}" bindinput="onDef" />
+      <view class="btn sm" bindtap="addManual">加入待录列表</view>
+    </view>
+
+    <view class="sec">
+      <view class="sec-title">拍照 / 相册取词</view>
+      <view class="btn ghost" bindtap="pickImages">{{ocrBusy ? '识别中…' : '选图片（可多张）'}}</view>
+      <view class="note" wx:if="{{ocrNote}}">{{ocrNote}}</view>
+      <view class="note" wx:else>拍课本的生词表最准：一行一个词，认出来后自己勾。</view>
+    </view>
+
+    <view class="sec" wx:if="{{cands.length}}">
+      <view class="sec-row">
+        <view class="sec-title">认出 {{cands.length}} 个候选</view>
+        <view class="mini" bindtap="toggleAll">全选/全不选</view>
+      </view>
+      <view class="cand {{item.checked ? 'on' : ''}}"
+            wx:for="{{cands}}" wx:key="raw" data-index="{{index}}">
+        <view class="c-head" data-index="{{index}}" bindtap="toggleCand">
+          <view class="box">{{item.checked ? '✓' : ''}}</view>
+          <view class="c-raw">{{item.raw}}</view>
+        </view>
+        <view class="c-edit">
+          <input class="ipt sm" value="{{item.word}}" data-index="{{index}}" data-field="word" bindinput="editCand" placeholder="词形" />
+          <input class="ipt sm" value="{{item.def}}" data-index="{{index}}" data-field="def" bindinput="editCand" placeholder="中文意思" />
+        </view>
+      </view>
+      <view class="row-btn">
+        <view class="btn sm" bindtap="addSelected">把勾上的加入待录</view>
+        <view class="btn sm ghost" bindtap="clearCands">不要了</view>
+      </view>
+    </view>
+
+    <view class="sec" wx:if="{{pending.length}}">
+      <view class="sec-title">待录 {{pending.length}} 个</view>
+      <view class="pend" wx:for="{{pending}}" wx:key="word">
+        <view class="p-w">{{item.word}}</view>
+        <view class="p-d">{{item.def}}</view>
+        <view class="p-x" data-index="{{index}}" bindtap="removePending">×</view>
+      </view>
+      <view class="btn" bindtap="submit">{{saving ? '正在写入…' : '录进档案'}}</view>
+    </view>
+  </block>
+</view>

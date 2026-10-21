@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 )
 
 // sameDefinitionWords 找出档案里释义与 def 一字不差的其他词（exclude 用来排除自己）。
@@ -128,126 +127,34 @@ func runAddWords(fs *flag.FlagSet, lang string) {
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
-
-	// Download latest archive
-	data, oldFilename, err := storage.DownloadLatestArchive(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error downloading latest archive: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Parse archive
-	arc, err := ParseArchive(string(data), lang)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing archive: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Find or create group
-	var targetGroup *WordGroup
-	for i := range arc.Groups {
-		if arc.Groups[i].Title == input.Group {
-			targetGroup = &arc.Groups[i]
-			break
-		}
-	}
-	if targetGroup == nil {
-		arc.Groups = append(arc.Groups, WordGroup{Title: input.Group})
-		targetGroup = &arc.Groups[len(arc.Groups)-1]
-	}
-
-	// Pre-dedupe within input list (defensive — keeps semantics explicit,
-	// not relying on FindWord seeing newly-appended entries). Keep first
-	// occurrence's definition when the same word appears more than once.
-	seen := make(map[string]bool, len(input.Words))
-	deduped := make([]struct {
-		Word       string `json:"word"`
-		Definition string `json:"definition"`
-	}, 0, len(input.Words))
+	// 加词的实现在 words_add.go，跟「录入新词」的 API 是同一份
+	words := make([]WordToAdd, 0, len(input.Words))
 	for _, w := range input.Words {
-		if seen[w.Word] {
-			continue
-		}
-		seen[w.Word] = true
-		deduped = append(deduped, w)
-	}
-	input.Words = deduped
-
-	// 释义撞车检测：中文释义跟已有词一字不差的话，复习时看中文根本分不出该写
-	// 哪个（2026-09-24 老师反馈：だめ / いけません 都写成「不行，不可以」）。
-	// 不阻断导入，只在输出里点名，逼着把区分补进括号里。
-	var dupDefs []string
-	var dupCores []string
-
-	// Add words (skip duplicates already in archive)
-	added := 0
-	duplicates := 0
-	for _, w := range input.Words {
-		// Check if word already exists
-		if existing, _ := FindWord(arc.Groups, w.Word); existing != nil {
-			duplicates++
-			continue
-		}
-		if others := sameDefinitionWords(arc.Groups, w.Definition, ""); len(others) > 0 {
-			dupDefs = append(dupDefs, fmt.Sprintf("新词「%s」的释义与已有「%s」完全相同：%s —— 请加括号区分用法",
-				w.Word, strings.Join(others, "、"), w.Definition))
-		} else if others := sameCoreWords(arc.Groups, w.Definition, ""); len(others) > 0 {
-			dupCores = append(dupCores, fmt.Sprintf("新词「%s」的主释义「%s」与已有「%s」相同 —— 请在括号里写上区分点（用法/搭配/范围）",
-				w.Word, definitionCore(w.Definition), strings.Join(others, "、")))
-		}
-		targetGroup.Words = append(targetGroup.Words, Word{
-			Word:       w.Word,
-			Definition: w.Definition,
-			Status:     "🔄待测试",
-		})
-		added++
+		words = append(words, WordToAdd{Word: w.Word, Definition: w.Definition})
 	}
 
-	// Determine if major bump is needed (20+ new words)
-	needMajorBump := *majorBump || added >= 20
-
-	// Calculate version
-	oldDate, oldMajor, oldMinor, _ := ParseFilename(oldFilename)
-	today := time.Now()
-	newMajor, newMinor := NextVersion(oldDate, oldMajor, oldMinor, today, needMajorBump)
-
-	// Add changelog entry
-	description := fmt.Sprintf("添加%d词", added)
-	if duplicates > 0 {
-		description += fmt.Sprintf("（跳过%d重复词）", duplicates)
-	}
-	if needMajorBump && !*majorBump {
-		description += "；批量导入触发大版本"
-	}
-	AddChangelogEntry(arc, today, newMajor, newMinor, description)
-
-	// Write archive
-	newContent := WriteArchive(arc)
-	newFilename := ArchiveFilename(lang, today, newMajor, newMinor)
-
-	// Upload
-	if err := storage.UploadArchive(ctx, newFilename, []byte(newContent)); err != nil {
-		fmt.Fprintf(os.Stderr, "Error uploading archive: %v\n", err)
+	res, err := addWordsToArchive(context.Background(), storage, input.Group, words, *majorBump)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	out := map[string]interface{}{
 		"success":      true,
 		"command":      "add-words",
-		"added":        added,
-		"duplicates":   duplicates,
-		"old_filename": oldFilename,
-		"new_filename": newFilename,
-		"version":      fmt.Sprintf("v%d.%d", newMajor, newMinor),
-		"major_bump":   needMajorBump,
-		"total_words":  CountAllWords(arc.Groups),
+		"added":        res.Added,
+		"duplicates":   res.Duplicates,
+		"old_filename": res.OldFilename,
+		"new_filename": res.NewFilename,
+		"version":      res.Version,
+		"major_bump":   res.MajorBump,
+		"total_words":  res.TotalWords,
 	}
-	if len(dupDefs) > 0 {
-		out["dup_definitions"] = dupDefs
+	if len(res.DupDefs) > 0 {
+		out["dup_definitions"] = res.DupDefs
 	}
-	if len(dupCores) > 0 {
-		out["dup_core_definitions"] = dupCores
+	if len(res.DupCores) > 0 {
+		out["dup_core_definitions"] = res.DupCores
 	}
 	outputResult(out)
 }
