@@ -8,20 +8,9 @@
              placeholder="搜假名 / 汉字 / 中文"
              value="{{q}}"
              bindinput="onSearch" />
-      <view class="picks">
-        <picker mode="selector" range="{{posList}}" value="{{posIndex}}" bindchange="onPickPos">
-          <view class="pick {{posIndex > 0 ? 'on' : ''}}">{{posList[posIndex]}}</view>
-        </picker>
-        <picker mode="selector" range="{{statusList}}" value="{{statusIndex}}" bindchange="onPickStatus">
-          <view class="pick {{statusIndex > 0 ? 'on' : ''}}">{{statusList[statusIndex]}}</view>
-        </picker>
-        <picker mode="selector" range="{{groupList}}" value="{{groupIndex}}" bindchange="onPickGroup">
-          <view class="pick {{groupIndex > 0 ? 'on' : ''}}">{{groupList[groupIndex]}}</view>
-        </picker>
-      </view>
       <view class="count">
-        共 {{total}} 词，筛出 <text class="n">{{filtered}}</text> 个
-        <text class="reset" bindtap="resetFilter">重置</text>
+        <text wx:if="{{q}}">匹配 <text class="n">{{filtered}}</text> / 共 {{total}} 词</text>
+        <text wx:else>共 {{total}} 词</text>
       </view>
     </view>
 

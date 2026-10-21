@@ -1,7 +1,7 @@
 // 词汇总表：查词用，不练也不计档。
 //
-// 数据全量拉一次（约 900 词），筛选和搜索都在本地做 —— 手机上每次筛一下就
-// 打一次接口太慢，而且这份数据一次也就一两百 KB。
+// 数据全量拉一次（约 900 词），搜索在本地做 —— 手机上每敲一个字就打一次接口太慢。
+// 老师只留「列表 + 搜索」，三个筛选下拉（词性/阶段/课）在 2026-10-21 去掉了。
 //
 // ⚠️ 900 行不能一次渲染完，会卡：先渲染 60 条，上拉再补（onReachBottom）。
 
@@ -25,29 +25,6 @@ function rate(it) {
   return Math.round(((it.reviews - it.errors) / it.reviews) * 100);
 }
 
-// 阶段按学习顺序排，别按拼音/字母排（字母序会把「待测试」排到「已掌握」前面）
-const STATUS_ORDER = ['已掌握', '基本掌握', '待巩固', '待测试'];
-
-function sortStatus(a, b) {
-  const ia = STATUS_ORDER.indexOf(a);
-  const ib = STATUS_ORDER.indexOf(b);
-  if (ia >= 0 && ib >= 0) return ia - ib;
-  if (ia >= 0) return -1;
-  if (ib >= 0) return 1;
-  return a < b ? -1 : (a > b ? 1 : 0);
-}
-
-// 课按数字排：「第10课」要排在「第2课」后面，不能按字符串比
-function lessonNo(s) {
-  const m = /(\d+)/.exec(s || '');
-  return m ? +m[1] : 9999;
-}
-
-function sortGroups(a, b) {
-  const d = lessonNo(a) - lessonNo(b);
-  return d !== 0 ? d : (a < b ? -1 : (a > b ? 1 : 0));
-}
-
 Page({
   data: {
     loading: true,
@@ -59,13 +36,6 @@ Page({
     filtered: 0,
 
     q: '',
-    posList: ['全部词性'],
-    posIndex: 0,
-    statusList: ['全部阶段'],
-    statusIndex: 0,
-    groupList: ['全部课'],
-    groupIndex: 0,
-
     openIdx: -1
   },
 
@@ -95,23 +65,7 @@ Page({
           });
         });
 
-        const posSet = {};
-        const stSet = {};
-        const grpSet = {};
-        items.forEach((it) => {
-          if (it.pos) posSet[it.pos] = 1;
-          if (it.stText && it.stText !== '—') stSet[it.stText] = 1;
-          if (it.group) grpSet[it.group] = 1;
-        });
-
-        this.setData({
-          all: items,
-          total: items.length,
-          posList: ['全部词性'].concat(Object.keys(posSet).sort()),
-          statusList: ['全部阶段'].concat(Object.keys(stSet).sort(sortStatus)),
-          groupList: ['全部课'].concat(Object.keys(grpSet).sort(sortGroups)),
-          loading: false
-        });
+        this.setData({ all: items, total: items.length, loading: false });
         this.apply();
       })
       .catch((e) => {
@@ -125,30 +79,14 @@ Page({
     this._t = setTimeout(() => this.apply(), 250);
   },
 
-  onPickPos(e) { this.setData({ posIndex: +e.detail.value }); this.apply(); },
-  onPickStatus(e) { this.setData({ statusIndex: +e.detail.value }); this.apply(); },
-  onPickGroup(e) { this.setData({ groupIndex: +e.detail.value }); this.apply(); },
-
-  resetFilter() {
-    this.setData({ q: '', posIndex: 0, statusIndex: 0, groupIndex: 0 });
-    this.apply();
-  },
-
-  // 筛 + 排序 + 取前 N 条。排序按词号（= 档案顺序），跟 web 默认一致。
+  // 搜 + 取前 N 条。顺序按词号（= 档案顺序），跟 web 默认一致。
   apply() {
     const d = this.data;
     const q = (d.q || '').trim().toLowerCase();
-    const pos = d.posIndex > 0 ? d.posList[d.posIndex] : '';
-    const st = d.statusIndex > 0 ? d.statusList[d.statusIndex] : '';
-    const grp = d.groupIndex > 0 ? d.groupList[d.groupIndex] : '';
 
-    const rows = d.all.filter((it) => {
-      if (pos && (it.pos || '') !== pos) return false;
-      if (st && it.stText !== st) return false;
-      if (grp && (it.group || '') !== grp) return false;
-      if (q && it.hay.indexOf(q) < 0) return false;
-      return true;
-    });
+    const rows = q
+      ? d.all.filter((it) => it.hay.indexOf(q) >= 0)
+      : d.all.slice();
 
     this._rows = rows;
     this.setData({ filtered: rows.length, shown: PAGE, openIdx: -1, view: rows.slice(0, PAGE) });

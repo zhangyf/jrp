@@ -27,13 +27,10 @@
       <view class="tile-title">活用练习</view>
       <view class="tile-desc">变形 · 只练不计档</view>
     </view>
-    <!-- 词汇总表是查不是练，单独占一整行、用中性色，跟上面四个练习版块区分开 -->
-    <view class="tile tile-wide t-lex" data-mode="lexicon" bindtap="go" hover-class="tile-press">
-      <view>
-        <view class="tile-title">词汇总表</view>
-        <view class="tile-desc">查词 · 看掌握情况</view>
-      </view>
-      <text class="tile-go">查词 ›</text>
+    <!-- 词汇总表是查不是练，用中性色跟上面四个练习版块区分开；尺寸跟它们保持一致 -->
+    <view class="tile t-lex" data-mode="lexicon" bindtap="go" hover-class="tile-press">
+      <view class="tile-title">词汇总表</view>
+      <view class="tile-desc">查词 · 看掌握情况</view>
     </view>
   </view>
 </view>

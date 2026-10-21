@@ -23,41 +23,12 @@
   font-size: 28rpx;
 }
 
-.picks {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 16rpx;
-}
-.pick {
-  width: 31%;
-  height: 64rpx;
-  line-height: 64rpx;
-  text-align: center;
-  font-size: 26rpx;
-  color: #6a6a60;
-  background: #ffffff;
-  border: 1rpx solid #e6e4da;
-  border-radius: 10rpx;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.pick.on {
-  color: #2f6f4f;
-  border-color: #2f6f4f;
-  background: #e7f1ea;
-}
-
 .count {
   margin-top: 14rpx;
   font-size: 24rpx;
   color: #8a8a80;
 }
 .count .n { color: #23231f; font-weight: 600; }
-.count .reset {
-  float: right;
-  color: #2f6f4f;
-}
 
 .list { margin-top: 18rpx; }
 
