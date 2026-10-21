@@ -42,12 +42,14 @@
 
     <!-- 练习态：可编辑输入框 -->
     <block wx:if="{{!reviewOnly}}">
+      <!-- 判过分也照样能改：改了就清掉这一行的对错，失焦时自动重判一次。
+           改错字、换个写法是常事，锁死反而逼着人重来一遍。 -->
       <input class="answer"
              placeholder="写日语"
              value="{{item.answer}}"
-             disabled="{{item.graded}}"
              data-index="{{index}}"
-             bindinput="onInput" />
+             bindinput="onInput"
+             bindblur="onBlur" />
       <!-- 判错（或已人工改判）的行：给正确答案 + 「算对」。
            ⚠️ 勾了算对就 correct=true，所以条件要带上 manual，否则按钮点了就消失 -->
       <view class="result-row" wx:if="{{item.graded && (!item.correct || item.manual)}}">

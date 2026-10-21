@@ -255,12 +255,27 @@ Page({
     const i = e.currentTarget.dataset.index;
     const patch = {};
     patch['items[' + i + '].answer'] = e.detail.value;
-    // 改了答案就把判分结果清掉，避免"改完还显示上一次的对错"
+    // 改了答案就把这一行的判分状态整体作废，避免"改完还是上一次的结论"：
+    //   graded/correct —— 不能留上一次的对错
+    //   manual —— 勾过「算对」的也要清，否则重判会跳过它，改了等于没改
+    //   unknown —— 写了答案就不再是「不会」
     patch['items[' + i + '].graded'] = false;
     patch['items[' + i + '].correct'] = false;
+    patch['items[' + i + '].manual'] = false;
+    patch['items[' + i + '].unknown'] = false;
     this.setData(patch);
     this.refreshAnswered();
     this.scheduleDraft();
+  },
+
+  // 输入框失焦时把这一题重判一次：改完立刻看到新对错，不用再点「对答案」。
+  // 只发这一题（复用 regradeOne），别整屏重判把别处的人工改判冲掉。
+  onBlur(e) {
+    const i = e.currentTarget.dataset.index;
+    const it = this.data.items[i];
+    if (!it || it.graded || it.unknown) return;      // 已判过 / 标了不会，不用管
+    if (!(it.answer || '').trim()) return;           // 没写答案没什么可判
+    this.regradeOne(i);
   },
 
   onUnknown(e) {
