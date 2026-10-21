@@ -48,6 +48,16 @@ const (
 	visionConcurrency     = 2 // 并发打太狠会被网关限流，宁可慢一点也要每张都有结果
 	visionDefaultTimeout  = 30 * time.Second
 	visionRetry           = 1 // 单张失败后再整链重试一次
+	// visionTotalBudget 是一次请求的**总时间预算**，到点就把还没结果的图标成超时返回。
+	//
+	// 2026-10-21 踩的坑：4 张图跑满 100 多秒，nginx 那边 60 秒就掐断，
+	// 老师看到的是一个光秃秃的 504 —— 前面几张明明认出来了也一起没了。
+	// 有了预算，最坏情况也是「返回 200 + 已认出的那几张 + 剩下标超时可重认」，
+	// 比整个 504 强得多。
+	//
+	// ⚠️ 三个数必须挨着排：预算 120s < 小程序 request 超时 180s < nginx proxy_read_timeout 300s。
+	// 哪一层先断，老师看到的就是哪一层的报错。
+	visionTotalBudget = 120 * time.Second
 )
 
 // VisionCandidate 是从图片里认出来的一个候选词。
@@ -207,7 +217,10 @@ type visionResult struct {
 }
 
 // errVisionTooLarge 单独拎出来，visionHumanError 才能给它一句人话。
-var errVisionTooLarge = errors.New("图太大，压缩后再试")
+var (
+	errVisionTooLarge = errors.New("图太大，压缩后再试")
+	errVisionTimeout  = errors.New("整批超时，先拿已认出的，剩下的点「重认」")
+)
 
 // visionChat 带图问模型一次，按「主 → 备」顺序试，返回原文、生效模型名、是否值得重试。
 //
@@ -318,12 +331,17 @@ func (s *server) handleVision(w http.ResponseWriter, r *http.Request, st *Storag
 	if len(body.Images) < workers {
 		workers = len(body.Images)
 	}
+	deadline := time.Now().Add(visionTotalBudget)
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for i := range jobs {
-				results <- askVision(cfg, i, body.Images[i])
+				if time.Now().After(deadline) {
+					results <- visionResult{idx: i, err: errVisionTimeout}
+					continue
+				}
+				results <- askVision(cfg, i, body.Images[i], deadline)
 			}
 		}()
 	}
@@ -429,7 +447,10 @@ func (s *server) handleVision(w http.ResponseWriter, r *http.Request, st *Storag
 }
 
 // askVision 处理一张图：拼 data URL → 问模型 → 解析成候选。失败整链重试一次。
-func askVision(cfg visionConfig, idx int, img string) visionResult {
+//
+// deadline 是一次请求的总预算：每次发问前看一眼，超了就别再给这张图添时间了，
+// 把剩下的预算留给其它还没问的图 —— 一张图吃满预算、其余全军覆没，比四张各拿一半更糟。
+func askVision(cfg visionConfig, idx int, img string, deadline time.Time) visionResult {
 	res := visionResult{idx: idx}
 	img = strings.TrimSpace(img)
 	if i := strings.Index(img, ","); i >= 0 && strings.HasPrefix(img, "data:") {
@@ -442,6 +463,12 @@ func askVision(cfg visionConfig, idx int, img string) visionResult {
 	}
 
 	for attempt := 0; attempt <= visionRetry; attempt++ {
+		if !deadline.IsZero() && time.Now().After(deadline) {
+			if res.err == nil {
+				res.err = errVisionTimeout
+			}
+			return res
+		}
 		reply, model, retryable, err := visionChat(cfg, visionPrompt, "data:image/jpeg;base64,"+img)
 		if err != nil {
 			res.err = err
@@ -497,6 +524,9 @@ func visionHumanError(err error) string {
 	}
 	if err == errVisionTooLarge {
 		return "图太大，压缩后再试"
+	}
+	if err == errVisionTimeout {
+		return "整批超时，点「重认这张」单独再来"
 	}
 	msg := err.Error()
 	switch {

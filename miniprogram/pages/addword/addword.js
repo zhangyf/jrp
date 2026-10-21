@@ -22,46 +22,68 @@ function hasParen(s) {
 //
 // 2026-10-21 的线上日志是这么写的（老师传了 4 张，只回来 1 张）：
 //   vision: 模型 deepseek/...vision-exp 失败：context deadline exceeded
-// —— 25 秒都没算完，不是模型不认识，是图太大。缩到长边 1280、JPEG 0.72 之后
-// base64 从两三兆掉到两三百 K，模型几秒就回；课本生词表这种内容缩了照样认得清。
+// —— 30 秒都没算完，不是模型不认识，是图太大。压成 JPEG 0.72 之后
+// base64 从两三兆掉到两三百 K，模型几秒就回；课本生词表这种内容压了照样认得清。
 //
-// 缩图失败（老机型没有离屏 canvas、图是 HEIC 之类）不能卡住流程：
+// ⚠️ **判断条件必须是文件体积，不是像素尺寸**（第一版写错了，2026-10-21 修）：
+// `chooseMedia` 带 `sizeType:['compressed']` 出来的图，长边常常正好是 1280
+// —— 按尺寸看「不用缩」，可文件仍有 800KB~1.5MB，照样超时。
+//
+// 压缩失败（老机型没有离屏 canvas、图是 HEIC 之类）不能卡住流程：
 // 任何一步出错就退回原图，宁可慢一点也要让老师把词录进去。
+const SHRINK_OVER_BYTES = 250 * 1024; // 超过这个体积才重绘
+
 function shrinkToBase64(path, cb) {
-  const fallback = () => {
+  const fs = wx.getFileSystemManager();
+  const raw = () => {
     try {
-      cb(wx.getFileSystemManager().readFileSync(path, 'base64'));
+      cb(fs.readFileSync(path, 'base64'));
     } catch (e) {
       cb('');
     }
   };
-  const shrink = (info) => {
-    const maxSide = 1280;
+  // 重绘成 JPEG 0.72：尺寸超了就顺带缩到长边 1280，没超也压一下质量
+  const redraw = (info) => {
     const w0 = info.width || 0;
     const h0 = info.height || 0;
-    if (!w0 || !h0) { fallback(); return; }
-    const scale = Math.min(1, maxSide / Math.max(w0, h0));
-    if (scale >= 1) { fallback(); return; } // 本来就小，不用动
-    const w = Math.round(w0 * scale);
-    const h = Math.round(h0 * scale);
-    const cv = wx.createOffscreenCanvas({ type: '2d', width: w, height: h });
-    const ctx = cv.getContext('2d');
-    const img = cv.createImage();
-    img.onload = () => {
-      try {
-        ctx.drawImage(img, 0, 0, w, h);
-        const url = cv.toDataURL('image/jpeg', 0.72);
-        const i = url.indexOf(',');
-        cb(i >= 0 ? url.slice(i + 1) : url);
-      } catch (e) { fallback(); }
-    };
-    img.onerror = fallback;
-    img.src = path;
+    if (!w0 || !h0) { raw(); return; }
+    const scale = Math.min(1, 1280 / Math.max(w0, h0));
+    const w = Math.max(1, Math.round(w0 * scale));
+    const h = Math.max(1, Math.round(h0 * scale));
+    try {
+      const cv = wx.createOffscreenCanvas({ type: '2d', width: w, height: h });
+      const ctx = cv.getContext('2d');
+      const img = cv.createImage();
+      img.onload = () => {
+        try {
+          ctx.drawImage(img, 0, 0, w, h);
+          const url = cv.toDataURL('image/jpeg', 0.72);
+          const i = url.indexOf(',');
+          cb(i >= 0 ? url.slice(i + 1) : url);
+        } catch (e) { raw(); }
+      };
+      img.onerror = raw;
+      img.src = path;
+    } catch (e) { raw(); }
+  };
+  const bySize = () => {
+    try {
+      fs.getFileInfo({
+        filePath: path,
+        success(fi) {
+          if (fi && fi.size && fi.size <= SHRINK_OVER_BYTES) { raw(); return; }
+          wx.getImageInfo({ src: path, success: redraw, fail: raw });
+        },
+        fail() { wx.getImageInfo({ src: path, success: redraw, fail: raw }); }
+      });
+    } catch (e) {
+      wx.getImageInfo({ src: path, success: redraw, fail: raw });
+    }
   };
   try {
-    wx.getImageInfo({ src: path, success: shrink, fail: fallback });
+    bySize();
   } catch (e) {
-    fallback();
+    raw();
   }
 }
 
