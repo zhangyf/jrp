@@ -68,7 +68,8 @@ Page({
     this.setData({ ['pending[' + i + '].editing']: !this.data.pending[i].editing });
   },
 
-  // 拍照 / 相册：一次最多 9 张，服务端逐张 OCR，认出来的行切成候选词
+  // 拍照 / 相册：一次最多 9 张，服务端交给视觉模型认词（不是 OCR ——
+  // 模型看得懂版面，能自己跳过例句和标题，比抄字再切行准得多）
   pickImages() {
     const self = this;
     wx.chooseMedia({
@@ -94,11 +95,11 @@ Page({
           return;
         }
 
-        app.request('/api/ocr', 'POST', { images: images }, true)
+        app.request('/api/vision', 'POST', { images: images }, true)
           .then((r) => {
             wx.hideLoading();
             const cands = (r.candidates || []).map((c) => ({
-              word: c.word || '', def: c.def || '', raw: c.raw || '', checked: true
+              word: c.word || '', def: c.def || '', checked: true
             }));
             const failed = r.failed || [];
             self.setData({

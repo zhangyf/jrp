@@ -35,10 +35,10 @@
         <view class="mini" bindtap="toggleAll">全选/全不选</view>
       </view>
       <view class="cand {{item.checked ? 'on' : ''}}"
-            wx:for="{{cands}}" wx:key="raw" data-index="{{index}}">
+            wx:for="{{cands}}" wx:key="word" data-index="{{index}}">
         <view class="c-head" data-index="{{index}}" bindtap="toggleCand">
           <view class="box">{{item.checked ? '✓' : ''}}</view>
-          <view class="c-raw">{{item.raw}}</view>
+          <view class="c-no">候选 {{index + 1}}</view>
         </view>
         <view class="c-edit">
           <input class="ipt sm" value="{{item.word}}" data-index="{{index}}" data-field="word" bindinput="editCand" placeholder="词形" />

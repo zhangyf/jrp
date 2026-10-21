@@ -268,15 +268,23 @@ func callLLM(cfg llmConfig, prompt string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
+	return postLLM(cfg.Endpoint, cfg.APIKey, body, cfg.Timeout)
+}
+
+// postLLM 发一次请求，把 choices[0].message.content 取出来。
+//
+// 判句、查中文释义、拍照取词都走这里 —— 超时、错误码、空内容的处理只有一份。
+// body 由调用方拼（视觉要带图片，content 是数组不是字符串，拼不出来统一形状）。
+func postLLM(endpoint, apiKey string, body []byte, timeout time.Duration) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.Endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

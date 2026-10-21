@@ -129,13 +129,10 @@
   background: #2f6f4f;
   border-color: #2f6f4f;
 }
-.c-raw {
+.c-no {
   font-size: 25rpx;
   color: #8a8a80;
   flex: 1;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .c-edit {

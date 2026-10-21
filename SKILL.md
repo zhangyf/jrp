@@ -1369,13 +1369,21 @@ for **active flashcard-style review** — one word at a time, answer by keyboard
   且保证跟复习时看到的中文是同一份 —— 同一个词两处释义不一样等于白练）② 剩下的问模型。
   ⚠️ 模型没配（`JRP_LLM_*`）不是错误：返回 `enabled:false` + 档案里查到的那部分，
   前端把缺的留在列表里让老师补。一次最多 60 词。
-- `POST /api/ocr` — 拍照取词（2026-10-21 加）：`{"images":[base64...]}`（最多 9 张、每张 ≤6MB）
-  → `{"success":true,"enabled":true,"candidates":[{"word":"みず(水)","def":"水","raw":"…"}]}`。
-  调腾讯云 `GeneralBasicOCR`（`LanguageType=jap`），签名是手写的 TC3-HMAC-SHA256
-  （`tencent_ocr.go`，没引 SDK —— 只用一个接口不值得拉整棵依赖树）。
-  ⚠️ 密钥读 `JRP_OCR_SECRET_ID` / `JRP_OCR_SECRET_KEY`；**没配就 `enabled:false` 并给
-  `enabled_note`，不报错**（跟 LLM 一个套路）。只认字切候选，**不写档案**，
-  老师勾完再走 `/api/words`。
+- `POST /api/vision` — 拍照取词（2026-10-21 加）：`{"images":[base64...]}`（最多 9 张、每张 ≤4MB）
+  → `{"success":true,"enabled":true,"candidates":[{"word":"みず(水)","def":"水"}],"model":"…"}`。
+  ⚠️ **走视觉大模型，不是 OCR**（老师一句「我不是配了大模型吗」问得对，2026-10-21 改的）。
+  OCR 只能把字一行行抄出来，还得写正则猜哪半截是词；视觉模型看得懂版面，
+  自己跳过例句和标题，直接给结构化结果 —— 正则那层整个省掉。
+  实测（课本生词表截图）一次认对：`みず(水)/水`、`たべもの/食物`、`がくせい/学生`，
+  例句「これは わたしの ほんです。」和标题「第3课 生词表」都被排掉。
+  - 网关复用 `JRP_LLM_ENDPOINT` / `JRP_LLM_API_KEY`，**模型名单独用 `JRP_VISION_MODEL`**
+    （默认 `deepseek/deepseek-v4-flash-vision-exp`，备 `glm-5v-turbo`）。
+    ⛔ **不能拿文本模型当视觉模型用** —— 现配的 `deepseek-flash` / `glm-5.3-flash`
+    是纯文本，吃不了图片。
+  - tokenhub 网关上可用的视觉模型还有 `hy-vision-2.0-instruct`、`hunyuan-t1-vision-20250916`。
+  - 多张图并发问（最多 3 并发），单张失败单独进 `failed` 数组，不影响其它张。
+  - 没配网关 → `enabled:false` + `enabled_note`，不报错。只认词**不写档案**，
+    老师勾完再走 `/api/words`。
 - `POST /api/grade` — 批量判分（2026-10-19 加，**给小程序用**）：
   `{"mode":"kana|kanji|full|either","items":[{"word":"すし(寿司)","answer":"寿司"}]}`
   → `{"success":true,"mode":"either","results":[true]}`。复用 Go 的 `GradeAnswer`，
@@ -1525,7 +1533,7 @@ location /api/                                 { auth_basic off; proxy_pass http
 | 活用练习 | `pages/conj` | `/api/conjugation?type=verb\|verb_nai\|adj` | **不落**（只练不计档，跟网页端一致） |
 | 统计 | `pages/stats` | `/api/stats?days=7\|30\|90` | 只读 |
 | 词汇总表 | `pages/lexicon` | `/api/lexicon`（全量拉一次，本地搜） | 只读 |
-| 录入新词 | `pages/addword` | `/api/ocr`（取词）→ `/api/word-def`（查中文）→ `/api/words`（写入） | **落**，写新档案 |
+| 录入新词 | `pages/addword` | `/api/vision`（取词）→ `/api/word-def`（查中文）→ `/api/words`（写入） | **落**，写新档案 |
 
 tabBar 三项：**练习 / 统计 / 录入**。
 ⚠️ 「录入」是工具不是练习 —— 老师 2026-10-21 明确要求不放首页色块，跟练习、统计并列在底部。
