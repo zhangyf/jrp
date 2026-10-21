@@ -9,6 +9,15 @@ var jrpAdmin = {
   roleText: {},
 
   boot: function () {
+    var out = document.getElementById('logoutLink');
+    if (out) {
+      out.onclick = function (e) {
+        e.preventDefault();
+        fetch('/api/auth/logout', { credentials: 'same-origin' })
+          .then(function () { localStorage.removeItem('jrp_token'); location.reload(); })
+          .catch(function () { location.reload(); });
+      };
+    }
     jrpAdmin.check();
   },
 
@@ -104,6 +113,7 @@ var jrpAdmin = {
   },
 
   render: function (users) {
+    jrpAdmin.summary(users);
     var box = document.getElementById('rows');
     box.innerHTML = '';
     if (!users.length) {
@@ -116,12 +126,38 @@ var jrpAdmin = {
     users.forEach(function (u) { box.appendChild(jrpAdmin.row(u)); });
   },
 
+  // 一眼扫完：共几人、几个待批准、几个已冻结。没人待审时把「下一步」说清楚，
+  // 别让人对着一张只有自己的表发愣。
+  summary: function (users) {
+    var el = document.getElementById('summary');
+    if (!el) return;
+    var n = { owner: 0, member: 0, pending: 0, disabled: 0 };
+    users.forEach(function (u) { if (n[u.role] !== undefined) n[u.role]++; });
+
+    var parts = ['共 <b>' + users.length + '</b> 个账号'];
+    if (n.pending) parts.push('<span class="n-pending">待批准 <b>' + n.pending + '</b></span>');
+    if (n.member) parts.push('成员 <b>' + n.member + '</b>');
+    if (n.disabled) parts.push('<span class="n-disabled">已冻结 <b>' + n.disabled + '</b></span>');
+
+    var tail = '';
+    if (!n.pending) {
+      tail = users.length <= 1
+        ? '　还没有待批准的人 —— 别人用微信扫首页的码，就会出现在表的最上面等你批。'
+        : '　没有待批准的人。';
+    } else {
+      tail = '　待批准的排在第一行，点「批准」他就能用了。';
+    }
+    el.innerHTML = parts.join('　·　') + '<span class="tip">' + tail + '</span>';
+  },
+
   row: function (u) {
     var tr = document.createElement('tr');
     if (u.role === 'pending') tr.className = 'pending';
     if (u.role === 'disabled') tr.className = 'disabled';
 
-    tr.appendChild(jrpAdmin.cell(u.name || '（未命名）' + (u.is_owner ? ' · 你' : '')));
+    var who = u.name || (u.is_owner ? '站点所有者' : '（未命名）');
+    if (u.is_owner) who += ' · 你';
+    tr.appendChild(jrpAdmin.cell(who));
     tr.appendChild(jrpAdmin.cell(u.openid_tail || '—'));
 
     var roleCell = document.createElement('td');
