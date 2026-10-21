@@ -96,12 +96,67 @@
   line-height: 1.6;
 }
 
+/* 每张图一块：缩略图在左，认出的词在下面 —— 老师要对着原照片核认得准不准 */
+.shot {
+  border: 1rpx solid #e6e4da;
+  border-radius: 12rpx;
+  padding: 18rpx 20rpx;
+  margin-bottom: 20rpx;
+  background: #fcfcfa;
+}
+.sh-top {
+  display: flex;
+  align-items: flex-start;
+}
+.sh-img {
+  width: 150rpx;
+  height: 150rpx;
+  border-radius: 10rpx;
+  background: #eeeee8;
+  flex-shrink: 0;
+}
+.sh-side {
+  flex: 1;
+  min-width: 0;
+  padding-left: 20rpx;
+}
+.sh-no {
+  font-size: 25rpx;
+  color: #8a8a80;
+}
+.sh-cnt {
+  font-size: 25rpx;
+  color: #2f6f4f;
+  margin-top: 6rpx;
+}
+.sh-err {
+  font-size: 25rpx;
+  color: #b4392f;
+  margin-top: 6rpx;
+  line-height: 1.5;
+}
+.sh-retry {
+  display: inline-block;
+  margin-top: 12rpx;
+  padding: 8rpx 24rpx;
+  border: 1rpx solid #2f6f4f;
+  border-radius: 30rpx;
+  font-size: 25rpx;
+  color: #2f6f4f;
+}
+.sh-empty {
+  font-size: 25rpx;
+  color: #8a8a80;
+  padding: 10rpx 0;
+}
+
 /* 候选词：勾上的绿边，没勾的灰着 */
 .cand {
   border: 1rpx solid #e6e4da;
   border-radius: 12rpx;
   padding: 18rpx 20rpx;
-  margin-bottom: 16rpx;
+  margin-top: 16rpx;
+  background: #ffffff;
 }
 .cand.on {
   border-color: #2f6f4f;
@@ -129,10 +184,25 @@
   background: #2f6f4f;
   border-color: #2f6f4f;
 }
-.c-no {
-  font-size: 25rpx;
-  color: #8a8a80;
+/* 词形（粗）+ 中文（灰）在同一行 —— 认完就要能看出「有没有中文」 */
+.c-w {
+  font-size: 29rpx;
+  font-weight: 600;
+  flex-shrink: 0;
+  max-width: 46%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.c-d {
   flex: 1;
+  min-width: 0;
+  font-size: 25rpx;
+  color: #6a6a60;
+  text-align: right;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .c-edit {

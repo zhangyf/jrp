@@ -1377,20 +1377,36 @@ for **active flashcard-style review** — one word at a time, answer by keyboard
   ⚠️ 模型没配（`JRP_LLM_*`）不是错误：`enabled:false` + 已有那部分，缺的留前端补。一次最多 60 词。
   实测：`みず→水/水`、`たべもの→食べ物/食物、食品`、`さん→（空）/称呼`、`がくせい→学生/学生`。
 - `POST /api/vision` — 拍照取词（2026-10-21 加）：`{"images":[base64...]}`（最多 9 张、每张 ≤4MB）
-  → `{"success":true,"enabled":true,"candidates":[{"word":"みず(水)","def":"水"}],"model":"…"}`。
+  → `{"success":true,"enabled":true,"images":[{"index":0,"ok":true,"model":"…",
+  "candidates":[{"word":"みず(水)","def":"水"}]}],"candidates":[…扁平去重…],"failed":[…]}`。
   ⚠️ **走视觉大模型，不是 OCR**（老师一句「我不是配了大模型吗」问得对，2026-10-21 改的）。
   OCR 只能把字一行行抄出来，还得写正则猜哪半截是词；视觉模型看得懂版面，
   自己跳过例句和标题，直接给结构化结果 —— 正则那层整个省掉。
   实测（课本生词表截图）一次认对：`みず(水)/水`、`たべもの/食物`、`がくせい/学生`，
   例句「これは わたしの ほんです。」和标题「第3课 生词表」都被排掉。
+  - **返回按图片分组**（`images[i]` 跟请求里第 i 张一一对上），前端按图分块展示、
+    每块配原图缩略图 —— 老师 2026-10-21 原话：「既然是拍照取词，那就意味着有些词
+    我是不认识的，你不把原始照片给我展示出来，我怎么知道你识别出来的单词是准确的
+    还是不准确的呢」。扁平的 `candidates` 同时保留给不关心分组的调用方。
+  - **认完顺手补中文 + 补汉字**（复用 `lookupWordDefs`，跟手打录入同一份口径）：
+    课本照片上常常只有假名没中文，不补的话老师看到的就是一片空白。
   - 网关复用 `JRP_LLM_ENDPOINT` / `JRP_LLM_API_KEY`，**模型名单独用 `JRP_VISION_MODEL`**
-    （默认 `deepseek/deepseek-v4-flash-vision-exp`，备 `glm-5v-turbo`）。
+    （默认 `deepseek/deepseek-v4-flash-vision-exp`，备 `hy-vision-2.0-instruct`，
+    都实测过：2.2~2.5s / 2.1~5.1s）。
     ⛔ **不能拿文本模型当视觉模型用** —— 现配的 `deepseek-flash` / `glm-5.3-flash`
     是纯文本，吃不了图片。
-  - tokenhub 网关上可用的视觉模型还有 `hy-vision-2.0-instruct`、`hunyuan-t1-vision-20250916`。
-  - 多张图并发问（最多 3 并发），单张失败单独进 `failed` 数组，不影响其它张。
+  - ⛔ **链上的模型必须先在网关上确认存在**：原来的备胎 `glm-5v-turbo` 实测回 402
+    「service ID does not exist」，主模型一超时备用根本接不住。
+    ⛔ **别放推理型视觉模型**：`hunyuan-t1-vision-20250916` 两次实测 13.1s / 50.5s，
+    30 秒超时下第二档必挂。
+  - 多张图并发 2（给大图留余量），单张失败整链重试一次（402/400 不重试，纯属白等）。
+  - 报错翻人话再回（`visionHumanError`）：网关那串 `permission_error / does not exist`
+    甩给老师等于没说。
   - 没配网关 → `enabled:false` + `enabled_note`，不报错。只认词**不写档案**，
     老师勾完再走 `/api/words`。
+  - ⚠️ **前端发图前必须缩图**（`shrinkToBase64` 长边 1280 / JPEG 0.72）：
+    手机原图两三兆，模型算 25 秒都算不完 —— 2026-10-21 老师传 4 张只回来 1 张，
+    线上日志写的是 `context deadline exceeded`。缩完 200KB 上下，几秒就回。
 - `POST /api/grade` — 批量判分（2026-10-19 加，**给小程序用**）：
   `{"mode":"kana|kanji|full|either","items":[{"word":"すし(寿司)","answer":"寿司"}]}`
   → `{"success":true,"mode":"either","results":[true]}`。复用 Go 的 `GradeAnswer`，

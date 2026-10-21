@@ -29,24 +29,42 @@
       <view class="note" wx:else>拍课本的生词表最准：一行一个词，认出来后自己勾。</view>
     </view>
 
-    <view class="sec" wx:if="{{cands.length}}">
+    <view class="sec" wx:if="{{shots.length}}">
       <view class="sec-row">
-        <view class="sec-title">认出 {{cands.length}} 个候选</view>
+        <view class="sec-title">认出 {{candCount}} 个候选</view>
         <view class="mini" bindtap="toggleAll">全选/全不选</view>
       </view>
-      <view class="cand {{item.checked ? 'on' : ''}}"
-            wx:for="{{cands}}" wx:key="word" data-index="{{index}}">
-        <view class="c-head" data-index="{{index}}" bindtap="toggleCand">
-          <view class="box">{{item.checked ? '✓' : ''}}</view>
-          <view class="c-no">候选 {{index + 1}}</view>
+
+      <!-- 按图片分块：每块带原图缩略图，老师对着照片核哪个词认错了 -->
+      <view class="shot" wx:for="{{shots}}" wx:for-item="sh" wx:for-index="si" wx:key="path">
+        <view class="sh-top">
+          <image class="sh-img" src="{{sh.path}}" mode="aspectFill"
+                 data-src="{{sh.path}}" bindtap="previewShot" />
+          <view class="sh-side">
+            <view class="sh-no">第 {{si + 1}} 张</view>
+            <view class="sh-cnt" wx:if="{{sh.ok}}">认出 {{sh.words.length}} 个 · 点图看大图</view>
+            <view class="sh-err" wx:else>{{sh.error}}</view>
+            <view class="sh-retry" wx:if="{{!sh.ok}}" data-index="{{si}}" bindtap="retryShot">重认这张</view>
+          </view>
         </view>
-        <view class="c-edit">
-          <input class="ipt sm" value="{{item.word}}" data-index="{{index}}" data-field="word" bindinput="editCand" placeholder="词形" />
-          <input class="ipt sm" value="{{item.def}}" data-index="{{index}}" data-field="def" bindinput="editCand" placeholder="中文意思" />
+
+        <view class="cand {{item.checked ? 'on' : ''}}"
+              wx:for="{{sh.words}}" wx:for-item="item" wx:for-index="wi" wx:key="word">
+          <view class="c-head" data-si="{{si}}" data-wi="{{wi}}" bindtap="toggleCand">
+            <view class="box">{{item.checked ? '✓' : ''}}</view>
+            <view class="c-w">{{item.word || '（空）'}}</view>
+            <view class="c-d">{{item.def || '缺中文'}}</view>
+          </view>
+          <view class="c-edit">
+            <input class="ipt sm" value="{{item.word}}" data-si="{{si}}" data-wi="{{wi}}" data-field="word" bindinput="editCand" placeholder="词形" />
+            <input class="ipt sm" value="{{item.def}}" data-si="{{si}}" data-wi="{{wi}}" data-field="def" bindinput="editCand" placeholder="中文意思" />
+          </view>
         </view>
+        <view class="sh-empty" wx:if="{{sh.ok && sh.words.length == 0}}">这张没认出词条</view>
       </view>
+
       <view class="row-btn">
-        <view class="btn sm" bindtap="addSelected">{{looking ? '查中文中…' : '把勾上的加入待录'}}</view>
+        <view class="btn sm" bindtap="addSelected">{{looking ? '补中文中…' : '把勾上的加入待录'}}</view>
         <view class="btn sm ghost" bindtap="clearCands">不要了</view>
       </view>
     </view>

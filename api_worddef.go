@@ -86,48 +86,14 @@ type llmWordDef struct {
 	Def   string `json:"def"`
 }
 
-func (s *server) handleWordDef(w http.ResponseWriter, r *http.Request, st *Storage) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
-			"success": false, "error": "POST only",
-		})
-		return
-	}
-
-	var body struct {
-		Words []string `json:"words"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
-			"success": false, "error": "请求格式不对：" + err.Error(),
-		})
-		return
-	}
-
-	// 去重、去空，保序
-	seen := map[string]bool{}
-	var words []string
-	for _, w := range body.Words {
-		w = strings.TrimSpace(w)
-		if w == "" || seen[w] {
-			continue
-		}
-		seen[w] = true
-		words = append(words, w)
-	}
-	if len(words) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
-			"success": false, "error": "没有要查的词",
-		})
-		return
-	}
-	if len(words) > 60 {
-		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
-			"success": false, "error": "一次最多查 60 个",
-		})
-		return
-	}
-
+// lookupWordDefs 批量查「中文释义 + 汉字写法」：先档案，档案没有再问模型。
+//
+// 抽成函数是因为两处要用，口径必须一模一样：
+//   - POST /api/word-def（手打录入时补中文）
+//   - POST /api/vision（拍照认完词顺手补 —— 2026-10-21 老师反馈「认出来的词没有中文释义」）
+//
+// 返回按入参顺序排好的结果，以及生效的模型名。模型不可用时 Def 留空，不算错误。
+func (s *server) lookupWordDefs(st *Storage, words []string) ([]WordDefItem, string) {
 	var items []WordDefItem
 	var todo []string
 
@@ -182,17 +148,10 @@ func (s *server) handleWordDef(w http.ResponseWriter, r *http.Request, st *Stora
 					}
 					items = append(items, it)
 				}
-			} else {
-				// 模型挂了也要回条目，只是没释义 —— 前端留给老师补
-				for _, w := range todo {
-					items = append(items, WordDefItem{Input: w, Word: w})
-				}
-			}
-		} else {
-			for _, w := range todo {
-				items = append(items, WordDefItem{Input: w, Word: w})
 			}
 		}
+		// 模型挂了 / 没配 / 回答里漏了某个词：都按「没有释义」补一条，
+		// 前端留给老师自己填，不阻断录入。
 	}
 
 	// 保序输出（档案命中和模型回答是分两批来的，要按请求的顺序还回去）
@@ -201,22 +160,71 @@ func (s *server) handleWordDef(w http.ResponseWriter, r *http.Request, st *Stora
 	for _, it := range items {
 		byInput[it.Input] = it
 	}
-	var missing []string
 	for _, w := range words {
 		it, ok := byInput[w]
 		if !ok {
 			it = WordDefItem{Input: w, Word: w}
 		}
-		if it.Def == "" {
-			missing = append(missing, w)
-		}
 		ordered = append(ordered, it)
+	}
+	return ordered, model
+}
+
+func (s *server) handleWordDef(w http.ResponseWriter, r *http.Request, st *Storage) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
+			"success": false, "error": "POST only",
+		})
+		return
+	}
+
+	var body struct {
+		Words []string `json:"words"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false, "error": "请求格式不对：" + err.Error(),
+		})
+		return
+	}
+
+	// 去重、去空，保序
+	seen := map[string]bool{}
+	var words []string
+	for _, w := range body.Words {
+		w = strings.TrimSpace(w)
+		if w == "" || seen[w] {
+			continue
+		}
+		seen[w] = true
+		words = append(words, w)
+	}
+	if len(words) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false, "error": "没有要查的词",
+		})
+		return
+	}
+	if len(words) > 60 {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false, "error": "一次最多查 60 个",
+		})
+		return
+	}
+
+	items, model := s.lookupWordDefs(st, words)
+
+	var missing []string
+	for _, it := range items {
+		if it.Def == "" {
+			missing = append(missing, it.Input)
+		}
 	}
 
 	out := map[string]interface{}{
 		"success": true,
 		"enabled": model != "",
-		"items":   ordered,
+		"items":   items,
 		"missing": missing,
 	}
 	if model != "" {

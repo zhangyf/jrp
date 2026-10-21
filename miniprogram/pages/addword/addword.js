@@ -18,12 +18,60 @@ function hasParen(s) {
   return (s || '').indexOf('(') >= 0 || (s || '').indexOf('（') >= 0;
 }
 
+// 缩图再发：手机拍的照片动辄 3000×4000、两三兆，原样发给视觉模型的下场是超时。
+//
+// 2026-10-21 的线上日志是这么写的（老师传了 4 张，只回来 1 张）：
+//   vision: 模型 deepseek/...vision-exp 失败：context deadline exceeded
+// —— 25 秒都没算完，不是模型不认识，是图太大。缩到长边 1280、JPEG 0.72 之后
+// base64 从两三兆掉到两三百 K，模型几秒就回；课本生词表这种内容缩了照样认得清。
+//
+// 缩图失败（老机型没有离屏 canvas、图是 HEIC 之类）不能卡住流程：
+// 任何一步出错就退回原图，宁可慢一点也要让老师把词录进去。
+function shrinkToBase64(path, cb) {
+  const fallback = () => {
+    try {
+      cb(wx.getFileSystemManager().readFileSync(path, 'base64'));
+    } catch (e) {
+      cb('');
+    }
+  };
+  const shrink = (info) => {
+    const maxSide = 1280;
+    const w0 = info.width || 0;
+    const h0 = info.height || 0;
+    if (!w0 || !h0) { fallback(); return; }
+    const scale = Math.min(1, maxSide / Math.max(w0, h0));
+    if (scale >= 1) { fallback(); return; } // 本来就小，不用动
+    const w = Math.round(w0 * scale);
+    const h = Math.round(h0 * scale);
+    const cv = wx.createOffscreenCanvas({ type: '2d', width: w, height: h });
+    const ctx = cv.getContext('2d');
+    const img = cv.createImage();
+    img.onload = () => {
+      try {
+        ctx.drawImage(img, 0, 0, w, h);
+        const url = cv.toDataURL('image/jpeg', 0.72);
+        const i = url.indexOf(',');
+        cb(i >= 0 ? url.slice(i + 1) : url);
+      } catch (e) { fallback(); }
+    };
+    img.onerror = fallback;
+    img.src = path;
+  };
+  try {
+    wx.getImageInfo({ src: path, success: shrink, fail: fallback });
+  } catch (e) {
+    fallback();
+  }
+}
+
 Page({
   data: {
     word: '',
 
     pending: [], // 待录入：{ word, def, editing }
-    cands: [],   // OCR 候选：{ word, def, raw, checked }
+    shots: [],   // 拍照结果，**按图片分组**：{ path, ok, error, words:[{word,def,checked}] }
+    candCount: 0,
 
     ocrBusy: false,
     ocrNote: '',
@@ -31,6 +79,10 @@ Page({
     saving: false,
     result: null // { added, duplicates, dup_definitions[], dup_core_definitions[] }
   },
+
+  // 图片原数据（base64）不进 setData —— 几 MB 的字符串塞进渲染层会把页面卡住，
+  // 「重认这张」时才用得上，所以挂在实例上。
+  _imgData: {},
 
   onShow() {
     // 自定义 tabBar 每个页面各一份实例，切回来时要告诉它「现在是我在前面」
@@ -77,7 +129,13 @@ Page({
   },
 
   // 拍照 / 相册：一次最多 9 张，服务端交给视觉模型认词（不是 OCR ——
-  // 模型看得懂版面，能自己跳过例句和标题，比抄字再切行准得多）
+  // 模型看得懂版面，能自己跳过例句和标题，比抄字再切行准得多）。
+  //
+  // ⚠️ 两个 2026-10-21 老师反馈逼出来的改动：
+  //   ① **按图分组**：老师要对着原照片核「这个词认得准不准」，扁平列表对不上号。
+  //      所以结果按图片分块，每块带缩略图，点一下看大图。
+  //   ② **中文服务端已经补好**：课本照片上常常只有假名没中文，以前要等老师勾完
+  //      再点一次「加入待录」才去查，中间那段时间看到的就是一片空白。
   pickImages() {
     const self = this;
     wx.chooseMedia({
@@ -91,67 +149,146 @@ Page({
         self.setData({ ocrBusy: true, ocrNote: '' });
         wx.showLoading({ title: '识别中…', mask: true });
 
-        const images = [];
-        for (let i = 0; i < files.length; i++) {
-          try {
-            images.push(wx.getFileSystemManager().readFileSync(files[i].tempFilePath, 'base64'));
-          } catch (err) { /* 单张读不出就跳过 */ }
-        }
-        if (!images.length) {
-          wx.hideLoading();
-          self.setData({ ocrBusy: false, ocrNote: '图片读不出来，换一张试试' });
-          return;
-        }
-
-        app.request('/api/vision', 'POST', { images: images }, true)
-          .then((r) => {
-            wx.hideLoading();
-            const cands = (r.candidates || []).map((c) => ({
-              word: c.word || '', def: c.def || '', checked: true
-            }));
-            const failed = r.failed || [];
-            self.setData({
-              ocrBusy: false,
-              cands: cands,
-              ocrNote: failed.length ? failed.join('；') : ''
-            });
-            if (!cands.length) {
-              wx.showToast({ title: '没认出词条', icon: 'none' });
-            }
-          })
-          .catch((e) => {
-            wx.hideLoading();
-            self.setData({ ocrBusy: false, ocrNote: (e && e.message) || '识别失败' });
+        const paths = files.map((f) => f.tempFilePath);
+        const b64s = new Array(paths.length);
+        let left = paths.length;
+        // 缩图是异步的，等最后一张回来再一起发（顺序靠下标对上，不能乱）
+        paths.forEach((p, i) => {
+          shrinkToBase64(p, (b64) => {
+            b64s[i] = b64 || '';
+            left--;
+            if (left === 0) self.goVision(paths, b64s);
           });
+        });
       }
     });
   },
 
-  toggleCand(e) {
-    const i = +e.currentTarget.dataset.index;
-    this.setData({ ['cands[' + i + '].checked']: !this.data.cands[i].checked });
+  // 缩完图才真正发请求：丢掉读不出来的那几张，但保持「下标 ↔ 原图」的对应关系
+  goVision(paths, b64s) {
+    const images = [];
+    const kept = [];
+    for (let i = 0; i < paths.length; i++) {
+      if (!b64s[i]) continue;
+      images.push(b64s[i]);
+      kept.push(paths[i]);
+    }
+    if (!images.length) {
+      wx.hideLoading();
+      this.setData({ ocrBusy: false, ocrNote: '图片读不出来，换一张试试' });
+      return;
+    }
+    this._imgData = {};
+    images.forEach((b64, i) => { this._imgData[i] = b64; });
+    this.runVision(images, kept);
   },
 
-  // 候选词可以直接改：OCR 认错的假名/汉字在手机上改比回电脑改省事
-  editCand(e) {
+  runVision(images, paths) {
+    const self = this;
+    app.request('/api/vision', 'POST', { images: images }, true, 180000)
+      .then((r) => {
+        wx.hideLoading();
+        const byIndex = r.images || [];
+        // 服务端按 index 回，跟本地 paths 一一对上；万一没回（旧版服务端）就整个作废
+        const shots = paths.map((p, i) => {
+          const got = byIndex[i] || {};
+          return {
+            path: p,
+            ok: !!got.ok,
+            error: got.error || '没返回',
+            words: (got.candidates || []).map((c) => ({
+              word: c.word || '', def: c.def || '', checked: true
+            }))
+          };
+        });
+        let n = 0;
+        shots.forEach((s) => { n += s.words.length; });
+        const failed = [];
+        shots.forEach((s, i) => {
+          if (!s.ok) failed.push('第' + (i + 1) + '张：' + s.error);
+        });
+        self.setData({ ocrBusy: false, shots: shots, candCount: n, ocrNote: failed.join('；') });
+        if (!n) { wx.showToast({ title: '没认出词条', icon: 'none' }); }
+      })
+      .catch((e) => {
+        wx.hideLoading();
+        self.setData({ ocrBusy: false, ocrNote: (e && e.message) || '识别失败' });
+      });
+  },
+
+  // 单张重认：网关偶尔抽风（限流、超时）只挂掉其中一张，没必要整批重来
+  retryShot(e) {
     const i = +e.currentTarget.dataset.index;
+    const b64 = this._imgData[i];
+    if (!b64) { wx.showToast({ title: '原图已失效，重新选一次', icon: 'none' }); return; }
+    const self = this;
+    wx.showLoading({ title: '重认中…', mask: true });
+    app.request('/api/vision', 'POST', { images: [b64] }, true, 180000)
+      .then((r) => {
+        wx.hideLoading();
+        const got = (r.images || [])[0] || {};
+        const shot = {
+          path: self.data.shots[i].path,
+          ok: !!got.ok,
+          error: got.error || '没返回',
+          words: (got.candidates || []).map((c) => ({
+            word: c.word || '', def: c.def || '', checked: true
+          }))
+        };
+        let n = 0;
+        self.data.shots.forEach((s, k) => { n += (k === i ? shot : s).words.length; });
+        self.setData({ ['shots[' + i + ']']: shot, candCount: n });
+      })
+      .catch((err) => {
+        wx.hideLoading();
+        wx.showToast({ title: (err && err.message) || '重认失败', icon: 'none' });
+      });
+  },
+
+  // 点缩略图看大图：老师得看清楚照片上的假名/汉字才判断得了认错没有
+  previewShot(e) {
+    const src = e.currentTarget.dataset.src;
+    const urls = this.data.shots.map((s) => s.path).filter(Boolean);
+    if (!urls.length) return;
+    wx.previewImage({ current: src || urls[0], urls: urls });
+  },
+
+  toggleCand(e) {
+    const si = +e.currentTarget.dataset.si;
+    const wi = +e.currentTarget.dataset.wi;
+    const on = !this.data.shots[si].words[wi].checked;
+    this.setData({ ['shots[' + si + '].words[' + wi + '].checked']: on });
+  },
+
+  // 候选词可以直接改：认错的假名/汉字在手机上改比回电脑改省事
+  editCand(e) {
+    const si = +e.currentTarget.dataset.si;
+    const wi = +e.currentTarget.dataset.wi;
     const field = e.currentTarget.dataset.field;
-    this.setData({ ['cands[' + i + '].' + field]: e.detail.value });
+    this.setData({ ['shots[' + si + '].words[' + wi + '].' + field]: e.detail.value });
   },
 
   toggleAll() {
-    const allOn = this.data.cands.every((c) => c.checked);
-    const cands = this.data.cands.map((c) => Object.assign({}, c, { checked: !allOn }));
-    this.setData({ cands: cands });
+    const allOn = this.data.shots.every((s) => s.words.every((c) => c.checked));
+    const shots = this.data.shots.map((s) => ({
+      path: s.path, ok: s.ok, error: s.error,
+      words: s.words.map((c) => Object.assign({}, c, { checked: !allOn }))
+    }));
+    this.setData({ shots: shots });
   },
 
   addSelected() {
-    const picked = this.data.cands
-      .filter((c) => c.checked && (c.word || '').trim())
-      .map((c) => ({ word: (c.word || '').trim(), def: (c.def || '').trim() }));
+    const picked = [];
+    this.data.shots.forEach((s) => {
+      s.words.forEach((c) => {
+        if (c.checked && (c.word || '').trim()) {
+          picked.push({ word: (c.word || '').trim(), def: (c.def || '').trim() });
+        }
+      });
+    });
     if (!picked.length) { wx.showToast({ title: '先勾几个', icon: 'none' }); return; }
 
-    // 缺中文、或只有假名没汉字的，一并让服务端补（已经有汉字的不浪费这次调用）
+    // 中文服务端认词时已经补过一轮，这里只兜「还是空的 / 只有假名没汉字」的
     const need = picked.filter((p) => !p.def || !hasParen(p.word)).map((p) => p.word);
     const self = this;
     const done = (map) => {
@@ -159,19 +296,17 @@ Page({
         const got = map[p.word];
         if (!got) return;
         if (!p.def) p.def = got.def;
-        // 服务端补了汉字的（みず → みず(水)）就用它的；本来就带括号的不动
         if (got.word && !hasParen(p.word)) p.word = got.word;
       });
-      self.setData({ looking: false });
+      self.setData({ looking: false, shots: [], candCount: 0 });
       self.pushPending(picked);
-      self.setData({ cands: [] });
     };
     if (!need.length) { done({}); return; }
     this.setData({ looking: true });
     this.lookup(need, done);
   },
 
-  clearCands() { this.setData({ cands: [] }); },
+  clearCands() { this.setData({ shots: [], candCount: 0 }); },
 
   // 合并进待录列表：同一个词不重复加（列表里已有的保留先加的那条）
   pushPending(items) {

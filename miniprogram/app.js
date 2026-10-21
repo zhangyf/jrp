@@ -67,7 +67,8 @@ App({
   },
 
   // request 统一封装。needAuth 为 true 时带上 Bearer。
-  request(path, method, data, needAuth) {
+  // timeout 不传就用微信默认的 60 秒；拍照取词传图大、模型可能要换链重试，得单独给更长。
+  request(path, method, data, needAuth, timeout) {
     return new Promise((resolve, reject) => {
       const header = { 'content-type': 'application/json' };
       if (needAuth && this.globalData.token) {
@@ -78,6 +79,7 @@ App({
         method: method || 'GET',
         data: data || {},
         header,
+        timeout: timeout || 60000,
         success: (r) => {
           if (r.statusCode >= 200 && r.statusCode < 300 && r.data && r.data.success) {
             resolve(r.data);

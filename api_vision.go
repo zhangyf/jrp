@@ -25,19 +25,51 @@ import (
 // 但**模型名必须单独配 JRP_VISION_MODEL** —— 视觉和文本是两回事。
 // 现在配的主模型 deepseek-flash / glm-5.3-flash 是**纯文本**，吃不了图片。
 
+// 模型链（2026-10-21 在服务器上带图实测两轮，跑同一张课本生词表截图）：
+//
+//	deepseek/deepseek-v4-flash-vision-exp  2.2~2.5s   干净 JSON   —— 主
+//	hy-vision-2.0-instruct                 2.1~5.1s   干净 JSON   —— 备
+//
+// 四条实测结论，别再凭感觉改：
+//  1. **链上的模型必须确认真的存在**。原来备胎写的是 glm-5v-turbo，2026-10-21 线上日志里
+//     它回的是 402「service ID does not exist」—— 主模型一超时，备用根本接不住，
+//     老师传 4 张只回来 1 张就是这么来的。
+//  2. **链上不要放推理型视觉模型**。hunyuan-t1-vision-20250916 实测两次：13.1s 和 50.5s，
+//     30 秒超时下第二档必挂，白等半分钟还拿不到东西。
+//  3. **限流不是这个网关的瓶颈**：并发 2 连打 4 张同一张图，5.2 秒全过。
+//     真正让老师那 4 张挂掉的是**图太大**——手机原图两三兆，25 秒根本算不完。
+//     所以并发降到 2 是为了给大图留余量，不是为了躲限流。
+//  4. **模型名必须带厂商前缀**：`deepseek-v4-flash-vision-exp`（不带 deepseek/）直接 400。
 const (
 	visionDefaultModel    = "deepseek/deepseek-v4-flash-vision-exp"
-	visionDefaultFallback = "glm-5v-turbo"
+	visionDefaultFallback = "hy-vision-2.0-instruct"
 	visionMaxImages       = 9 // 微信 chooseMedia 一次最多也是 9 张
 	visionMaxImageBytes   = 4 << 20
-	visionConcurrency     = 3
-	visionDefaultTimeout  = 25 * time.Second
+	visionConcurrency     = 2 // 并发打太狠会被网关限流，宁可慢一点也要每张都有结果
+	visionDefaultTimeout  = 30 * time.Second
+	visionRetry           = 1 // 单张失败后再整链重试一次
 )
 
 // VisionCandidate 是从图片里认出来的一个候选词。
 type VisionCandidate struct {
 	Word string `json:"word"`
 	Def  string `json:"def"`
+}
+
+// VisionImageResult 是**一张图**的认词结果。
+//
+// 按图返回（而不是只给一个扁平列表）是老师 2026-10-21 问出来的：
+// 「既然是拍照取词，那就意味着有些词我是不认识的，你不把原始照片给我展示出来，
+//
+//	我怎么知道你识别出来的单词是准确的还是不准确的呢。」
+//
+// —— 所以前端按图分块，每块带上原图缩略图，老师对着照片核哪个词认错了。
+type VisionImageResult struct {
+	Index      int               `json:"index"`
+	OK         bool              `json:"ok"`
+	Error      string            `json:"error,omitempty"`
+	Model      string            `json:"model,omitempty"`
+	Candidates []VisionCandidate `json:"candidates"`
 }
 
 type visionConfig struct {
@@ -174,10 +206,17 @@ type visionResult struct {
 	err   error
 }
 
-// visionChat 带图问模型一次，按「主 → 备」顺序试，返回原文和生效模型名。
-func visionChat(cfg visionConfig, prompt, imageURL string) (string, string, error) {
+// errVisionTooLarge 单独拎出来，visionHumanError 才能给它一句人话。
+var errVisionTooLarge = errors.New("图太大，压缩后再试")
+
+// visionChat 带图问模型一次，按「主 → 备」顺序试，返回原文、生效模型名、是否值得重试。
+//
+// 第三个返回值不能省：链上最后一个模型报 402（没额度）不代表前面那个超时也该认命，
+// 只拿 lastErr 判断会把「三个都超时、最后一个恰好 402」误判成不用重试。
+func visionChat(cfg visionConfig, prompt, imageURL string) (string, string, bool, error) {
 	order := append([]string{cfg.Model}, cfg.Fallback...)
 	var lastErr error
+	retryable := false
 	tried := 0
 	for _, m := range order {
 		now := time.Now()
@@ -203,19 +242,22 @@ func visionChat(cfg visionConfig, prompt, imageURL string) (string, string, erro
 		reply, err := postLLM(cfg.Endpoint, cfg.APIKey, body, cfg.Timeout)
 		if err == nil && strings.TrimSpace(reply) != "" {
 			llmMarkResult(m, true, now)
-			return strings.TrimSpace(reply), m, nil
+			return strings.TrimSpace(reply), m, false, nil
 		}
 		lastErr = err
+		if visionRetryable(err) {
+			retryable = true
+		}
 		llmMarkResult(m, false, now)
 		log.Printf("vision: 模型 %s 失败：%v", m, err)
 	}
 	if tried == 0 {
-		return "", "", errors.New("所有视觉模型都在冷却中")
+		return "", "", false, errors.New("所有视觉模型都在冷却中")
 	}
 	if lastErr == nil {
 		lastErr = errors.New("模型返回空内容")
 	}
-	return "", "", lastErr
+	return "", "", retryable, lastErr
 }
 
 // handleVision —— 拍照取词。
@@ -294,19 +336,72 @@ func (s *server) handleVision(w http.ResponseWriter, r *http.Request, st *Storag
 		close(results)
 	}()
 
+	// results 是并发回来的，顺序不定 —— 按 idx 归位，前端才能跟它自己发的图片顺序对上
+	per := make([]VisionImageResult, len(body.Images))
+	for res := range results {
+		per[res.idx] = VisionImageResult{
+			Index:      res.idx,
+			OK:         res.err == nil,
+			Error:      visionHumanError(res.err),
+			Model:      res.model,
+			Candidates: res.cands,
+		}
+	}
+
+	// 认完统一补中文 + 补汉字。
+	//
+	// 老师 2026-10-21 反馈「还没有中文释义」：课本照片上常常只有假名没有中文，
+	// 视觉模型吐出来的 def 就是空的。补中文这件事不该等老师勾完再点一次按钮 ——
+	// 认出来就该带着中文一起显示，老师才能当场判断这个词认得对不对。
+	// 走的还是 lookupWordDefs（先档案后模型），跟手打录入是同一份口径。
+	var need []string
+	for i := range per {
+		for _, c := range per[i].Candidates {
+			if c.Def == "" || !hasParen(c.Word) {
+				need = append(need, c.Word)
+			}
+		}
+	}
+	defModel := ""
+	if len(need) > 0 {
+		got, m := s.lookupWordDefs(st, need)
+		defModel = m
+		byInput := map[string]WordDefItem{}
+		for _, it := range got {
+			byInput[it.Input] = it
+		}
+		for i := range per {
+			for ci := range per[i].Candidates {
+				c := &per[i].Candidates[ci]
+				it, ok := byInput[c.Word]
+				if !ok {
+					continue
+				}
+				if c.Def == "" {
+					c.Def = it.Def
+				}
+				// 本来只有假名的，用补了汉字的词形（みず → みず(水)）
+				if !hasParen(c.Word) && it.Word != "" {
+					c.Word = it.Word
+				}
+			}
+		}
+	}
+
+	// 扁平去重版，给不关心分组的调用方（以及以后可能的 web 端）
 	var all []VisionCandidate
 	var failed []string
 	model := ""
 	seen := map[string]bool{}
-	for res := range results {
-		if res.err != nil {
-			failed = append(failed, "第"+strconv.Itoa(res.idx+1)+"张："+res.err.Error())
+	for i := range per {
+		if !per[i].OK {
+			failed = append(failed, "第"+strconv.Itoa(i+1)+"张："+per[i].Error)
 			continue
 		}
 		if model == "" {
-			model = res.model
+			model = per[i].Model
 		}
-		for _, c := range res.cands {
+		for _, c := range per[i].Candidates {
 			if seen[c.Word] {
 				continue
 			}
@@ -318,10 +413,14 @@ func (s *server) handleVision(w http.ResponseWriter, r *http.Request, st *Storag
 	out := map[string]interface{}{
 		"success":    true,
 		"enabled":    true,
+		"images":     per,
 		"candidates": all,
 	}
 	if model != "" {
 		out["model"] = model
+	}
+	if defModel != "" {
+		out["def_model"] = defModel
 	}
 	if len(failed) > 0 {
 		out["failed"] = failed
@@ -329,7 +428,7 @@ func (s *server) handleVision(w http.ResponseWriter, r *http.Request, st *Storag
 	writeJSON(w, http.StatusOK, out)
 }
 
-// askVision 处理一张图：拼 data URL → 问模型 → 解析成候选。
+// askVision 处理一张图：拼 data URL → 问模型 → 解析成候选。失败整链重试一次。
 func askVision(cfg visionConfig, idx int, img string) visionResult {
 	res := visionResult{idx: idx}
 	img = strings.TrimSpace(img)
@@ -338,21 +437,87 @@ func askVision(cfg visionConfig, idx int, img string) visionResult {
 	}
 	// 粗略估一下解码后的字节数（base64 每 4 字符 3 字节）
 	if len(img)*3/4 > visionMaxImageBytes {
-		res.err = errors.New("图太大，压缩后再试")
+		res.err = errVisionTooLarge
 		return res
 	}
 
-	reply, model, err := visionChat(cfg, visionPrompt, "data:image/jpeg;base64,"+img)
-	if err != nil {
-		res.err = err
+	for attempt := 0; attempt <= visionRetry; attempt++ {
+		reply, model, retryable, err := visionChat(cfg, visionPrompt, "data:image/jpeg;base64,"+img)
+		if err != nil {
+			res.err = err
+			if attempt == visionRetry || !retryable {
+				break
+			}
+			// 退避一下再试：限流/抖动这类，立刻重试还是撞同一堵墙
+			time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
+			continue
+		}
+		cands, perr := parseVisionReply(reply)
+		if perr != nil {
+			res.err = perr
+			if attempt == visionRetry {
+				break
+			}
+			continue
+		}
+		res.cands = cands
+		res.model = model
+		res.err = nil
 		return res
 	}
-	cands, err := parseVisionReply(reply)
-	if err != nil {
-		res.err = err
-		return res
-	}
-	res.cands = cands
-	res.model = model
 	return res
+}
+
+// visionRetryable 这个错误值不值得再试一次。
+//
+// 402（这个模型没额度）/ 400（模型名不对）再试一百次也是一样的结果，
+// 白白让老师多等几十秒；超时、5xx、网络错才是抖出来的，值得重试。
+func visionRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, bad := range []string{"402", "400", "401", "does not exist", "图太大"} {
+		if strings.Contains(msg, bad) {
+			return false
+		}
+	}
+	return true
+}
+
+// visionHumanError 把模型网关那串英文翻成人话。
+//
+// 网关的原始报错长这样，直接甩给老师等于没说：
+//
+//	模型返回 402：{"error":{"type":"permission_error","code":"401007",
+//	  "message":"No free trial quota is available for the service..."}}
+func visionHumanError(err error) string {
+	if err == nil {
+		return ""
+	}
+	if err == errVisionTooLarge {
+		return "图太大，压缩后再试"
+	}
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "does not exist"):
+		return "模型名不对（已记下，换备用模型）"
+	case strings.Contains(msg, "402"), strings.Contains(msg, "401007"):
+		return "这个视觉模型没额度了"
+	case strings.Contains(msg, "429"):
+		return "请求太频繁，歇一下再试"
+	case strings.Contains(msg, "deadline exceeded"), strings.Contains(msg, "timeout"):
+		return "识别超时，图可能太大，重拍一张清楚点的"
+	case strings.Contains(msg, "5"):
+		if i := strings.Index(msg, "模型返回 "); i >= 0 && len(msg) > i+9 {
+			code := msg[i+len("模型返回 ") : i+len("模型返回 ")+3]
+			if strings.HasPrefix(code, "5") {
+				return "模型服务开小差了，再试一次"
+			}
+		}
+	}
+	if len([]rune(msg)) > 40 {
+		return string([]rune(msg)[:40]) + "…"
+	}
+	return msg
 }
