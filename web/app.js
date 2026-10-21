@@ -68,15 +68,24 @@ var app = {
     }
   },
 
-  // 管理后台入口：只有站点所有者看得见，其他人连这个链接都不出现。
-  // 拿不到身份（没登录 / 服务端没开登录）就整个不显示 —— 不留一个点了报错的链接。
+  // 管理后台入口：只有管理员看得见 —— owner 会话，或者填过 --auth-token
+  // （管理后台那条路）。两个都拿不到就不显示，不留一个点了报错的链接。
   bootAdminLink: function () {
     var a = document.getElementById('adminLink');
     if (!a) return;
     fetch('/api/auth/me', { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
-        if (j && j.success && j.is_owner) a.classList.remove('hidden');
+        if (j && j.success && j.is_owner) {
+          a.classList.remove('hidden');
+          return;
+        }
+        var tok = localStorage.getItem('jrp_token') || '';
+        if (!tok) return;
+        return fetch('/api/admin/users', {
+          credentials: 'same-origin',
+          headers: { 'Authorization': 'Bearer ' + tok }
+        }).then(function (r) { if (r.ok) a.classList.remove('hidden'); });
       })
       .catch(function () { /* 拿不到身份就不显示 */ });
   },
