@@ -56,8 +56,6 @@
   #gate .status.err { color: var(--bad); }
   #gate .status.ok { color: var(--good); }
   #gate a.retry { color: var(--accent); text-decoration: none; border-bottom: 1px dotted currentColor; }
-  #tokenGate input { font: inherit; padding: 5px 8px; border: 1px solid var(--line);
-                     border-radius: 5px; background: #fff; margin-right: 6px; }
   .back { margin-top: 22px; font-size: 13px; }
   .back a { color: var(--accent); text-decoration: none; }
 </style>
@@ -86,14 +84,7 @@
       <a href="#" onclick="fetch('/api/auth/logout',{credentials:'same-origin'}).then(function(){location.reload()});return false">退出当前账号</a>。</p>
   </div>
 
-  <!-- 3. 没会话时：直接填服务端 --auth-token（CLI / 脚本那条路也算管理员） -->
-  <div class="card" id="tokenGate" style="display:none">
-    <p class="sub" style="margin:0 0 10px">或者填服务端启动时设的访问 token：</p>
-    <input id="adminToken" type="password" placeholder="访问 token">
-    <button id="adminTokenGo" class="btn ok">进入</button>
-  </div>
-
-  <!-- 4. owner：用户表 -->
+  <!-- 3. owner：用户表 -->
   <div id="panel" style="display:none">
     <div class="msg" id="msg"></div>
     <div class="summary" id="summary"></div>

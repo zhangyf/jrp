@@ -21,16 +21,8 @@ var jrpAdmin = {
     jrpAdmin.check();
   },
 
-  // --auth-token 那条路（CLI / 脚本）也算管理员，有就带上。
-  token: function () { return localStorage.getItem('jrp_token') || ''; },
-
-  headers: function () {
-    var h = { 'Content-Type': 'application/json' };
-    if (jrpAdmin.token()) h['Authorization'] = 'Bearer ' + jrpAdmin.token();
-    return h;
-  },
-
   // 先问「我是谁」：没登录就摆扫码框，不是 owner 就挡回去。
+  // 只有一条路 —— owner 的扫码会话。线上不设 --auth-token，别再留别的入口。
   check: function () {
     fetch('/api/auth/me', { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })
@@ -44,30 +36,11 @@ var jrpAdmin = {
           jrpAdmin.load();
           return;
         }
-        // 没有会话：服务端配了 --auth-token 的话，填 token 也能进。
-        if (jrpAdmin.token()) {
-          jrpAdmin.showPanel();
-          jrpAdmin.load();
-          return;
-        }
-        jrpAdmin.showTokenGate();
         jrpAdmin.showLogin();
       })
       .catch(function (e) {
         jrpAdmin.setMsg('连不上服务器：' + e.message, true);
       });
-  },
-
-  showTokenGate: function () {
-    var g = document.getElementById('tokenGate');
-    if (g) g.style.display = 'block';
-    var go = document.getElementById('adminTokenGo');
-    if (!go) return;
-    go.onclick = function () {
-      localStorage.setItem('jrp_token', (document.getElementById('adminToken').value || '').trim());
-      jrpAdmin.showPanel();
-      jrpAdmin.load();
-    };
   },
 
   showLogin: function () {
@@ -98,12 +71,11 @@ var jrpAdmin = {
   },
 
   load: function () {
-    fetch('/api/admin/users', { credentials: 'same-origin', headers: jrpAdmin.headers() })
+    fetch('/api/admin/users', { credentials: 'same-origin' })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
         if (!res.ok || !res.j || !res.j.success) {
           jrpAdmin.setMsg((res.j && res.j.error) || '读用户列表失败', true);
-          jrpAdmin.showTokenGate();
           return;
         }
         jrpAdmin.roleText = res.j.roles || {};
@@ -237,7 +209,7 @@ var jrpAdmin = {
     fetch('/api/admin/user', {
       method: 'POST',
       credentials: 'same-origin',
-      headers: jrpAdmin.headers(),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
