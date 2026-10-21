@@ -1404,9 +1404,16 @@ for **active flashcard-style review** — one word at a time, answer by keyboard
     甩给老师等于没说。
   - 没配网关 → `enabled:false` + `enabled_note`，不报错。只认词**不写档案**，
     老师勾完再走 `/api/words`。
-  - ⚠️ **前端发图前必须缩图**（`shrinkToBase64` 长边 1280 / JPEG 0.72）：
-    手机原图两三兆，模型算 25 秒都算不完 —— 2026-10-21 老师传 4 张只回来 1 张，
-    线上日志写的是 `context deadline exceeded`。缩完 200KB 上下，几秒就回。
+  - ⚠️ **前端发图前必须缩图**（`shrinkToBase64`：`>250KB` 才重绘 JPEG 0.72，
+    尺寸顺带压到长边 1280）：手机原图两三兆，模型算 30 秒都算不完 ——
+    2026-10-21 老师传 4 张只回来 1 张，线上日志写的是 `context deadline exceeded`。
+    ⚠️ **判断条件必须是文件体积不是像素尺寸**：`chooseMedia` 带 `sizeType:['compressed']`
+    出来的图长边常常正好 1280，按尺寸判「不用缩」就漏了，文件仍有 800KB~1.5MB。
+  - ⚠️ **三层超时必须挨着排**：服务端整批预算 120s < 小程序 `wx.request` 180s
+    < nginx `proxy_read_timeout` 300s。**哪层先断，老师看到的就是哪层的报错**。
+    2026-10-21 就因为 nginx 那层只有 60 秒（默认），整批被掐成裸 504。
+  - 整批到点不报错：**返回 200 + 已认出的那几张 + 剩下的标超时**，老师点「重认这张」
+    单独再来 —— 比整个请求 504 强得多。
 - `POST /api/grade` — 批量判分（2026-10-19 加，**给小程序用**）：
   `{"mode":"kana|kanji|full|either","items":[{"word":"すし(寿司)","answer":"寿司"}]}`
   → `{"success":true,"mode":"either","results":[true]}`。复用 Go 的 `GradeAnswer`，
@@ -1540,6 +1547,10 @@ location /api/                                 { auth_basic off; proxy_pass http
 - 公共转发头抽到 `/etc/nginx/snippets/jrp_proxy.conf`（备份在
   `outputs/deploy/jrp_proxy.snippet.conf`）—— 放行 location 和主 `location /`
   必须用同一份，漏一个 `X-Forwarded-Proto` 就会出现「页面能开、接口怪错」。
+- ⚠️ **snippet 里没有 `proxy_*_timeout`** ⇒ 走 nginx 默认 60 秒。2026-10-21 拍照取词
+  被掐成裸 504 就是这么来的，已在 `location /api/` 单独补
+  `proxy_connect_timeout 10s; proxy_send_timeout 300s; proxy_read_timeout 300s;`。
+  ⚠️ 别被 `grep proxy_read_timeout` 骗了：那三行 300s 是 **mistake-book 那个 server** 的，跟 jrp 无关。
 
 ### 小程序
 
