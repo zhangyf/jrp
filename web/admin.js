@@ -21,42 +21,33 @@ var jrpAdmin = {
     jrpAdmin.check();
   },
 
-  // 先问「我是谁」：没登录就摆扫码框，不是 owner 就挡回去。
-  // 只有一条路 —— owner 的扫码会话。线上不设 --auth-token，别再留别的入口。
+  // 只有一条路 —— owner 的扫码会话。不是 owner 的一律按「没登录」处理，
+  // 直接回扫码页，不单独摆一个「你不是所有者」的页面（那页没意义，又不给下一步）。
   check: function () {
     fetch('/api/auth/me', { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
-        if (j && j.success) {
-          if (!j.is_owner) {
-            jrpAdmin.showDenied(j.name || j.uid || '这个账号');
-            return;
-          }
+        if (j && j.success && j.is_owner) {
           jrpAdmin.showPanel();
           jrpAdmin.load();
           return;
         }
-        jrpAdmin.showLogin();
+        jrpAdmin.showLogin(j && j.success
+          ? '这个微信还没通过审核，或者不是站点所有者，进不了管理后台。请换站点所有者的微信扫码。'
+          : '管理后台要用站点所有者的微信扫码登录。');
       })
       .catch(function (e) {
         jrpAdmin.setMsg('连不上服务器：' + e.message, true);
       });
   },
 
-  showLogin: function () {
+  showLogin: function (note) {
     document.getElementById('gate').style.display = 'block';
     document.getElementById('panel').style.display = 'none';
-    jrpAdmin.setMsg('管理后台要用站点所有者的账号登录。用微信扫下面的码。');
+    var n = document.getElementById('gateNote');
+    if (n) n.textContent = note || '';
     jrpAuth.next = '/admin.html'; // 扫完回管理后台，别跳首页
     jrpAuth.boot();
-  },
-
-  showDenied: function (who) {
-    document.getElementById('gate').style.display = 'none';
-    document.getElementById('panel').style.display = 'none';
-    var d = document.getElementById('denied');
-    d.style.display = 'block';
-    d.querySelector('.who').textContent = who;
   },
 
   showPanel: function () {

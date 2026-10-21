@@ -48,6 +48,9 @@
   .btn.bad { border-color: var(--bad); color: var(--bad); }
 
   /* 未登录时摆的扫码框，跟 login.html 同一套结构（复用 auth.js） */
+  #gate .gate-note { font-size: 13px; color: var(--unknown); text-align: center;
+                     margin: 0 auto 14px; max-width: 420px; line-height: 1.6; }
+  #gate .gate-note:empty { display: none; }
   #gate .qr-box { width: 200px; height: 200px; margin: 0 auto 14px; display: flex;
                   align-items: center; justify-content: center; background: var(--bg);
                   border: 1px solid var(--line); border-radius: 10px; color: var(--muted); font-size: 13px; }
@@ -68,8 +71,9 @@
     <a href="#" id="logoutLink" class="logout">退出登录</a>
   </p>
 
-  <!-- 1. 没登录：扫码 -->
+  <!-- 1. 不是 owner（含没登录、没审核通过）一律回这里扫码 -->
   <div class="card" id="gate" style="display:none">
+    <div class="gate-note" id="gateNote"></div>
     <div class="qr-box" id="qr"><span id="qrHint">正在生成二维码…</span></div>
     <div class="status" id="status">&nbsp;</div>
     <p class="sub" style="margin:12px 0 0">
@@ -77,14 +81,7 @@
     </p>
   </div>
 
-  <!-- 2. 登录了但不是 owner -->
-  <div class="card" id="denied" style="display:none">
-    <p>当前登录的是 <b class="who"></b>，不是站点所有者，进不了管理后台。</p>
-    <p class="sub">请用所有者的微信扫码登录，或者
-      <a href="#" onclick="fetch('/api/auth/logout',{credentials:'same-origin'}).then(function(){location.reload()});return false">退出当前账号</a>。</p>
-  </div>
-
-  <!-- 3. owner：用户表 -->
+  <!-- 2. owner：用户表 -->
   <div id="panel" style="display:none">
     <div class="msg" id="msg"></div>
     <div class="summary" id="summary"></div>
