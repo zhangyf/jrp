@@ -6,32 +6,44 @@ import (
 	"strings"
 )
 
-// 查中文意思：录入新词时不用手打释义，服务端自己补。
+// 查中文意思 + 补汉字写法：录入新词时只用打假名，剩下的服务端补齐。
 //
-//	POST /api/word-def { words:["みず(水)", "たべもの"] }
-//	→ { success, enabled, defs:{"みず(水)":"水", "たべもの":"食物"}, model:"…" }
+//	POST /api/word-def { words:["みず", "たべもの"] }
+//	→ { success, enabled, items:[{input:"みず", word:"みず(水)", def:"水"}], missing:[…] }
+//
+// 老师 2026-10-21 反馈「这个日语词的汉字不加上吗」：光给中文没用，档案里词形是
+// 「假名(汉字)」，不补汉字的话这个词录进去就没有汉字，复习时根本学不到写法。
 //
 // 两条来源，按顺序：
-//  1. **档案里已有这个词** → 直接用它的释义（最准、最快、不要钱，而且保证跟
-//     复习时看到的中文一致 —— 同一个词两处释义不一样等于白练）。
-//  2. 剩下的才问模型。
+//  1. **档案里已有这个词** → 直接用它的**完整词形 + 释义**（最准、不要钱，
+//     而且保证跟复习时看到的中文是同一份 —— 同一个词两处释义不一样等于白练）。
+//     先按原样精确找，找不到再按假名部分找（老师打「みず」，库里是「みず(水)」）。
+//  2. 剩下的才问模型，模型一并给汉字写法。
 //
 // ⚠️ 模型不可用（没配 JRP_LLM_*）不是错误：返回 enabled:false + 已有的那部分。
 // 前端看到缺释义就把条目留在列表里让老师补，不阻断录入。
 
-const wordDefPrompt = `你是日语词典。给下面这些日语词条各配一个中文释义。
+// WordDefItem 是一个词查回来的结果。word 是建议录进档案的词形（可能带了括号汉字）。
+type WordDefItem struct {
+	Input string `json:"input"` // 老师原来打的
+	Word  string `json:"word"`  // 建议录进去的（补了汉字）
+	Def   string `json:"def"`   // 中文释义
+}
+
+const wordDefPrompt = `你是日语词典。给下面这些日语词条补上汉字写法和中文释义。
 
 词条：
 {words}
 
 要求：
-1. 只给这个词条本身的意思，不要例句、不要读音、不要词性说明。
-2. 意思不止一个时，用顿号并列最常见的两三个（例：家、房子）。
-3. 词条里的半角括号是汉字写法（みず(水) = 水），全角括号是语法注释（さん（敬称）= 先生/女士等称呼）。
-4. 动词、形容词给基本形的意思就行。
-5. 拿不准就给最常用的那个意思，别写「未知」。
+1. kanji 填这个词的汉字写法；这个词本来就不写汉字的（さん、ありがとう 这类）就填空字符串。
+2. def 填中文意思：只给这个词本身的意思，不要例句、不要读音、不要词性说明；
+   意思不止一个时用顿号并列最常见的两三个。
+3. 动词、形容词给基本形的意思。
+4. word 原样返回词条，不要改动。
 
-只输出一行 JSON，不要解释：{"みず(水)": "水", "たべもの": "食物"}`
+只输出一行 JSON 数组，不要解释、不要代码块：
+[{"word": "みず", "kanji": "水", "def": "水"}, {"word": "さん", "kanji": "", "def": "先生、女士等称呼"}]`
 
 func fillWordDefPrompt(tpl string, words []string) string {
 	var b strings.Builder
@@ -43,30 +55,22 @@ func fillWordDefPrompt(tpl string, words []string) string {
 	return strings.ReplaceAll(tpl, "{words}", strings.TrimRight(b.String(), "\n"))
 }
 
-// parseWordDefReply 从模型回话里抠出 JSON。模型爱在外面套 ```json 和前后废话，
-// 所以取第一个 { 到最后一个 } 之间的一段再解。
-func parseWordDefReply(reply string) (map[string]string, error) {
-	s := strings.TrimSpace(reply)
-	if i := strings.Index(s, "```"); i >= 0 {
-		s = s[i+3:]
-		if j := strings.Index(s, "```"); j >= 0 {
-			s = s[:j]
+// hasParen 判断词形里已经带了括号（老师自己写了汉字或注释），这种就别再补。
+func hasParen(s string) bool {
+	return strings.ContainsAny(s, "(（")
+}
+
+// findWordByKana 按假名部分找词：老师打「みず」，库里存的是「みず(水)」。
+func findWordByKana(groups []WordGroup, kana string) *Word {
+	for gi := range groups {
+		for wi := range groups[gi].Words {
+			w := &groups[gi].Words[wi]
+			if k, _, _ := splitLexiconWord(w.Word); k == kana {
+				return w
+			}
 		}
-		s = strings.TrimSpace(s)
-		if strings.HasPrefix(strings.ToLower(s), "json") {
-			s = strings.TrimSpace(s[4:])
-		}
 	}
-	l := strings.Index(s, "{")
-	r := strings.LastIndex(s, "}")
-	if l < 0 || r <= l {
-		return nil, errNoWordDefJSON
-	}
-	var out map[string]string
-	if err := json.Unmarshal([]byte(s[l:r+1]), &out); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return nil
 }
 
 var errNoWordDefJSON = &wordDefError{"模型没按 JSON 回"}
@@ -74,6 +78,13 @@ var errNoWordDefJSON = &wordDefError{"模型没按 JSON 回"}
 type wordDefError struct{ msg string }
 
 func (e *wordDefError) Error() string { return e.msg }
+
+// llmWordDef 模型返回的一行：word 原样 + kanji 汉字 + def 释义。
+type llmWordDef struct {
+	Word  string `json:"word"`
+	Kanji string `json:"kanji"`
+	Def   string `json:"def"`
+}
 
 func (s *server) handleWordDef(w http.ResponseWriter, r *http.Request, st *Storage) {
 	if r.Method != http.MethodPost {
@@ -117,17 +128,24 @@ func (s *server) handleWordDef(w http.ResponseWriter, r *http.Request, st *Stora
 		return
 	}
 
-	defs := map[string]string{}
+	var items []WordDefItem
 	var todo []string
 
-	// ① 档案里有的直接用 —— 保证跟复习时看到的中文是同一份
+	// ① 档案优先：精确命中 → 按假名命中（顺带把汉字补上）
 	if data, _, err := st.DownloadLatestArchive(s.ctx()); err == nil {
 		if arc, err := ParseArchive(string(data), st.lang); err == nil {
 			for _, w := range words {
 				if existing, _ := FindWord(arc.Groups, w); existing != nil &&
 					strings.TrimSpace(existing.Definition) != "" {
-					defs[w] = strings.TrimSpace(existing.Definition)
+					items = append(items, WordDefItem{Input: w, Word: existing.Word, Def: strings.TrimSpace(existing.Definition)})
 					continue
+				}
+				if !hasParen(w) {
+					if existing := findWordByKana(arc.Groups, w); existing != nil &&
+						strings.TrimSpace(existing.Definition) != "" {
+						items = append(items, WordDefItem{Input: w, Word: existing.Word, Def: strings.TrimSpace(existing.Definition)})
+						continue
+					}
 				}
 				todo = append(todo, w)
 			}
@@ -145,22 +163,61 @@ func (s *server) handleWordDef(w http.ResponseWriter, r *http.Request, st *Stora
 			reply, used, err := llmChat(cfg, fillWordDefPrompt(wordDefPrompt, todo))
 			if err == nil {
 				model = used
-				if got, perr := parseWordDefReply(reply); perr == nil {
-					for _, w := range todo {
-						if d := strings.TrimSpace(got[w]); d != "" {
-							defs[w] = d
+				var got []llmWordDef
+				if raw, perr := parseWordDefReplyRaw(reply); perr == nil {
+					got = raw
+				}
+				byWord := map[string]llmWordDef{}
+				for _, g := range got {
+					byWord[strings.TrimSpace(g.Word)] = g
+				}
+				for _, w := range todo {
+					it := WordDefItem{Input: w, Word: w}
+					if g, ok := byWord[w]; ok {
+						it.Def = strings.TrimSpace(g.Def)
+						// 汉字补进半角括号 —— 半角括号在档案里的含义就是「汉字写法」
+						if k := strings.TrimSpace(g.Kanji); k != "" && !hasParen(w) {
+							it.Word = w + "(" + k + ")"
 						}
 					}
+					items = append(items, it)
+				}
+			} else {
+				// 模型挂了也要回条目，只是没释义 —— 前端留给老师补
+				for _, w := range todo {
+					items = append(items, WordDefItem{Input: w, Word: w})
 				}
 			}
+		} else {
+			for _, w := range todo {
+				items = append(items, WordDefItem{Input: w, Word: w})
+			}
 		}
+	}
+
+	// 保序输出（档案命中和模型回答是分两批来的，要按请求的顺序还回去）
+	ordered := make([]WordDefItem, 0, len(words))
+	byInput := map[string]WordDefItem{}
+	for _, it := range items {
+		byInput[it.Input] = it
+	}
+	var missing []string
+	for _, w := range words {
+		it, ok := byInput[w]
+		if !ok {
+			it = WordDefItem{Input: w, Word: w}
+		}
+		if it.Def == "" {
+			missing = append(missing, w)
+		}
+		ordered = append(ordered, it)
 	}
 
 	out := map[string]interface{}{
 		"success": true,
 		"enabled": model != "",
-		"defs":    defs,
-		"missing": missingWords(words, defs),
+		"items":   ordered,
+		"missing": missing,
 	}
 	if model != "" {
 		out["model"] = model
@@ -168,12 +225,17 @@ func (s *server) handleWordDef(w http.ResponseWriter, r *http.Request, st *Stora
 	writeJSON(w, http.StatusOK, out)
 }
 
-func missingWords(words []string, defs map[string]string) []string {
-	var out []string
-	for _, w := range words {
-		if _, ok := defs[w]; !ok {
-			out = append(out, w)
-		}
+// parseWordDefReplyRaw 抠模型返回的 JSON 数组（带 kanji 字段）。
+func parseWordDefReplyRaw(reply string) ([]llmWordDef, error) {
+	s := stripCodeFence(reply)
+	l := strings.Index(s, "[")
+	r := strings.LastIndex(s, "]")
+	if l < 0 || r <= l {
+		return nil, errNoWordDefJSON
 	}
-	return out
+	var out []llmWordDef
+	if err := json.Unmarshal([]byte(s[l:r+1]), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }

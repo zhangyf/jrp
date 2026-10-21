@@ -13,6 +13,11 @@
 
 const app = getApp();
 
+// 词形里已经带括号 = 已经有汉字写法（みず(水)）或语法注释（さん（敬称）），不用再补
+function hasParen(s) {
+  return (s || '').indexOf('(') >= 0 || (s || '').indexOf('（') >= 0;
+}
+
 Page({
   data: {
     word: '',
@@ -36,16 +41,19 @@ Page({
 
   onWord(e) { this.setData({ word: e.detail.value }); },
 
-  // 手打：只写词形，中文让服务端查
+  // 手打：只写假名，汉字和中文都让服务端补
   addManual() {
     const word = (this.data.word || '').trim();
     if (!word) { wx.showToast({ title: '先写词形', icon: 'none' }); return; }
     this.setData({ word: '', looking: true });
-    this.lookup([word], (defs) => {
+    this.lookup([word], (map) => {
       this.setData({ looking: false });
-      this.pushPending([{ word: word, def: defs[word] || '' }]);
-      if (!defs[word]) {
+      const got = map[word] || { word: word, def: '' };
+      this.pushPending([got]);
+      if (!got.def) {
         wx.showToast({ title: '没查到中文，点条目补一下', icon: 'none' });
+      } else if (got.word !== word) {
+        wx.showToast({ title: '补成 ' + got.word, icon: 'none' });
       }
     });
   },
@@ -143,11 +151,17 @@ Page({
       .map((c) => ({ word: (c.word || '').trim(), def: (c.def || '').trim() }));
     if (!picked.length) { wx.showToast({ title: '先勾几个', icon: 'none' }); return; }
 
-    // OCR 没切出中文的那些，一并让服务端查
-    const need = picked.filter((p) => !p.def).map((p) => p.word);
+    // 缺中文、或只有假名没汉字的，一并让服务端补（已经有汉字的不浪费这次调用）
+    const need = picked.filter((p) => !p.def || !hasParen(p.word)).map((p) => p.word);
     const self = this;
-    const done = (defs) => {
-      picked.forEach((p) => { if (!p.def && defs[p.word]) p.def = defs[p.word]; });
+    const done = (map) => {
+      picked.forEach((p) => {
+        const got = map[p.word];
+        if (!got) return;
+        if (!p.def) p.def = got.def;
+        // 服务端补了汉字的（みず → みず(水)）就用它的；本来就带括号的不动
+        if (got.word && !hasParen(p.word)) p.word = got.word;
+      });
       self.setData({ looking: false });
       self.pushPending(picked);
       self.setData({ cands: [] });
@@ -172,11 +186,18 @@ Page({
     this.setData({ pending: merged });
   },
 
-  // 查中文：先档案后模型，全在服务端（保证跟复习时看到的中文是同一份）
+  // 查中文 + 补汉字：先档案后模型，全在服务端（保证跟复习时看到的是同一份）
+  // 回调拿到的是 { 原输入: { word: 建议词形, def: 中文 } }
   lookup(words, cb) {
     const self = this;
     app.request('/api/word-def', 'POST', { words: words }, true)
-      .then((r) => cb(r.defs || {}))
+      .then((r) => {
+        const map = {};
+        (r.items || []).forEach((it) => {
+          map[it.input] = { word: it.word || it.input, def: it.def || '' };
+        });
+        cb(map);
+      })
       .catch(() => { self.setData({ looking: false }); cb({}); });
   },
 
