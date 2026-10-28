@@ -13,6 +13,7 @@ const app = getApp();
 Page({
   data: {
     busy: false,
+    checking: false, // 有缓存 token 时在验票，先别把登录按钮亮出来
     message: ''
   },
 
@@ -23,16 +24,22 @@ Page({
       wx.switchTab({ url: '/pages/index/index' });
       return;
     }
-    // token 可能是上次存的，先问一次服务端还认不认；认就直接进
+    // token 可能是上次存的，先问一次服务端还认不认；认就直接进。
+    // 这段等待里显示「正在登录…」而不是两个按钮 —— 否则老师每次冷启动
+    // 都会先闪一下登录页，看着像掉登录了。
     const cached = wx.getStorageSync('jrp_token');
     if (cached && !app.globalData.logged) {
       app.globalData.token = cached;
+      this.setData({ checking: true });
       app.refreshMe();
-      // refreshMe 是异步的，给它一点时间；认了的话下次 onShow 就跳走了
+      // refreshMe 是异步的，给它一点时间；认了就跳走，没认（过期/被踢）
+      // 就把按钮亮出来让人重新登。
       setTimeout(() => {
         if (app.globalData.logged && app.globalData.token) {
           wx.switchTab({ url: '/pages/index/index' });
+          return;
         }
+        this.setData({ checking: false });
       }, 800);
     }
   },

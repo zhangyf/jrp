@@ -28,6 +28,16 @@
   color: #8a8a80;
 }
 
+/* 验票中：占位高度跟两个按钮差不多，别让版面跳一下 */
+.checking {
+  margin-top: 20rpx;
+  height: 210rpx;
+  line-height: 210rpx;
+  text-align: center;
+  font-size: 28rpx;
+  color: #8a8a80;
+}
+
 .acts {
   margin-top: 20rpx;
 }
