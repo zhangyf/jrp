@@ -1629,13 +1629,18 @@ tabBar 三项：**练习 / 统计 / 录入**。
 | 之后再登录 | 照样挡 —— 判断读的是库里那条记录的 `created`，`upsertUser` 只更新 `last_login`，**重新扫码不会重新计时**，只有删记录才会 |
 
 ⚠️ 之前一版是「pending 降级成体验版（假数据）」，已废弃 —— 老师要的是完整体验。
-实现两处：`withUser`（拦接口）+ `handleAuthWXLogin`（登录时就挡，不发会话）。
+实现**三处**，少一处就漏：`withUser`（拦接口）+ `handleAuthWXLogin`（小程序登录时挡）+
+`handleAuthStatus`（**网页扫码**那条路，2026-10-28 补）。网页端漏了的话，会话还有 30 天寿命，
+过期 pending 的人照样能确认 ticket 拿到 web 会话，变成「能登录但用不了」。
 天数按**自然日**算（`pendingDaysLeft`，不看时分秒）；老数据没有 `created` 按满格给，不误伤。
 `/api/auth/me` 带 `pending` + `days_left`，首页摆一句倒计时。
 ⚠️ `/api/auth/me` 走 `withUser`：会话 role 是登录那一刻的快照，批准/冻结后要在
 `withUser` 里 `sess.Role = u.Role` 自愈，不然用户得重新扫码。
+⚠️ **认人靠 openid，不是 uid**：`upsertUser` 先 `findUserByOpenID`，命中就只改 `last_login`，
+`newUID()` 只在新建那条分支里。所以同一个人第 8 天再登还是同一条记录同一个 uid，拦截照样生效。
+换微信号 = 新 openid = 新记录又能用 7 天（没 unionid，堵不了）。
 测试：`TestPendingGracePeriod` / `TestPendingDaysLeftCountsCalendarDays` /
-`TestDisabledUserStillBlocked`。
+`TestPendingExpiredCannotCompleteWebLogin` / `TestDisabledUserStillBlocked`。
 
 ⚠️ 光清 token 不够 —— `onLaunch` 原来没 token 就调 `login()` 静默登录，
 退出后冷启动会被自动登回去，等于退不掉、也永远看不到登录页的「试用账号」。
