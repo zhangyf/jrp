@@ -1494,6 +1494,12 @@ web 登录后进原来的页面，微信里扫码后进小程序。
 - Cookie `jrp_sid`（`Path=/; Max-Age=30天; HttpOnly; Secure; SameSite=Lax`）；
   小程序端没有 cookie jar → 用 `Authorization: Bearer <token>`，后端同一张 session 表两种载体都认。
 - 会话存内存 + COS 兜底（`_auth/sessions/<sid>.json`），重启不丢。
+  ⚠️ **寿命分两种**（2026-10-28 老师定）：`sessKindWeb` 30 天，`sessKindMini` **7 天**，
+  按最后一次使用滑动。`createSession(u, ua, kind)` 第三个参数别漏 —— 老会话没 `kind` 字段按 30 天算。
+  ⚠️ **体验版会话不落 COS**（`uid == trialUID` 跳过 `persistSession`）：/api/auth/trial 匿名可领，
+  落盘等于让人白嫖 COS 写对象。
+  ⚠️ 内存表有清扫 goroutine（`sweepSessions`，10 分钟）+ 上限 `maxSessions=3000`：
+  没有这两样，被丢弃的会话（尤其体验版）会一直占着内存只涨不落。
 - 用户表 `_auth/users.json`（语言无关），角色 `owner | member | pending | disabled`。
   第一个登录的人自动 owner，其余 **pending**，要 `jrp user approve <uid>` 才能进。
 - ⛔ **红线**：开了强制登录后，**无凭证绝不能退回 owner**（那就是把老师的账号给人白用）。
@@ -1642,6 +1648,12 @@ tabBar 三项：**练习 / 统计 / 录入**。
 测试：`TestPendingGracePeriod` / `TestPendingDaysLeftCountsCalendarDays` /
 `TestPendingExpiredCannotCompleteWebLogin` / `TestDisabledUserStillBlocked`。
 
+**pending 的大模型配额**（2026-10-28 老师定）：pending 有 7 天完整权限，但拍照取词每张图
+都真调视觉模型 → **每天最多 2 张**（`pendingVisionDaily`，见 `quota.go`，按自然日、按 uid 记在
+`users/<uid>/quota/vision_<date>.json`）。⛔ 判定在**扣之前**：被拒的请求不落盘，
+否则老师批准后那天的额度会平白少掉。`TestPendingVisionDailyQuota` 盯着这条。
+体验版（trial）走不到这儿 —— `/api/vision` 不在白名单里。
+
 ⚠️ 光清 token 不够 —— `onLaunch` 原来没 token 就调 `login()` 静默登录，
 退出后冷启动会被自动登回去，等于退不掉、也永远看不到登录页的「试用账号」。
 所以 `logout()` 额外写 `jrp_logged_out` 标记，`autoLogin()` / `refreshMe()` 的失败重登
@@ -1664,3 +1676,45 @@ tabBar 三项：**练习 / 统计 / 录入**。
    小程序画不了 SVG → 走势用「每日堆叠柱」代替 web 的堆叠折线（一根柱 = 一个存档点，
    柱顶即总词量），90 天抽样到 30 根。版面与 `web/stats.js` 对齐：
    KPI（含增量）→ 掌握度构成 → 词库走势 → 正确率分布 → 钉子户 → 复习最多的词 → 每日明细（折叠）。
+
+---
+
+## 安全基线（2026-10-28 全量评审后立的规矩）
+
+老师问「从一个黑客角度反观下我的 web 端和小程序端」。评完立的几条铁律，
+**以后加接口/改 nginx 前先对照一遍**：
+
+1. **任何拼进 COS key 的参数都必须白名单或格式校验**。
+   翻车现场：`date` 没校验就进 `drafts/draft_<date>_<mode>.json`，
+   `mode` 有白名单唯独 `date` 没有 → `../../` 能捅到桶里别的目录。
+   现在统一走 `safeDate()` / `safeDateParam()`（严格 `YYYY-MM-DD`，否则 400）。
+   新增带日期的接口，第一件事就是调它，别自己拼。
+2. **鉴权必须 fail-closed**：`authRequired()` 原来「读不到用户表」和「表真是空的」
+   表现一样（空切片）→ COS 抖一下匿名就成了 owner。现在 `usersUnknown()` 时一律要求登录。
+   ⛔ 任何"读失败就当没有"的写法都是这个坑。
+3. **凭证不许走 URL**：`bearerToken()` 已不接受 `?token=`（会进 access log / 历史 / Referer）。
+   下载类接口改 fetch + Blob + `a[download]`（见 `web/offline.js` 的 `export`）。
+4. **匿名能领的东西必须限流**：`/api/auth/trial` 匿名可领会话，而体验版白名单里
+   `/api/judge-sentence` 是真调大模型的 —— 不限流就是免费大模型代理。
+   nginx 侧：`jrp_login`(10r/m) 挡 trial/wxlogin/ticket/qr，`jrp_llm`(30r/m) 挡
+   vision/judge-sentence/word-def。⛔ **`/api/auth/status` 是登录轮询，绝对不能限。**
+5. **安全响应头只写在 nginx server 级**：nginx 的 `add_header` 继承是「有则覆盖」不是合并，
+   任何 location 里出现一个 add_header，server 级那一整摞就全失效。
+6. **pending 有 7 天完整权限 = 也能烧你的模型钱** → 每日配额卡住（`quota.go`）。
+   以后再加「调大模型」的接口，先问「pending 能不能打，打几次」。
+
+### 已经确认安全的（别再改坏）
+
+- COS 桶私有：匿名 GET `language-review/_auth/users.json` 和列目录都是 **403**。
+- `appsecret` / LLM key 只在 `/etc/jrp/jrp.env`（600），从不进 COS。
+- cookie `HttpOnly + Secure + SameSite=Lax`（Lax 顺带挡跨站 POST 的 CSRF）。
+- `--auth-token` 用 `subtle.ConstantTimeCompare` 比。
+- `group`、词形、释义只进 JSON 内容，不进 key。
+- `/api/judge-prompt` 只有 GET，改 prompt 只能走 CLI。
+- 静态资源走 `path.Clean`，没有目录穿越。
+
+### 还没做（老师已知，性价比低）
+
+- 会话不绑 IP/UA；sid 明文存 COS（桶私有，可控）。
+- 小程序 token 明文落 `wx.setStorageSync`（微信沙箱内）。
+- 扫码登录的固有钓鱼面：攻击者自造码骗受害者扫+确认 → 会话归攻击者。
