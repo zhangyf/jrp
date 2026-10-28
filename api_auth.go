@@ -165,6 +165,18 @@ func (s *server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// pending 过了 7 天体验期：跟 wxlogin 一个口径，这里也不发会话。
+	// 小程序端挡得住不代表网页端能漏 —— 会话可能还活着（30 天），
+	// 光靠 withUser 那道 403 就变成「能登录但用不了」，老师要的是登录这一步就挡住。
+	if u.Role == rolePending && pendingExpired(u) {
+		dropTicket(ticket)
+		writeJSON(w, http.StatusForbidden, map[string]interface{}{
+			"success": false,
+			"error":   "管理员还没审核通过，7 天体验期已结束，不可继续使用",
+			"role":    u.Role, "pending": true, "expired": true,
+		})
+		return
+	}
 	sid := s.createSession(u, r.UserAgent())
 	setSessionCookie(w, sid)
 	dropTicket(ticket)

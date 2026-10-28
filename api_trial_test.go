@@ -331,6 +331,50 @@ func TestPendingGracePeriod(t *testing.T) {
 	}
 }
 
+// 网页扫码那条路（/api/auth/status）也得挡：小程序端挡住了不代表网页端能漏。
+func TestPendingExpiredCannotCompleteWebLogin(t *testing.T) {
+	st := &Storage{lang: "ja", dryRun: true}
+	srv := &server{storage: st}
+	defer seedUsers(t, nil)
+
+	login := func(daysAgo int) *httptest.ResponseRecorder {
+		uid := "u_web"
+		seedUsers(t, []User{
+			{UID: uid, Role: rolePending, Created: time.Now().AddDate(0, 0, -daysAgo).Format("2006-01-02 15:04:05")},
+		})
+		tk := newLoginTicket()
+		if !confirmTicket(tk.Ticket, uid) {
+			t.Fatal("确认失败")
+		}
+		req := httptest.NewRequest(http.MethodGet, "/api/auth/status?ticket="+tk.Ticket, nil)
+		req.AddCookie(&http.Cookie{Name: pollCookie, Value: tk.PollToken})
+		rec := httptest.NewRecorder()
+		srv.handleAuthStatus(rec, req)
+		return rec
+	}
+
+	// 期内：正常发会话
+	rec := login(3)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("体验期内网页该能登录，got %d（body=%s）", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Header().Get("Set-Cookie"), sidCookie+"=") {
+		t.Error("期内该下发会话 cookie")
+	}
+
+	// 过期：403 且不下发会话
+	rec = login(8)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("过期 pending 扫完码该被拒，got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "审核") {
+		t.Errorf("403 要写清是没审核，实际：%s", rec.Body.String())
+	}
+	if strings.Contains(rec.Header().Get("Set-Cookie"), sidCookie+"=") {
+		t.Error("过期不该下发会话 cookie")
+	}
+}
+
 // 天数计算按**自然日**，不是 7×24 小时 —— 晚上注册的别第二天就少一天。
 func TestPendingDaysLeftCountsCalendarDays(t *testing.T) {
 	now := time.Now()
