@@ -34,7 +34,10 @@ import (
 // 数据隔离是白送的：uid 非空的本来就读 `users/<uid>/`，试用数据就算写出来
 // 也进不了老师的 prefix。但第 3 条还是要守 —— 不写才算干净。
 
-const trialUID = "trial"
+const (
+	trialUID  = "trial"
+	trialRole = "trial" // /api/auth/me 对外报的身份（pending 也报这个，见 handleAuthMe）
+)
 
 // trialAllowed trial 身份允许访问的路由。
 //
@@ -88,6 +91,19 @@ var trialSentences = []PlanSentence{
 	{Number: 1, Chinese: "小李是中国人。", Answer: "李さんは 中国人です。"},
 	{Number: 2, Chinese: "这是书。", Answer: "これは ほんです。"},
 	{Number: 3, Chinese: "洗手间在哪里？", Answer: "トイレは どこですか。"},
+}
+
+// publicRole 对外（小程序）报的身份。
+//
+// pending（已扫码、等批准）的实际权限**就是体验版** —— withUser 已经把它按
+// trialUID 处理了，所以这里如实报 trial，否则前端那句「账号待批准」会把人
+// 挡在门外（小程序审核员就卡在这儿过）。第二个返回值保留「原本是 pending」，
+// 前端拿它提示一句「批准后可用完整功能」。
+func publicRole(role string) (string, bool) {
+	if role == rolePending {
+		return trialRole, true
+	}
+	return role, false
 }
 
 func ptrFloat(v float64) *float64 { return &v }
@@ -305,13 +321,13 @@ func (s *server) handleAuthTrial(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	u := User{UID: trialUID, Role: "trial", Name: "体验用户"}
+	u := User{UID: trialUID, Role: trialRole, Name: "体验用户"}
 	sid := s.createSession(u, r.UserAgent())
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"token":   sid,
 		"uid":     trialUID,
-		"role":    "trial",
+		"role":    trialRole,
 		"name":    u.Name,
 	})
 }

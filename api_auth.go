@@ -207,11 +207,15 @@ func (s *server) handleAuthWXLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sid := s.createSession(u, r.UserAgent())
+	// 对外报的身份要跟实际权限一致：新用户是 pending，权限等同体验版，
+	// 所以报 trial（否则小程序一登录就摆一道「待批准」的墙）。
+	role, pending := publicRole(u.Role)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"token":   sid,
 		"uid":     u.UID,
-		"role":    u.Role,
+		"role":    role,
+		"pending": pending,
 		"name":    u.Name,
 	})
 }
@@ -243,7 +247,10 @@ func (s *server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAuthMe 当前登录者。没登录返回 401，前端据此跳登录页。
-func (s *server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
+//
+// ⚠️ 走 withUser（见 serve.go 的注册）：会话里的 role 是登录时的快照，
+// 批准/冻结之后由 withUser 改正，这里才能报出权威角色。
+func (s *server) handleAuthMe(w http.ResponseWriter, r *http.Request, st *Storage) {
 	sess, ok := s.sessionUser(r)
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{
@@ -251,10 +258,12 @@ func (s *server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	role, pending := publicRole(sess.Role)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success":  true,
 		"uid":      sess.UID,
-		"role":     sess.Role,
+		"role":     role,
+		"pending":  pending,
 		"name":     sess.Name,
 		"is_owner": sess.UID == "",
 	})

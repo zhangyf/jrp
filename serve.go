@@ -98,7 +98,9 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 	mux.HandleFunc("/api/auth/wxlogin", srv.handleAuthWXLogin)
 	mux.HandleFunc("/api/auth/trial", srv.handleAuthTrial) // 体验版：领试用身份，匿名可用
 	mux.HandleFunc("/api/auth/confirm", srv.handleAuthConfirm)
-	mux.HandleFunc("/api/auth/me", srv.handleAuthMe)
+	// ⚠️ auth/me 也过 withUser：sess.Role 是登录那一刻的快照，批准/冻结之后
+	// 得在 withUser 里改正，前端才不用逼着用户重新扫码。
+	mux.HandleFunc("/api/auth/me", srv.withUser(srv.handleAuthMe))
 	mux.HandleFunc("/api/auth/logout", srv.handleAuthLogout)
 
 	// 管理后台：只有 owner 能调（见 withAdmin 的注释）。页面是 /admin.html。
@@ -233,17 +235,33 @@ func (s *server) withUser(next authedHandler) http.HandlerFunc {
 			uid = sess.UID
 			// 角色改了（被禁用 / 还没批准）要让存量会话立刻失效。
 			if u, ok := findUserByUID(cachedUsers(r.Context(), s.storage), uid); ok {
-				if u.Role == rolePending || u.Role == roleDisabled {
+				// 冻结的照样挡在门外（不发会话那道在 handleAuthWXLogin 里，
+				// 这里是存量会话的补刀）。
+				if u.Role == roleDisabled {
 					writeJSON(w, http.StatusForbidden, map[string]interface{}{
-						"success": false, "error": "账号未启用，等管理员批准",
+						"success": false, "error": "账号已被冻结，找管理员开通",
 					})
 					return
+				}
+				// ⚠️ 未批准（pending）**不发 403，而是按体验版放行**：
+				// 把 uid 换成 trialUID，后面 trialAllowed 白名单和 handler 里的
+				// `st.uid == trialUID` 分支自动生效 —— 假数据、只读、不落档。
+				//
+				// 为什么改：pending 原来一律 403，陌生人（包括小程序审核员）登录后
+				// 整页只有一个「待批准」，一个功能都点不动 → 直接被拒审。
+				// 现在他能完整走一遍五个版块，同时一碰不到老师的真数据、
+				// 二写不进任何东西（/api/record /api/words 都不在白名单里）。
+				if u.Role == rolePending {
+					uid = trialUID
 				}
 				// owner 恒用空 uid 走老路径。存量会话里存的是旧 uid（历史上给 owner 也发过
 				// u_xxx），这里自愈一下，免得老师还得重新扫码。
 				if u.Role == roleOwner {
 					uid = ""
 				}
+				// 会话里的 role 是登录那一刻的快照。批准/冻结之后把它改正，
+				// 免得用户必须重新扫码才生效（/api/auth/me 也就跟着对了）。
+				sess.Role = u.Role
 			}
 		}
 
@@ -251,7 +269,7 @@ func (s *server) withUser(next authedHandler) http.HandlerFunc {
 		// 白名单见 api_trial.go —— 加路由进去之前先确认它不带出老师的个人数据。
 		if uid == trialUID && !trialAllowed(r.URL.Path) {
 			writeJSON(w, http.StatusForbidden, map[string]interface{}{
-				"success": false, "error": "体验版只有每日复习、造句、钉子户三个版块",
+				"success": false, "error": "体验版只能看每日复习、造句、钉子户、活用、词汇总表和统计",
 			})
 			return
 		}

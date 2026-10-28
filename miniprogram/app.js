@@ -13,6 +13,9 @@ App({
     uid: '',
     role: '',
     name: '',
+    // pending：已扫码但管理员还没批准。服务端给的就是体验版权限（role 报 trial），
+    // 这个标记只是让首页多说一句「批准后可用完整功能」。
+    pending: false,
     logged: false
   },
 
@@ -53,6 +56,7 @@ App({
             this.globalData.token = res.token || '';
             this.globalData.uid = res.uid || '';
             this.globalData.role = res.role || '';
+            this.globalData.pending = !!res.pending;
             this.globalData.name = res.name || '';
             this.globalData.logged = true;
             wx.setStorageSync('jrp_token', this.globalData.token);
@@ -75,6 +79,7 @@ App({
         this.globalData.token = res.token || '';
         this.globalData.uid = res.uid || '';
         this.globalData.role = res.role || '';
+        this.globalData.pending = !!res.pending;
         this.globalData.name = res.name || '';
         this.globalData.logged = true;
         wx.setStorageSync('jrp_token', this.globalData.token);
@@ -92,6 +97,7 @@ App({
     this.globalData.token = '';
     this.globalData.uid = '';
     this.globalData.role = '';
+    this.globalData.pending = false;
     this.globalData.name = '';
     this.globalData.logged = false;
     wx.removeStorageSync('jrp_token');
@@ -104,6 +110,7 @@ App({
       .then((res) => {
         this.globalData.uid = res.uid || '';
         this.globalData.role = res.role || '';
+        this.globalData.pending = !!res.pending;
         this.globalData.name = res.name || '';
         this.globalData.logged = true;
       })

@@ -1620,6 +1620,17 @@ tabBar 三项：**练习 / 统计 / 录入**。
 只留一个退出试用」）。练习页/造句页底部也不要再写「回到首页退出试用」这类引导 ——
 状态说明一行 `体验版 · 固定 N 词 · 不保存进度` 就够了。
 
+**未批准的用户（pending）自动按体验版放行**（2026-10-28）：
+⚠️ 原来是 pending 一律 403 —— 陌生人（**包括小程序审核员**）登录后整页只有一个
+「账号待批准」，一个功能都点不动，直接被拒审。现在 `withUser` 里 `u.Role == rolePending`
+就把 `uid` 换成 `trialUID`，白名单和 `writeTrial*` 那套自动生效：五个版块都能进（假数据、
+不落档），但 `/api/record` `/api/words` `/api/vision` 依然 403。
+配套两点：① `publicRole()` 把 pending 对外报成 `trial` + `pending:true`（`wxlogin` 和
+`auth/me` 都用它），否则小程序一登录就摆「待批准」的墙；② `/api/auth/me` 改走 `withUser`
+—— 会话里的 role 是登录那一刻的快照，批准/冻结后要在 `withUser` 里改正，不然用户得重新扫码。
+冻结（disabled）不受影响，照旧 403。测试：`TestPendingUserGetsTrialAccess` /
+`TestDisabledUserStillBlocked`。
+
 ⚠️ 光清 token 不够 —— `onLaunch` 原来没 token 就调 `login()` 静默登录，
 退出后冷启动会被自动登回去，等于退不掉、也永远看不到登录页的「试用账号」。
 所以 `logout()` 额外写 `jrp_logged_out` 标记，`autoLogin()` / `refreshMe()` 的失败重登

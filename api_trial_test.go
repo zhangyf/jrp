@@ -242,6 +242,96 @@ func TestTrialReadonlySections(t *testing.T) {
 	}
 }
 
+// 未批准（pending）的用户：不再 403，按体验版放行 —— 小程序审核员就走这条路。
+// 他必须能完整过一遍 UI，同时一碰不到老师的真数据、二写不进任何东西。
+func TestPendingUserGetsTrialAccess(t *testing.T) {
+	srv := &server{storage: &Storage{dryRun: true}, lang: "ja"}
+
+	// 一个 pending 用户（uid 是自己的 u_xxx，不是 trial）。
+	// 用户表走 userCache（60 秒缓存），测试里直接塞缓存 —— 跟 api_admin_test.go 一致。
+	seedUsers(t, []User{{UID: "u_pending1", Role: rolePending, Name: "等批准的人"}})
+	defer seedUsers(t, nil)
+
+	sid := "pending-sid"
+	sessions.Lock()
+	sessions.m[sid] = &session{
+		UID: "u_pending1", Role: rolePending, Name: "等批准的人",
+		Created: time.Now(), LastSeen: time.Now(),
+	}
+	sessions.Unlock()
+
+	// 读：跟试用账号一样能拿到题面
+	req := httptest.NewRequest(http.MethodGet, "/api/plan", nil)
+	req.Header.Set("Authorization", "Bearer "+sid)
+	w := httptest.NewRecorder()
+	srv.withUser(srv.handlePlan)(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("pending 拉计划应 200（走体验版），实际 %d: %s", w.Code, w.Body.String())
+	}
+	var out map[string]interface{}
+	if err := jsonUnmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatalf("解析失败：%v", err)
+	}
+	if out["trial"] != true {
+		t.Error("pending 应拿到体验版题面")
+	}
+	if got, _ := out["words"].([]interface{}); len(got) != 5 {
+		t.Errorf("pending 应拿到 5 词，实际 %d", len(got))
+	}
+
+	// 写：仍然 403
+	req = httptest.NewRequest(http.MethodPost, "/api/record", nil)
+	req.Header.Set("Authorization", "Bearer "+sid)
+	w = httptest.NewRecorder()
+	srv.withUser(func(http.ResponseWriter, *http.Request, *Storage) {})(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("pending 回写成绩应 403，实际 %d", w.Code)
+	}
+
+	// /api/auth/me：role 报 trial（前端据此不放「待批准」墙），pending:true 另给提示
+	req = httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+sid)
+	w = httptest.NewRecorder()
+	srv.withUser(srv.handleAuthMe)(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("me HTTP %d: %s", w.Code, w.Body.String())
+	}
+	out = map[string]interface{}{}
+	if err := jsonUnmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatalf("解析失败：%v", err)
+	}
+	if out["role"] != trialRole {
+		t.Errorf("pending 的 role 应报 trial，实际 %v", out["role"])
+	}
+	if out["pending"] != true {
+		t.Error("应带 pending:true，前端才好提示一句")
+	}
+}
+
+// 冻结的照样挡在外面 —— 这条不能因为上面的放宽被带偏。
+func TestDisabledUserStillBlocked(t *testing.T) {
+	srv := &server{storage: &Storage{dryRun: true}, lang: "ja"}
+
+	seedUsers(t, []User{{UID: "u_bad", Role: roleDisabled, Name: "被冻结的"}})
+	defer seedUsers(t, nil)
+
+	sid := "disabled-sid"
+	sessions.Lock()
+	sessions.m[sid] = &session{
+		UID: "u_bad", Role: roleDisabled, Name: "被冻结的",
+		Created: time.Now(), LastSeen: time.Now(),
+	}
+	sessions.Unlock()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/plan", nil)
+	req.Header.Set("Authorization", "Bearer "+sid)
+	w := httptest.NewRecorder()
+	srv.withUser(srv.handlePlan)(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("冻结账号应 403，实际 %d", w.Code)
+	}
+}
+
 // 固定题是不变的 —— 老师明确要求「不需要轮换」。这条盯着别被改成动态取词。
 func TestTrialQuestionsAreStable(t *testing.T) {
 	a := trialPlanWords("words")

@@ -10,7 +10,7 @@ Page({
     logged: false,
     role: '',
     trial: false, // 体验版：题量少、统计是假数据、写了不保存
-    pending: false,
+    pending: false, // 已扫码等批准：权限等同体验版，提示语换一句
     message: '',
     // 自定义导航栏（原生导航栏放不了图片，logo 画在自己画的导航里）
     statusBarH: 20,
@@ -31,7 +31,10 @@ Page({
   onShow() {
     const g = app.globalData;
     const trial = app.isTrial();
-    this.setData({ logged: !!g.logged, role: g.role || '', trial: trial });
+    this.setData({
+      logged: !!g.logged, role: g.role || '', trial: trial,
+      pending: !!g.pending
+    });
 
     // 自定义 tabBar 每个页面各一份实例，切回来时要告诉它「现在是我在前面」。
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
@@ -64,14 +67,8 @@ Page({
       wx.showToast({ title: '正在登录…', icon: 'none' });
       return;
     }
-    if (this.data.role === 'pending') {
-      wx.showModal({
-        title: '账号待批准',
-        content: '要让管理员在服务器上跑一次 jrp user approve 才能开始练习。',
-        showCancel: false
-      });
-      return;
-    }
+    // ⚠️ 不再拦 pending：服务端对未批准的用户直接给体验版权限（role 报 trial），
+    // 这里再摆一道「待批准」的墙，陌生人（含小程序审核员）就一个功能都点不动。
     if (this.data.role === 'disabled') {
       wx.showModal({ title: '账号已停用', content: '找管理员开通。', showCancel: false });
       return;
