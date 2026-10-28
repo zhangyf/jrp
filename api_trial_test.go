@@ -10,17 +10,19 @@ import (
 // 试用凭证是公开的，白名单就是唯一的门。加路由进来必须过这个测试。
 func TestTrialAllowedWhitelist(t *testing.T) {
 	allow := []string{"/api/plan", "/api/hard", "/api/grade", "/api/auth/me",
-		"/api/review", "/api/draft", "/api/judge-sentence"}
+		"/api/review", "/api/draft", "/api/judge-sentence",
+		"/api/stats", "/api/lexicon", "/api/conjugation"}
 	for _, p := range allow {
 		if !trialAllowed(p) {
 			t.Errorf("%s 应该放行", p)
 		}
 	}
-	// 这几个都会带出老师的个人数据，绝不能开
+	// ⚠️ stats / lexicon / conjugation 已经移出 deny —— 它们对 trial 走
+	// writeTrial* 分支返回内置假数据（见 TestTrialReadonlySections）。
+	// 下面这几个仍然一律挡：要么写数据，要么带出老师的个人信息。
 	deny := []string{
-		"/api/lexicon", "/api/stats", "/api/words", "/api/record",
-		"/api/word-def", "/api/vision",
-		"/api/conjugation", "/api/offline", "/api/admin/users",
+		"/api/words", "/api/record", "/api/word-def", "/api/vision",
+		"/api/offline", "/api/admin/users", "/api/knowledge",
 	}
 	for _, p := range deny {
 		if trialAllowed(p) {
@@ -114,12 +116,13 @@ func TestTrialBlockedOutsideWhitelist(t *testing.T) {
 	reached := false
 	guard := func(w http.ResponseWriter, r *http.Request, st *Storage) { reached = true }
 
-	req := httptest.NewRequest(http.MethodGet, "/api/lexicon", nil)
+	// 写接口永远该挡：拿 /api/record 当代表
+	req := httptest.NewRequest(http.MethodPost, "/api/record", nil)
 	req.Header.Set("Authorization", "Bearer "+sid)
 	w := httptest.NewRecorder()
 	srv.withUser(guard)(w, req)
 	if w.Code != http.StatusForbidden {
-		t.Errorf("体验版拉词库应 403，实际 %d", w.Code)
+		t.Errorf("体验版回写成绩应 403，实际 %d", w.Code)
 	}
 	if reached {
 		t.Error("403 了就不许再进 handler")
@@ -152,6 +155,90 @@ func TestAuthTrialIssuesSession(t *testing.T) {
 	sessions.Unlock()
 	if !ok {
 		t.Error("token 应该真的建了会话")
+	}
+}
+
+// 统计 / 词汇总表 / 活用：体验版拿的是内置假数据，结构得跟真接口一致，
+// 否则前端那几页会整块空白（前端不认 trial，全靠结构对齐）。
+func TestTrialReadonlySections(t *testing.T) {
+	srv := &server{storage: &Storage{dryRun: true}, lang: "ja"}
+	sid := newTrialSession(srv)
+
+	// 统计：snapshots 必须按日期升序（前端取首尾算增量），天数跟请求一致
+	req := httptest.NewRequest(http.MethodGet, "/api/stats?days=7", nil)
+	req.Header.Set("Authorization", "Bearer "+sid)
+	w := httptest.NewRecorder()
+	srv.withUser(srv.handleStats)(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("stats HTTP %d: %s", w.Code, w.Body.String())
+	}
+	var st map[string]interface{}
+	if err := jsonUnmarshal(w.Body.Bytes(), &st); err != nil {
+		t.Fatalf("解析失败：%v", err)
+	}
+	snaps, _ := st["snapshots"].([]interface{})
+	if len(snaps) != 7 {
+		t.Fatalf("要 7 个存档点，实际 %d", len(snaps))
+	}
+	first, _ := snaps[0].(map[string]interface{})
+	last, _ := snaps[len(snaps)-1].(map[string]interface{})
+	if d1, _ := first["date"].(string); d1 == "" {
+		t.Error("存档点要有日期")
+	}
+	if a, _ := first["date"].(string); a >= func() string { b, _ := last["date"].(string); return b }() {
+		t.Errorf("snapshots 必须升序：%v → %v", first["date"], last["date"])
+	}
+	if tot, _ := last["total"].(float64); tot == 0 {
+		t.Error("最后一个存档点要有总词量，否则 KPI 全 0")
+	}
+	// 前端 DIST_ORDER 五档，少一档整块不显示
+	out := map[string]interface{}{}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/lexicon", nil)
+	req.Header.Set("Authorization", "Bearer "+sid)
+	w = httptest.NewRecorder()
+	srv.withUser(srv.handleLexicon)(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("lexicon HTTP %d: %s", w.Code, w.Body.String())
+	}
+	if err := jsonUnmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatalf("解析失败：%v", err)
+	}
+	items, _ := out["items"].([]interface{})
+	if len(items) != 10 {
+		t.Fatalf("词汇总表应 10 行，实际 %d", len(items))
+	}
+	row0, _ := items[0].(map[string]interface{})
+	if row0["kana"] == nil || row0["def"] == nil {
+		t.Error("行的 kana / def 不能为空，页面上就靠这两列")
+	}
+
+	// 活用：三种类型各 2 题，label 要跟真接口一致
+	for _, typ := range []string{"verb", "verb_nai", "adj"} {
+		out = map[string]interface{}{}
+		req = httptest.NewRequest(http.MethodGet, "/api/conjugation?type="+typ, nil)
+		req.Header.Set("Authorization", "Bearer "+sid)
+		w = httptest.NewRecorder()
+		srv.withUser(srv.handleConjugation)(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("conjugation(%s) HTTP %d: %s", typ, w.Code, w.Body.String())
+		}
+		if err := jsonUnmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatalf("解析失败：%v", err)
+		}
+		got, _ := out["items"].([]interface{})
+		if len(got) != 2 {
+			t.Errorf("%s 应 2 题，实际 %d", typ, len(got))
+		}
+		it0, _ := got[0].(map[string]interface{})
+		tasks, _ := it0["tasks"].([]interface{})
+		if len(tasks) == 0 {
+			t.Errorf("%s 第一题没有 tasks", typ)
+		}
+		tk0, _ := tasks[0].(map[string]interface{})
+		if tk0["label"] == nil || tk0["answers"] == nil {
+			t.Errorf("%s 的 task 缺 label/answers", typ)
+		}
 	}
 }
 

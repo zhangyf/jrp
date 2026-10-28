@@ -1591,19 +1591,29 @@ tabBar 三项：**练习 / 统计 / 录入**。
 试用 = 服务端一个**真实会话**（`POST /api/auth/trial`，uid=`trial`，**不写用户表**），
 只是被 `api_trial.go` 的 `trialAllowed()` 白名单关在三个版块里：
 
-- 放行：`/api/plan` `/api/hard` `/api/grade` `/api/judge-sentence` `/api/auth/me` `/api/review` `/api/draft`
-- 其余一律 403（`/api/lexicon` `/api/stats` `/api/words` `/api/record` `/api/vision` …）
+- 放行：`/api/plan` `/api/hard` `/api/grade` `/api/judge-sentence` `/api/auth/me`
+  `/api/review` `/api/draft` `/api/stats` `/api/lexicon` `/api/conjugation`
+- 其余一律 403（`/api/words` `/api/record` `/api/vision` `/api/word-def` `/api/offline` …）
 - ⚠️ 加路由进白名单前先问一句「会不会带出老师的个人数据」，会 → 不许加。
   判句放行是因为它只读请求里的句子 + `sharedBase` 下的 prompt，但**会花钱调模型**。
+- 统计 / 词汇总表 / 活用三条走 `writeTrial*` 分支返回**内置假数据**，`TestTrialReadonlySections`
+  盯着结构（snapshots 必须**升序**，否则 KPI 增量算反；accuracy_distribution 五档要跟
+  前端 `DIST_ORDER` 对上，少一档整块不显示；conj 的 label 要跟真接口一致）。
+  前端不认 trial，全靠结构对齐 —— 改真接口结构时**记得同步这三处**。
 
 题面写死在 `api_trial.go`（每日复习 5 词 / 钉子户 5 词 / 造句 3 句课本原文），
 **固定不轮换** —— `TestTrialQuestionsAreStable` 盯着。
 `/api/plan` `/api/hard` 对 trial 直接 `writeTrialPlan()` 返回，**一次都不碰 COS**
 （走正常路径会在 `users/trial/` 下凭空初始化档案）；`/api/review` `/api/draft` 直接回空。
 
-返回里带 `trial:true` + `read_only:true`，前端据此：首页只留三个色块 + tabBar 收成一项
-（`custom-tab-bar` 的 `observers:{'trial'}`）；练习页/造句页**藏掉「提交」**并在 `submit()`
-里再挡一次（`/api/record` 是 403，藏了不挡就是点了弹个错）。进度不落档。
+返回里带 `trial:true` + `read_only:true`，前端据此：练习页/造句页**藏掉「提交」**并在
+`submit()` 里再挡一次（`/api/record` 是 403，藏了不挡就是点了弹个错）。进度不落档。
+五个版块**都能进**（首页色块全在、tabBar 三项全开），只是题量少、统计是假的、写了不保存。
+
+录入页（`addword`）对体验版**只展示**：顶部一行「体验版不接大模型、不写词库，这里只展示
+页面」，`addManual` / `pickImages` / `submit` 三个入口全部 `trialBlocked()` 挡掉
+（`/api/vision` `/api/word-def` `/api/words` 都 403，不挡就是点了弹个错）。
+
 首页底部**只有一个退出入口**（`onExit`）：试用态写「退出试用」，登录态写「退出登录」，
 点一下直接 `app.logout()` —— 不弹确认框。
 ⚠️ 别在页面上再堆第二个退出/登录入口（2026-10-28 老师明确说「全在下方放着，让人不理解，

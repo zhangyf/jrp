@@ -61,6 +61,11 @@ func (s *server) handleLexicon(w http.ResponseWriter, r *http.Request, st *Stora
 		})
 		return
 	}
+	// 体验版：内置 10 行，不读档案、不读 word_meta，一次不碰 COS。
+	if st.uid == trialUID {
+		writeTrialLexicon(w)
+		return
+	}
 	ctx := s.ctx()
 
 	data, _, err := st.DownloadLatestArchive(ctx)

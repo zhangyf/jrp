@@ -8,8 +8,7 @@
   </view>
   <view class="err" wx:if="{{message}}">{{message}}</view>
 
-  <!-- 体验版：只有三个版块。题目固定、进度不保存，白纸黑字写在这儿，
-       免得试用的人以为练了会留下记录。 -->
+  <!-- 体验版：五个版块都能进，只是题量少、数据是假的、进度不保存。 -->
   <block wx:if="{{trial}}">
     <view class="trial-note">体验版 · 题目固定 · 进度不保存</view>
     <view class="grid">
@@ -25,14 +24,22 @@
         <view class="tile-title">钉子户</view>
         <view class="tile-desc">5 个词</view>
       </view>
+      <view class="tile t-conj" data-mode="conj" bindtap="go" hover-class="tile-press">
+        <view class="tile-title">活用练习</view>
+        <view class="tile-desc">2 题</view>
+      </view>
+      <view class="tile t-lex" data-mode="lexicon" bindtap="go" hover-class="tile-press">
+        <view class="tile-title">词汇总表</view>
+        <view class="tile-desc">10 个词</view>
+      </view>
     </view>
-    <!-- 退出入口只留一个，文案跟着状态走：试用态是「退出试用」，登录态是「退出登录」 -->
     <view class="foot-link" bindtap="onExit">退出试用</view>
   </block>
 
   <!-- 双列色块入口：每个版块一个颜色，一眼看出能点（width:49% + space-between，
        别用 flex-basis calc() —— 部分机型 WebView 不认）。 -->
-  <view class="grid" wx:else>
+  <block wx:else>
+  <view class="grid">
     <view class="tile t-words" data-mode="words" bindtap="go" hover-class="tile-press">
       <view class="tile-title">列表复习</view>
       <view class="tile-desc">今天该复习的词</view>
@@ -58,4 +65,5 @@
   </view>
 
   <view class="foot-link" bindtap="onExit">退出登录</view>
+  </block>
 </view>

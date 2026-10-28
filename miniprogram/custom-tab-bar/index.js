@@ -11,10 +11,9 @@
 // 「录入」是工具不是练习，所以放这里而不是首页色块（2026-10-21 老师要求）。
 // ⚠️ list 仍要在 app.json 的 tabBar 里写一份，wx.switchTab 靠它校验合法页面。
 
-const PRACTICE = { pagePath: '/pages/index/index', text: '练习' };
-
-const FULL = [
-  PRACTICE,
+// 体验版也能进统计和录入（假数据 / 只展示），所以不再按身份切列表。
+const LIST = [
+  { pagePath: '/pages/index/index', text: '练习' },
   { pagePath: '/pages/stats/stats', text: '统计' },
   { pagePath: '/pages/addword/addword', text: '录入' }
 ];
@@ -22,15 +21,7 @@ const FULL = [
 Component({
   data: {
     selected: 0,
-    trial: false, // 体验版：只留「练习」，统计和录入服务端对它 403
-    list: FULL
-  },
-
-  // 各 tab 页 onShow 里会 setData({ trial })，这里跟着换列表
-  observers: {
-    'trial': function (trial) {
-      this.setData({ list: trial ? [PRACTICE] : FULL });
-    }
+    list: LIST
   },
 
   methods: {

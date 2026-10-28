@@ -16,6 +16,12 @@ func (s *server) handleStats(w http.ResponseWriter, r *http.Request, st *Storage
 		}
 	}
 
+	// 体验版：内置假数据，一次都不碰 COS（真路径会去读档案和快照）。
+	if st.uid == trialUID {
+		writeTrialStats(w, days)
+		return
+	}
+
 	res, err := ComputeStats(s.ctx(), st, s.lang, days)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{

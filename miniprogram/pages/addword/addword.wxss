@@ -3,6 +3,18 @@
   padding: 24rpx 24rpx 180rpx;
 }
 
+/* 体验版提示条（跟首页同一套配色） */
+.trial-note {
+  margin-bottom: 20rpx;
+  padding: 16rpx 20rpx;
+  background: #fdf6e3;
+  border: 1rpx solid #e8dcb8;
+  border-radius: 12rpx;
+  font-size: 25rpx;
+  color: #8a6d3b;
+  text-align: center;
+}
+
 .sec {
   background: #ffffff;
   border: 1rpx solid #e2e2dd;

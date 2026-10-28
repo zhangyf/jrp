@@ -386,6 +386,12 @@ func (s *server) handleConjugation(w http.ResponseWriter, r *http.Request, st *S
 		count = n
 	}
 
+	// 体验版：固定 2 题，不读档案（真路径会下载最新档案再洗牌）。
+	if st.uid == trialUID {
+		writeTrialConjugation(w, typ)
+		return
+	}
+
 	data, _, err := st.DownloadLatestArchive(bgctx())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{

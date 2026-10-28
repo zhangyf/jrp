@@ -9,7 +9,7 @@ Page({
   data: {
     logged: false,
     role: '',
-    trial: false, // 体验版：只显示每日复习 / 造句 / 钉子户
+    trial: false, // 体验版：题量少、统计是假数据、写了不保存
     pending: false,
     message: '',
     // 自定义导航栏（原生导航栏放不了图片，logo 画在自己画的导航里）
@@ -34,9 +34,8 @@ Page({
     this.setData({ logged: !!g.logged, role: g.role || '', trial: trial });
 
     // 自定义 tabBar 每个页面各一份实例，切回来时要告诉它「现在是我在前面」。
-    // 体验版只留「练习」一项 —— 统计和录入都对它关着门，摆出来点了也是 403。
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setData({ selected: 0, trial: trial });
+      this.getTabBar().setData({ selected: 0 });
     }
     if (!g.logged) {
       app.login((err) => {

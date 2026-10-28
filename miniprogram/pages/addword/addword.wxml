@@ -1,4 +1,7 @@
 <view class="wrap">
+  <!-- 体验版：这一页只让人看看长什么样，大模型和写词库都对它关着 -->
+  <view class="trial-note" wx:if="{{trial}}">体验版不接大模型、不写词库，这里只展示页面。</view>
+
   <view class="result" wx:if="{{result}}">
     <view class="r-title">录好了</view>
     <view class="r-line">新增 <text class="n">{{result.added}}</text> 词<text wx:if="{{result.duplicates}}">，跳过重复 {{result.duplicates}} 个</text></view>
