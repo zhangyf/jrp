@@ -309,7 +309,7 @@ func (s *server) handleAuthTrial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := User{UID: trialUID, Role: trialRole, Name: "体验用户"}
-	sid := s.createSession(u, r.UserAgent())
+	sid := s.createSession(u, r.UserAgent(), sessKindMini)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"token":   sid,

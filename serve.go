@@ -62,6 +62,8 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 	loadWXConfig() // 小程序凭证；没配就是没开登录，其余功能照常
 
 	srv := &server{storage: storage, lang: lang, token: strings.TrimSpace(*token), dryRun: *dryRun}
+	// 会话清扫：没有它，被丢弃的会话（尤其匿名领的体验版）会一直占着内存。
+	go srv.sweepSessions()
 
 	sub, err := fs.Sub(webFS, "web")
 	if err != nil {
@@ -279,13 +281,17 @@ func (s *server) withUser(next authedHandler) http.HandlerFunc {
 	}
 }
 
+// bearerToken 只读 Authorization 头。
+//
+// ⛔ 不再接受 ?token=（2026-10-28 安全评审砍掉）：URL 会进 nginx access log、
+// 浏览器历史、Referer，等于把长期凭证到处抄一份。下载场景（/api/export）改成
+// fetch + Blob + <a download> 走 header，见 web/offline.js。
 func bearerToken(r *http.Request) string {
 	h := r.Header.Get("Authorization")
 	if len(h) > 7 && strings.EqualFold(h[:7], "bearer ") {
 		return strings.TrimSpace(h[7:])
 	}
-	// 也接受 ?token= ，方便 curl 和下载链接
-	return r.URL.Query().Get("token")
+	return ""
 }
 
 // isLoopback 判断监听地址是否只对本机开放。
@@ -306,6 +312,28 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
+}
+
+// safeDate 严格校验日期串，缺省今天。
+//
+// ⚠️ 任何要拼进 COS key 的日期都必须过这一道（2026-10-28 安全评审）。
+// 之前 /api/draft /api/review /api/record 把 query/body 里的 date 原样塞进
+// `drafts/draft_<date>_<mode>.json` —— mode 有白名单，date 没有，
+// 于是 `../../` 之类能捅到桶里别的目录。日期只可能是 YYYY-MM-DD，
+// 非此格式一律 400，比在 key 层面做转义彻底。
+func safeDate(s string) (string, bool) {
+	if strings.TrimSpace(s) == "" {
+		return time.Now().Format("2006-01-02"), true
+	}
+	if _, err := time.Parse("2006-01-02", s); err != nil {
+		return "", false
+	}
+	return s, true
+}
+
+// safeDateParam 从 ?date= 取日期并严格校验。
+func safeDateParam(r *http.Request) (string, bool) {
+	return safeDate(r.URL.Query().Get("date"))
 }
 
 // parseDateParam 解析 ?date=YYYY-MM-DD，缺省为今天。

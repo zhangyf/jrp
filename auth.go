@@ -28,14 +28,37 @@ const (
 	sidCookie       = "jrp_sid"
 	pollCookie      = "jrp_login"
 	sidTTL          = 30 * 24 * time.Hour
+	miniSidTTL      = 7 * 24 * time.Hour // 小程序：老师 2026-10-28 定的，别再改回 30 天
 	ticketTTL       = 5 * time.Minute
 	sessionThrottle = 10 * time.Minute
+	// maxSessions 内存会话表上限。
+	//
+	// ⚠️ 2026-10-28 安全评审加的：/api/auth/trial 匿名就能领会话，
+	// 没有上限的话脚本刷一遍就几万条常驻内存，进程只涨不落。
+	maxSessions      = 3000
+	sessionSweepTick = 10 * time.Minute
 )
+
+// 会话种类：网页（cookie）和小程序（Bearer）寿命不一样。
+const (
+	sessKindWeb  = "web"
+	sessKindMini = "mini"
+)
+
+// sessionTTL 会话寿命。滑动续期：从最后一次使用算起。
+// 老会话（没有 kind 字段）按网页算 30 天。
+func sessionTTL(kind string) time.Duration {
+	if kind == sessKindMini {
+		return miniSidTTL
+	}
+	return sidTTL
+}
 
 type session struct {
 	UID      string    `json:"uid"`
 	Role     string    `json:"role"`
 	Name     string    `json:"name"`
+	Kind     string    `json:"kind"` // web / mini，决定寿命
 	Created  time.Time `json:"created"`
 	LastSeen time.Time `json:"last_seen"`
 	UA       string    `json:"ua"`
@@ -79,17 +102,67 @@ func newSessionID() string { return randomToken(32) }
 // 字符，超了微信只返回一个没有说明的报错。
 func newTicket() string { return randomToken(16) }
 
-func (s *server) createSession(u User, ua string) string {
+// createSession 建一份会话。kind 决定寿命（web 30 天 / mini 7 天）。
+//
+// ⚠️ 2026-10-28 安全评审两处改动：
+//  1. 体验版（trial）的会话**不落 COS** —— /api/auth/trial 匿名可领，
+//     落盘等于让脚本白嫖 COS 写对象（每次一个 PUT，还能堆出几万个垃圾对象）。
+//     体验版本来就不保存任何东西，重开小程序再领一个是完全合理的。
+//  2. 内存表有上限，超了先扫过期、再按 LastSeen 淘汰最旧的。
+func (s *server) createSession(u User, ua, kind string) string {
 	sid := newSessionID()
 	now := time.Now()
-	sess := &session{UID: u.UID, Role: u.Role, Name: u.Name, Created: now, LastSeen: now, UA: ua}
+	sess := &session{UID: u.UID, Role: u.Role, Name: u.Name, Kind: kind, Created: now, LastSeen: now, UA: ua}
 
 	sessions.Lock()
+	if len(sessions.m) >= maxSessions {
+		sweepSessionsLocked(now)
+		for len(sessions.m) >= maxSessions {
+			if oldest := oldestSessionLocked(); oldest != "" {
+				delete(sessions.m, oldest)
+			} else {
+				break
+			}
+		}
+	}
 	sessions.m[sid] = sess
 	sessions.Unlock()
 
-	go s.persistSession(sid, sess)
+	if u.UID != trialUID {
+		go s.persistSession(sid, sess)
+	}
 	return sid
+}
+
+// sweepSessionsLocked 清掉过期会话。调用方必须持有 sessions 锁。
+func sweepSessionsLocked(now time.Time) {
+	for sid, sess := range sessions.m {
+		if now.Sub(sess.LastSeen) > sessionTTL(sess.Kind) {
+			delete(sessions.m, sid)
+		}
+	}
+}
+
+// oldestSessionLocked 找出最久没用的那份。调用方必须持有 sessions 锁。
+func oldestSessionLocked() string {
+	oldest := ""
+	var at time.Time
+	for sid, sess := range sessions.m {
+		if oldest == "" || sess.LastSeen.Before(at) {
+			oldest, at = sid, sess.LastSeen
+		}
+	}
+	return oldest
+}
+
+// sweepSessions 常驻清扫。没有它，被丢弃的会话会一直占着内存。
+func (s *server) sweepSessions() {
+	t := time.NewTicker(sessionSweepTick)
+	for range t.C {
+		sessions.Lock()
+		sweepSessionsLocked(time.Now())
+		sessions.Unlock()
+	}
 }
 
 // lookupSession 内存优先，miss 才回 COS 捞一次（服务重启的场景）。
@@ -101,7 +174,7 @@ func (s *server) lookupSession(sid string) (*session, bool) {
 	sess, ok := sessions.m[sid]
 	sessions.Unlock()
 	if ok {
-		if time.Since(sess.LastSeen) > sidTTL {
+		if time.Since(sess.LastSeen) > sessionTTL(sess.Kind) {
 			s.destroySession(sid)
 			return nil, false
 		}
@@ -282,7 +355,7 @@ func (s *server) loadSession(sid string) (*session, bool) {
 	if err != nil || sess == nil {
 		return nil, false
 	}
-	if time.Since(sess.LastSeen) > sidTTL {
+	if time.Since(sess.LastSeen) > sessionTTL(sess.Kind) {
 		return nil, false
 	}
 	sessions.Lock()

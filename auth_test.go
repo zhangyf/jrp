@@ -62,7 +62,7 @@ func TestSessionCreateLookupDestroy(t *testing.T) {
 	st := &Storage{lang: "ja", dryRun: true} // dryRun：不真写 COS
 	srv := &server{storage: st}
 
-	ownerSID := srv.createSession(User{UID: "", Role: roleOwner, Name: "老师"}, "test-agent")
+	ownerSID := srv.createSession(User{UID: "", Role: roleOwner, Name: "老师"}, "test-agent", sessKindWeb)
 	sess, ok := srv.lookupSession(ownerSID)
 	if !ok {
 		t.Fatal("刚建的会话应该能查到")
@@ -71,7 +71,7 @@ func TestSessionCreateLookupDestroy(t *testing.T) {
 		t.Errorf("owner 会话不对：uid=%q role=%q", sess.UID, sess.Role)
 	}
 
-	memberSID := srv.createSession(User{UID: "u_7f3a2b9c", Role: roleMember}, "test-agent")
+	memberSID := srv.createSession(User{UID: "u_7f3a2b9c", Role: roleMember}, "test-agent", sessKindWeb)
 	ms, ok := srv.lookupSession(memberSID)
 	if !ok || ms.UID != "u_7f3a2b9c" {
 		t.Fatalf("成员会话不对：%#v", ms)

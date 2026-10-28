@@ -39,9 +39,9 @@ func TestAdminRequiresOwnerSession(t *testing.T) {
 		{UID: "u_pending1", Role: rolePending},
 	})
 
-	ownerSID := srv.createSession(User{UID: "", Role: roleOwner}, "test")
-	memberSID := srv.createSession(User{UID: "u_7f3a2b9c", Role: roleMember}, "test")
-	pendingSID := srv.createSession(User{UID: "u_pending1", Role: rolePending}, "test")
+	ownerSID := srv.createSession(User{UID: "", Role: roleOwner}, "test", sessKindWeb)
+	memberSID := srv.createSession(User{UID: "u_7f3a2b9c", Role: roleMember}, "test", sessKindWeb)
+	pendingSID := srv.createSession(User{UID: "u_pending1", Role: rolePending}, "test", sessKindWeb)
 
 	cases := []struct {
 		name string
@@ -71,7 +71,7 @@ func TestAdminRequiresOwnerSession(t *testing.T) {
 func TestAdminRoleFollowsUserTableNotSession(t *testing.T) {
 	st := &Storage{lang: "ja", dryRun: true}
 	srv := &server{storage: st}
-	sid := srv.createSession(User{UID: "u_7f3a2b9c", Role: roleOwner}, "test") // 会话自称 owner
+	sid := srv.createSession(User{UID: "u_7f3a2b9c", Role: roleOwner}, "test", sessKindWeb) // 会话自称 owner
 	seedUsers(t, []User{{UID: "u_7f3a2b9c", Role: roleDisabled}})              // 表里已被冻结
 
 	req := httptest.NewRequest("GET", "/api/admin/users", nil)
@@ -202,8 +202,8 @@ func TestApprovedUserCanCompleteLogin(t *testing.T) {
 func TestDestroySessionsForUID(t *testing.T) {
 	st := &Storage{lang: "ja", dryRun: true}
 	srv := &server{storage: st}
-	victim := srv.createSession(User{UID: "u_7f3a2b9c", Role: roleMember}, "test")
-	other := srv.createSession(User{UID: "", Role: roleOwner}, "test")
+	victim := srv.createSession(User{UID: "u_7f3a2b9c", Role: roleMember}, "test", sessKindWeb)
+	other := srv.createSession(User{UID: "", Role: roleOwner}, "test", sessKindWeb)
 
 	srv.destroySessionsForUID("u_7f3a2b9c")
 

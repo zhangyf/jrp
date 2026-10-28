@@ -177,7 +177,7 @@ func (s *server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	sid := s.createSession(u, r.UserAgent())
+	sid := s.createSession(u, r.UserAgent(), sessKindWeb)
 	setSessionCookie(w, sid)
 	dropTicket(ticket)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -229,7 +229,7 @@ func (s *server) handleAuthWXLogin(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	sid := s.createSession(u, r.UserAgent())
+	sid := s.createSession(u, r.UserAgent(), sessKindMini)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"token":   sid,
@@ -311,11 +311,24 @@ func (s *server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 
 // authRequired 报告是否强制登录。
 //
-// 没配小程序凭证、或一个用户都还没有 → 不开（等价于今天的行为，靠 nginx Basic Auth 挡）。
+// 没配小程序凭证、或一个用户都还没有 → 不开（等价今天的行为，靠 nginx Basic Auth 挡）。
 // 一旦有人绑定成功（阶段 3）→ 打开，且匿名请求一律 401，绝不退回 owner。
+//
+// ⚠️ 2026-10-28 安全评审改成 **fail-closed**：
+// 原来「读不到用户表」和「用户表真的是空的」是同一种表现（空切片），
+// 于是 COS 抖一下 → len==0 → authRequired()==false → 匿名用户 uid="" → **就是 owner**。
+// 现在只要一次都没读成功过，就当「不知道有没有人」→ 一律要求登录。
+// 代价：COS 读失败的那一小会儿，网页上的匿名请求会 401（已登录的人不受影响，
+// withUser 里 `logged` 为真就放行）。60 秒内自愈。
 func (s *server) authRequired() bool {
 	if !wxEnabled() {
 		return false
+	}
+	if usersUnknown() {
+		cachedUsers(s.ctx(), s.storage) // 再试一次，别因为一次抖动就长期挡着
+		if usersUnknown() {
+			return true
+		}
 	}
 	return len(cachedUsers(s.ctx(), s.storage)) > 0
 }

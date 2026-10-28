@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // handleDraft —— 未回写练习的草稿存取。
@@ -22,9 +21,13 @@ func (s *server) handleDraft(w http.ResponseWriter, r *http.Request, st *Storage
 		return
 	}
 
-	date := r.URL.Query().Get("date")
-	if date == "" {
-		date = time.Now().Format("2006-01-02")
+	// ⚠️ date 会拼进 COS key，必须严格校验（不是 YYYY-MM-DD 直接 400）。
+	date, ok := safeDateParam(r)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false, "error": "日期格式不对，要 YYYY-MM-DD",
+		})
+		return
 	}
 	mode := strings.ToLower(r.URL.Query().Get("mode"))
 	if mode == "" {
@@ -61,6 +64,15 @@ func (s *server) handleDraft(w http.ResponseWriter, r *http.Request, st *Storage
 		if d.Date == "" {
 			d.Date = date
 		}
+		// body 里的 date 同样拼进 COS key，一样要校验。
+		bodyDate, ok := safeDate(d.Date)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+				"success": false, "error": "日期格式不对，要 YYYY-MM-DD",
+			})
+			return
+		}
+		d.Date = bodyDate
 		if d.Mode == "" {
 			d.Mode = mode
 		}

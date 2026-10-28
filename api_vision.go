@@ -323,6 +323,21 @@ func (s *server) handleVision(w http.ResponseWriter, r *http.Request, st *Storag
 		return
 	}
 
+	// pending 每天只能识别 2 张（2026-10-28 老师定）：他有 7 天完整权限，
+	// 而每张图都是真金白银调视觉模型。体验版走不到这儿（/api/vision 不在白名单）。
+	if u, ok := findUserByUID(cachedUsers(r.Context(), s.storage), st.uid); ok && u.Role == rolePending {
+		okN, used, left := takeQuota(r.Context(), st, quotaNameVision, len(body.Images), pendingVisionDaily)
+		if !okN {
+			writeJSON(w, http.StatusForbidden, map[string]interface{}{
+				"success": false,
+				"error":   "还没审核通过：体验期内每天最多识别 " + strconv.Itoa(pendingVisionDaily) + " 张图",
+				"used":    used, "left": left,
+				"pending": true, "quota": "vision_daily",
+			})
+			return
+		}
+	}
+
 	jobs := make(chan int)
 	results := make(chan visionResult, len(body.Images))
 	var wg sync.WaitGroup

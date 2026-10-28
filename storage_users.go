@@ -97,6 +97,12 @@ var userCache = struct {
 	at     time.Time
 	loaded bool
 	users  []User
+	// lastErr 记着最近一次读有没有出错。
+	//
+	// ⚠️ 2026-10-28 安全评审：以前读失败就「当没人登过」，于是 authRequired()
+	// 返回 false，匿名请求被当成 owner —— COS 抖一下陌生人就能往老师档案里写。
+	// 现在读失败要能被外面看见，好在鉴权那道 fail-closed（见 authRequired）。
+	lastErr bool
 }{}
 
 func cachedUsers(ctx context.Context, st *Storage) []User {
@@ -108,12 +114,22 @@ func cachedUsers(ctx context.Context, st *Storage) []User {
 	users, err := st.ListUsers(ctx)
 	if err != nil {
 		// 读失败就用上一份（没有就当没人登过），绝不因为 COS 抖动把所有人踢下线。
+		userCache.lastErr = true
 		return userCache.users
 	}
 	userCache.users = users
 	userCache.loaded = true
+	userCache.lastErr = false
 	userCache.at = time.Now()
 	return users
+}
+
+// usersUnknown 报告「用户表一次都没读成功过」—— 这时不能假定没人，
+// 鉴权必须 fail-closed（匿名一律 401），否则匿名会被当成 owner。
+func usersUnknown() bool {
+	userCache.Lock()
+	defer userCache.Unlock()
+	return !userCache.loaded
 }
 
 func invalidateUserCache() {

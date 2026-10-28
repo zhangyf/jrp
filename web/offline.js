@@ -16,13 +16,29 @@ var offline = {
   export: function () {
     var date = el('exportDate').value || todayStr();
     var mode = el('exportMode').value;
+    // ⚠️ 别再把 token 拼进 URL（2026-10-28 安全评审）：URL 会进 nginx 日志、
+    // 浏览器历史、Referer。改成 fetch（带 Authorization 头）→ Blob → a[download]。
     var q = '/api/export?mode=' + encodeURIComponent(mode) +
       '&date=' + encodeURIComponent(date) +
       '&grade=' + encodeURIComponent(app.mode());
-    if (app.token) q += '&token=' + encodeURIComponent(app.token);
-    // 下载不能走 fetch（Authorization 头带不上），拼 URL 直接跳，
-    // 服务端支持 ?token= 兜底。
-    window.location.href = q;
+    var headers = {};
+    if (app.token) headers['Authorization'] = 'Bearer ' + app.token;
+    fetch(q, { headers: headers })
+      .then(function (r) {
+        if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || '导出失败'); });
+        return r.blob();
+      })
+      .then(function (blob) {
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'jrp_' + mode + '_' + date + '.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      })
+      .catch(function (e) { app.toast(e.message || '导出失败'); });
   },
 
   parse: function () {

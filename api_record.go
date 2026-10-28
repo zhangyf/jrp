@@ -37,9 +37,15 @@ func (s *server) handleRecord(w http.ResponseWriter, r *http.Request, st *Storag
 	if input.Language == "" {
 		input.Language = s.lang
 	}
-	if input.PlanDate == "" {
-		input.PlanDate = time.Now().Format("2006-01-02")
+	// ⚠️ PlanDate 会拼进 COS key（快照 / 造句计划），必须严格校验。
+	planDate, ok := safeDate(input.PlanDate)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false, "error": "plan_date 格式不对，要 YYYY-MM-DD",
+		})
+		return
 	}
+	input.PlanDate = planDate
 
 	out := map[string]interface{}{"success": true, "dry_run": s.dryRun}
 
