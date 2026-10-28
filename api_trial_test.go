@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -242,69 +243,114 @@ func TestTrialReadonlySections(t *testing.T) {
 	}
 }
 
-// 未批准（pending）的用户：不再 403，按体验版放行 —— 小程序审核员就走这条路。
-// 他必须能完整过一遍 UI，同时一碰不到老师的真数据、二写不进任何东西。
-func TestPendingUserGetsTrialAccess(t *testing.T) {
-	srv := &server{storage: &Storage{dryRun: true}, lang: "ja"}
-
-	// 一个 pending 用户（uid 是自己的 u_xxx，不是 trial）。
-	// 用户表走 userCache（60 秒缓存），测试里直接塞缓存 —— 跟 api_admin_test.go 一致。
-	seedUsers(t, []User{{UID: "u_pending1", Role: rolePending, Name: "等批准的人"}})
-	defer seedUsers(t, nil)
-
-	sid := "pending-sid"
+// newPendingUser 造一个 pending 用户 + 会话。daysAgo 控制他是哪天注册的。
+func newPendingUser(t *testing.T, uid, sid string, daysAgo int) {
+	t.Helper()
+	created := time.Now().AddDate(0, 0, -daysAgo).Format("2006-01-02 15:04:05")
+	seedUsers(t, []User{{UID: uid, Role: rolePending, Name: "等批准的人", Created: created}})
 	sessions.Lock()
 	sessions.m[sid] = &session{
-		UID: "u_pending1", Role: rolePending, Name: "等批准的人",
+		UID: uid, Role: rolePending, Name: "等批准的人",
 		Created: time.Now(), LastSeen: time.Now(),
 	}
 	sessions.Unlock()
+}
 
-	// 读：跟试用账号一样能拿到题面
-	req := httptest.NewRequest(http.MethodGet, "/api/plan", nil)
-	req.Header.Set("Authorization", "Bearer "+sid)
-	w := httptest.NewRecorder()
-	srv.withUser(srv.handlePlan)(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("pending 拉计划应 200（走体验版），实际 %d: %s", w.Code, w.Body.String())
+// pending 的 7 个自然日体验期：期内**完整权限**（uid 是自己的，不是 trial），
+// 到期一律 403，且下次登录照样挡。
+func TestPendingGracePeriod(t *testing.T) {
+	srv := &server{storage: &Storage{dryRun: true}, lang: "ja"}
+
+	// --- 刚注册：放行，身份是他自己（不是体验版） ---
+	newPendingUser(t, "u_fresh", "fresh-sid", 0)
+	defer seedUsers(t, nil)
+
+	gotUID := ""
+	guard := func(w http.ResponseWriter, r *http.Request, st *Storage) {
+		gotUID = st.uid
+		writeJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 	}
+	req := httptest.NewRequest(http.MethodGet, "/api/plan", nil)
+	req.Header.Set("Authorization", "Bearer fresh-sid")
+	w := httptest.NewRecorder()
+	srv.withUser(guard)(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("体验期内应放行，实际 %d: %s", w.Code, w.Body.String())
+	}
+	if gotUID != "u_fresh" {
+		t.Errorf("体验期内应是他自己的 uid，实际 %q（走 trial 就错了）", gotUID)
+	}
+
+	// auth/me 要报 pending + 剩余天数，前端才好在首页摆一句
+	req = httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer fresh-sid")
+	w = httptest.NewRecorder()
+	srv.withUser(srv.handleAuthMe)(w, req)
 	var out map[string]interface{}
 	if err := jsonUnmarshal(w.Body.Bytes(), &out); err != nil {
 		t.Fatalf("解析失败：%v", err)
 	}
-	if out["trial"] != true {
-		t.Error("pending 应拿到体验版题面")
+	if out["pending"] != true || out["role"] != rolePending {
+		t.Errorf("应报 pending，实际 role=%v pending=%v", out["role"], out["pending"])
 	}
-	if got, _ := out["words"].([]interface{}); len(got) != 5 {
-		t.Errorf("pending 应拿到 5 词，实际 %d", len(got))
-	}
-
-	// 写：仍然 403
-	req = httptest.NewRequest(http.MethodPost, "/api/record", nil)
-	req.Header.Set("Authorization", "Bearer "+sid)
-	w = httptest.NewRecorder()
-	srv.withUser(func(http.ResponseWriter, *http.Request, *Storage) {})(w, req)
-	if w.Code != http.StatusForbidden {
-		t.Errorf("pending 回写成绩应 403，实际 %d", w.Code)
+	if d, _ := out["days_left"].(float64); d != pendingGraceDays {
+		t.Errorf("刚注册应还剩 %d 天，实际 %v", pendingGraceDays, d)
 	}
 
-	// /api/auth/me：role 报 trial（前端据此不放「待批准」墙），pending:true 另给提示
-	req = httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
-	req.Header.Set("Authorization", "Bearer "+sid)
+	// --- 第 6 天：还在期内 ---
+	newPendingUser(t, "u_d6", "d6-sid", 6)
+	req = httptest.NewRequest(http.MethodGet, "/api/plan", nil)
+	req.Header.Set("Authorization", "Bearer d6-sid")
 	w = httptest.NewRecorder()
-	srv.withUser(srv.handleAuthMe)(w, req)
+	srv.withUser(guard)(w, req)
 	if w.Code != http.StatusOK {
-		t.Fatalf("me HTTP %d: %s", w.Code, w.Body.String())
+		t.Errorf("第 6 天还在体验期内，实际 %d", w.Code)
 	}
-	out = map[string]interface{}{}
-	if err := jsonUnmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatalf("解析失败：%v", err)
+
+	// --- 第 8 天：过期，一律 403 ---
+	newPendingUser(t, "u_d8", "d8-sid", 8)
+	req = httptest.NewRequest(http.MethodGet, "/api/plan", nil)
+	req.Header.Set("Authorization", "Bearer d8-sid")
+	w = httptest.NewRecorder()
+	srv.withUser(guard)(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("过了 7 天应 403，实际 %d", w.Code)
 	}
-	if out["role"] != trialRole {
-		t.Errorf("pending 的 role 应报 trial，实际 %v", out["role"])
+	if !strings.Contains(w.Body.String(), "审核") {
+		t.Errorf("403 要写清是没审核，实际：%s", w.Body.String())
 	}
-	if out["pending"] != true {
-		t.Error("应带 pending:true，前端才好提示一句")
+
+	// --- 边界：正好第 7 天算过期 ---
+	newPendingUser(t, "u_d7", "d7-sid", 7)
+	req = httptest.NewRequest(http.MethodGet, "/api/plan", nil)
+	req.Header.Set("Authorization", "Bearer d7-sid")
+	w = httptest.NewRecorder()
+	srv.withUser(guard)(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("第 7 天应已过期（7 个自然日 = 到第 7 天结束），实际 %d", w.Code)
+	}
+}
+
+// 天数计算按**自然日**，不是 7×24 小时 —— 晚上注册的别第二天就少一天。
+func TestPendingDaysLeftCountsCalendarDays(t *testing.T) {
+	now := time.Now()
+	mk := func(daysAgo int, hour int) User {
+		d := now.AddDate(0, 0, -daysAgo)
+		return User{Created: time.Date(d.Year(), d.Month(), d.Day(), hour, 0, 0, 0, time.Local).
+			Format("2006-01-02 15:04:05")}
+	}
+	if got := pendingDaysLeft(mk(0, 23)); got != 7 {
+		t.Errorf("今晚 23 点注册应还剩 7 天，实际 %d", got)
+	}
+	if got := pendingDaysLeft(mk(3, 1)); got != 4 {
+		t.Errorf("3 天前凌晨注册应还剩 4 天，实际 %d", got)
+	}
+	// 老数据没 created：按满格给，不误伤
+	if got := pendingDaysLeft(User{}); got != pendingGraceDays {
+		t.Errorf("没 created 应按满格给，实际 %d", got)
+	}
+	if pendingExpired(User{Created: "不是时间"}) {
+		t.Error("时间串解析不了不该判过期")
 	}
 }
 

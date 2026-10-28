@@ -93,19 +93,6 @@ var trialSentences = []PlanSentence{
 	{Number: 3, Chinese: "洗手间在哪里？", Answer: "トイレは どこですか。"},
 }
 
-// publicRole 对外（小程序）报的身份。
-//
-// pending（已扫码、等批准）的实际权限**就是体验版** —— withUser 已经把它按
-// trialUID 处理了，所以这里如实报 trial，否则前端那句「账号待批准」会把人
-// 挡在门外（小程序审核员就卡在这儿过）。第二个返回值保留「原本是 pending」，
-// 前端拿它提示一句「批准后可用完整功能」。
-func publicRole(role string) (string, bool) {
-	if role == rolePending {
-		return trialRole, true
-	}
-	return role, false
-}
-
 func ptrFloat(v float64) *float64 { return &v }
 
 // trialPlanWords 按模式取固定题面（返回副本，别让调用方改到全局那一份）。

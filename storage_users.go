@@ -23,7 +23,9 @@ const usersCosKey = "_auth/users.json"
 // Role：
 //   - owner   站点所有者（老师）。COS 上个人数据直接落在语言根下，老数据的位置。
 //   - member  普通成员（比如儿子），个人数据在 users/<uid>/ 下。
-//   - pending 已扫码但未批准：能登进来，但 /api/* 一律 403，页面提示等批准。
+//   - pending 已扫码但未批准：**有 7 个自然日的完整体验期**（跟 member 一样的权限，
+//     只是数据在 users/<uid>/ 下）。到期还没被批准就一律 403，下次登录照样挡
+//     —— 见 pendingExpired。
 //   - disabled 被踢掉的。
 type User struct {
 	UID       string `json:"uid"`
@@ -183,6 +185,39 @@ func upsertUser(ctx context.Context, st *Storage, openid string) (User, error) {
 	invalidateUserCache()
 	return u, nil
 }
+
+// ---------- pending 的 7 天体验期 ----------
+//
+// 老师 2026-10-28 定的：新用户扫码进来是 pending，但**不能一上来就挡**——
+// 给 7 个自然日的完整体验期（该练练、该录录），到期还没被批准再拦。
+// 这样管理员（老师）有缓冲时间，陌生人也不能无限期占用。
+
+const pendingGraceDays = 7
+
+// parseUserTime 用户表里的时间串。老数据格式不统一，两种都认。
+func parseUserTime(s string) (time.Time, bool) {
+	for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339} {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// pendingDaysLeft 还剩几个自然日（按日期算，不看时分秒）。<=0 就是过期。
+// ⚠️ 老数据没有 created → 按满格给，宁可多给几天也别误伤已登录的人。
+func pendingDaysLeft(u User) int {
+	t, ok := parseUserTime(u.Created)
+	if !ok {
+		return pendingGraceDays
+	}
+	d0 := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.Local)
+	now := time.Now()
+	d1 := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	return pendingGraceDays - int(d1.Sub(d0).Hours()/24)
+}
+
+func pendingExpired(u User) bool { return pendingDaysLeft(u) <= 0 }
 
 // roleForNewUser 决定新用户进来时给什么角色：一个都没有 → owner，其余 → pending
 // （pending 要 owner 用 `jrp user approve` 放行，防止谁扫一下就能读数据）。

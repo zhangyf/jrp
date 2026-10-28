@@ -243,16 +243,17 @@ func (s *server) withUser(next authedHandler) http.HandlerFunc {
 					})
 					return
 				}
-				// ⚠️ 未批准（pending）**不发 403，而是按体验版放行**：
-				// 把 uid 换成 trialUID，后面 trialAllowed 白名单和 handler 里的
-				// `st.uid == trialUID` 分支自动生效 —— 假数据、只读、不落档。
-				//
-				// 为什么改：pending 原来一律 403，陌生人（包括小程序审核员）登录后
-				// 整页只有一个「待批准」，一个功能都点不动 → 直接被拒审。
-				// 现在他能完整走一遍五个版块，同时一碰不到老师的真数据、
-				// 二写不进任何东西（/api/record /api/words 都不在白名单里）。
-				if u.Role == rolePending {
-					uid = trialUID
+				// pending 有 7 个自然日的**完整体验期**（权限跟 member 一样，
+				// 数据在 users/<uid>/ 下）。到期还没被批准才拦 —— 老师要的是
+				// 「给管理员缓冲，但不让陌生人无限期占着」。
+				// ⚠️ 库里还有他这条记录，所以下次登录照样挡（见 handleAuthWXLogin）。
+				if u.Role == rolePending && pendingExpired(u) {
+					writeJSON(w, http.StatusForbidden, map[string]interface{}{
+						"success": false,
+						"error":   "管理员还没审核通过，7 天体验期已结束，不可继续使用",
+						"pending": true, "expired": true,
+					})
+					return
 				}
 				// owner 恒用空 uid 走老路径。存量会话里存的是旧 uid（历史上给 owner 也发过
 				// u_xxx），这里自愈一下，免得老师还得重新扫码。

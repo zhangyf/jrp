@@ -10,7 +10,7 @@
 
   <!-- 体验版：五个版块都能进，只是题量少、数据是假的、进度不保存。 -->
   <block wx:if="{{trial}}">
-    <view class="trial-note">{{pending ? '还没批准 · 先按体验版给你看，批准后可用完整功能' : '体验版 · 题目固定 · 进度不保存'}}</view>
+    <view class="trial-note">体验版 · 题目固定 · 进度不保存</view>
     <view class="grid">
       <view class="tile t-words" data-mode="words" bindtap="go" hover-class="tile-press">
         <view class="tile-title">每日复习</view>
@@ -39,6 +39,10 @@
   <!-- 双列色块入口：每个版块一个颜色，一眼看出能点（width:49% + space-between，
        别用 flex-basis calc() —— 部分机型 WebView 不认）。 -->
   <block wx:else>
+  <!-- 已登录但还没被批准：权限跟正式用户一样（7 个自然日），只摆一句倒计时 -->
+  <view class="trial-note" wx:if="{{pending}}">
+    还没审核通过 · 还可体验 {{daysLeft}} 天，到期需管理员批准
+  </view>
   <view class="grid">
     <view class="tile t-words" data-mode="words" bindtap="go" hover-class="tile-press">
       <view class="tile-title">列表复习</view>

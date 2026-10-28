@@ -206,17 +206,27 @@ func (s *server) handleAuthWXLogin(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// pending 过了 7 天体验期：直接不让登 —— 老师要的是「下次他再登录继续拦截」。
+	// 判断读的是库里那条记录的 created（upsertUser 只更新 last_login），
+	// 所以删掉记录才会重新计时，光重新扫码没用。
+	if u.Role == rolePending && pendingExpired(u) {
+		writeJSON(w, http.StatusForbidden, map[string]interface{}{
+			"success": false,
+			"error":   "管理员还没审核通过，7 天体验期已结束，不可继续使用",
+			"role":    u.Role, "pending": true, "expired": true,
+		})
+		return
+	}
 	sid := s.createSession(u, r.UserAgent())
-	// 对外报的身份要跟实际权限一致：新用户是 pending，权限等同体验版，
-	// 所以报 trial（否则小程序一登录就摆一道「待批准」的墙）。
-	role, pending := publicRole(u.Role)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"token":   sid,
 		"uid":     u.UID,
-		"role":    role,
-		"pending": pending,
-		"name":    u.Name,
+		"role":    u.Role,
+		"pending": u.Role == rolePending,
+		// 还剩几天给前端摆在首页，别让人到期了才知道
+		"days_left": pendingDaysLeft(u),
+		"name":      u.Name,
 	})
 }
 
@@ -258,14 +268,23 @@ func (s *server) handleAuthMe(w http.ResponseWriter, r *http.Request, st *Storag
 		})
 		return
 	}
-	role, pending := publicRole(sess.Role)
+	pending := sess.Role == rolePending
+	daysLeft := 0
+	if pending {
+		if u, ok := findUserByUID(cachedUsers(r.Context(), st), sess.UID); ok {
+			daysLeft = pendingDaysLeft(u)
+		} else {
+			daysLeft = pendingGraceDays // 查不到就按满格给，别误伤
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"success":  true,
-		"uid":      sess.UID,
-		"role":     role,
-		"pending":  pending,
-		"name":     sess.Name,
-		"is_owner": sess.UID == "",
+		"success":   true,
+		"uid":       sess.UID,
+		"role":      sess.Role,
+		"pending":   pending,
+		"days_left": daysLeft,
+		"name":      sess.Name,
+		"is_owner":  sess.UID == "",
 	})
 }
 

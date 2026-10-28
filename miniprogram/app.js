@@ -13,9 +13,10 @@ App({
     uid: '',
     role: '',
     name: '',
-    // pending：已扫码但管理员还没批准。服务端给的就是体验版权限（role 报 trial），
-    // 这个标记只是让首页多说一句「批准后可用完整功能」。
+    // pending：已扫码但管理员还没批准。有 7 个自然日的完整体验期，
+    // 到期服务端直接 403，这两个字段只是让首页摆一句还剩几天。
     pending: false,
+    daysLeft: 0,
     logged: false
   },
 
@@ -57,6 +58,7 @@ App({
             this.globalData.uid = res.uid || '';
             this.globalData.role = res.role || '';
             this.globalData.pending = !!res.pending;
+            this.globalData.daysLeft = res.days_left || 0;
             this.globalData.name = res.name || '';
             this.globalData.logged = true;
             wx.setStorageSync('jrp_token', this.globalData.token);
@@ -80,6 +82,7 @@ App({
         this.globalData.uid = res.uid || '';
         this.globalData.role = res.role || '';
         this.globalData.pending = !!res.pending;
+        this.globalData.daysLeft = res.days_left || 0;
         this.globalData.name = res.name || '';
         this.globalData.logged = true;
         wx.setStorageSync('jrp_token', this.globalData.token);
@@ -98,6 +101,7 @@ App({
     this.globalData.uid = '';
     this.globalData.role = '';
     this.globalData.pending = false;
+    this.globalData.daysLeft = 0;
     this.globalData.name = '';
     this.globalData.logged = false;
     wx.removeStorageSync('jrp_token');
@@ -111,6 +115,7 @@ App({
         this.globalData.uid = res.uid || '';
         this.globalData.role = res.role || '';
         this.globalData.pending = !!res.pending;
+        this.globalData.daysLeft = res.days_left || 0;
         this.globalData.name = res.name || '';
         this.globalData.logged = true;
       })

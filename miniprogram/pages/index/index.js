@@ -10,7 +10,8 @@ Page({
     logged: false,
     role: '',
     trial: false, // 体验版：题量少、统计是假数据、写了不保存
-    pending: false, // 已扫码等批准：权限等同体验版，提示语换一句
+    pending: false, // 已扫码等批准：7 个自然日的完整体验期，首页摆一句还剩几天
+    daysLeft: 0,
     message: '',
     // 自定义导航栏（原生导航栏放不了图片，logo 画在自己画的导航里）
     statusBarH: 20,
@@ -33,7 +34,7 @@ Page({
     const trial = app.isTrial();
     this.setData({
       logged: !!g.logged, role: g.role || '', trial: trial,
-      pending: !!g.pending
+      pending: !!g.pending, daysLeft: g.daysLeft || 0
     });
 
     // 自定义 tabBar 每个页面各一份实例，切回来时要告诉它「现在是我在前面」。
