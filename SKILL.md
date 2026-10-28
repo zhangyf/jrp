@@ -1604,7 +1604,16 @@ tabBar 三项：**练习 / 统计 / 录入**。
 返回里带 `trial:true` + `read_only:true`，前端据此：首页只留三个色块 + tabBar 收成一项
 （`custom-tab-bar` 的 `observers:{'trial'}`）；练习页/造句页**藏掉「提交」**并在 `submit()`
 里再挡一次（`/api/record` 是 403，藏了不挡就是点了弹个错）。进度不落档。
-首页有「退出试用 · 用微信登录」→ `app.logout()` 清 token + `reLaunch` 回 welcome。
+首页底部**只有一个退出入口**（`onExit`）：试用态写「退出试用」，登录态写「退出登录」，
+点一下直接 `app.logout()` —— 不弹确认框。
+⚠️ 别在页面上再堆第二个退出/登录入口（2026-10-28 老师明确说「全在下方放着，让人不理解，
+只留一个退出试用」）。练习页/造句页底部也不要再写「回到首页退出试用」这类引导 ——
+状态说明一行 `体验版 · 固定 N 词 · 不保存进度` 就够了。
+
+⚠️ 光清 token 不够 —— `onLaunch` 原来没 token 就调 `login()` 静默登录，
+退出后冷启动会被自动登回去，等于退不掉、也永远看不到登录页的「试用账号」。
+所以 `logout()` 额外写 `jrp_logged_out` 标记，`autoLogin()` / `refreshMe()` 的失败重登
+都先查它；只有 `login()` / `loginTrial()` 成功才 `clearLogoutFlag()`。
 
 写这五个页踩到的坑，都写进注释了：
 

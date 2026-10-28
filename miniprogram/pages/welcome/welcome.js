@@ -14,7 +14,6 @@ Page({
   data: {
     busy: false,
     checking: false, // 有缓存 token 时在验票，先别把登录按钮亮出来
-    loggedOut: false, // 上一次是主动退出的，别自作主张登回去
     message: ''
   },
 
@@ -42,9 +41,7 @@ Page({
         }
         this.setData({ checking: false });
       }, 800);
-      return;
     }
-    this.setData({ loggedOut: app.loggedOut() });
   },
 
   onWxLogin() {

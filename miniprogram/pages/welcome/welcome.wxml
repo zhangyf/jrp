@@ -13,11 +13,7 @@
       <view class="btn ghost" bindtap="onTrial">{{busy ? '进入中…' : '试用账号'}}</view>
     </view>
 
-    <view class="note">
-      试用账号只开放「每日复习 · 造句 · 钉子户」三个版块，各 5 词 / 3 句，
-      题目固定、进度不保存。想完整使用请微信登录。
-    </view>
-    <view class="tip" wx:if="{{loggedOut}}">已退出，选一个方式重新进入。</view>
+    <view class="note">试用来看看：5 个词 / 3 句话，题目固定，进度不保存。</view>
   </block>
 
   <view class="err" wx:if="{{message}}">{{message}}</view>

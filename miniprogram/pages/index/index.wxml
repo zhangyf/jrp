@@ -26,7 +26,8 @@
         <view class="tile-desc">5 个词</view>
       </view>
     </view>
-    <view class="foot-link" bindtap="exitTrial">退出试用 · 用微信登录</view>
+    <!-- 退出入口只留一个，文案跟着状态走：试用态是「退出试用」，登录态是「退出登录」 -->
+    <view class="foot-link" bindtap="onExit">退出试用</view>
   </block>
 
   <!-- 双列色块入口：每个版块一个颜色，一眼看出能点（width:49% + space-between，
@@ -56,8 +57,5 @@
     </view>
   </view>
 
-  <!-- 退出登录：换账号 / 想看试用版都靠它。退出后停在登录页，不会被静默登录登回去。 -->
-  <view class="foot-link" bindtap="logout">
-    退出登录<text wx:if="{{name}}">（{{name}}）</text>
-  </view>
+  <view class="foot-link" bindtap="onExit">退出登录</view>
 </view>

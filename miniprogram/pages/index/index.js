@@ -10,7 +10,6 @@ Page({
     logged: false,
     role: '',
     trial: false, // 体验版：只显示每日复习 / 造句 / 钉子户
-    name: '',     // 退出登录按钮上带一下「当前是谁」
     pending: false,
     message: '',
     // 自定义导航栏（原生导航栏放不了图片，logo 画在自己画的导航里）
@@ -32,10 +31,7 @@ Page({
   onShow() {
     const g = app.globalData;
     const trial = app.isTrial();
-    this.setData({
-      logged: !!g.logged, role: g.role || '', trial: trial,
-      name: trial ? '' : (g.name || '')
-    });
+    this.setData({ logged: !!g.logged, role: g.role || '', trial: trial });
 
     // 自定义 tabBar 每个页面各一份实例，切回来时要告诉它「现在是我在前面」。
     // 体验版只留「练习」一项 —— 统计和录入都对它关着门，摆出来点了也是 403。
@@ -56,23 +52,11 @@ Page({
     }
   },
 
-  // 退出登录：换账号、或者想看看试用版长什么样，都从这里走。
-  // 退出后会停在登录页（app 里留了标记，冷启动不会把他静默登回去）。
-  logout() {
-    wx.showModal({
-      title: '退出登录',
-      content: '退出后可以用微信重新登录，也可以选「试用账号」看看。',
-      success: (r) => { if (r.confirm) app.logout(); }
-    });
-  },
-
-  // 退出试用：清掉本地 token 回登录页。试完了直接换微信登录，不用杀小程序。
-  exitTrial() {
-    wx.showModal({
-      title: '退出试用',
-      content: '回登录页，可以用微信登录接着练（进度会记进你自己的词库）。',
-      success: (r) => { if (r.confirm) app.logout(); }
-    });
+  // 退出：一个入口，两种状态共用（试用态按钮上写「退出试用」，登录态写「退出登录」）。
+  // 不弹确认框 —— 退回去就是登录页，点一下还能回来，多一层提示纯属噪音。
+  // 退出后停在登录页（app 里留了标记，冷启动不会把他静默登回去）。
+  onExit() {
+    app.logout();
   },
 
   go(e) {

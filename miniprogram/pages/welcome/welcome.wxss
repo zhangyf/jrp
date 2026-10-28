@@ -66,12 +66,6 @@
   line-height: 1.7;
 }
 
-.tip {
-  margin-top: 16rpx;
-  font-size: 23rpx;
-  color: #a0a09a;
-  text-align: center;
-}
 
 .err {
   margin-top: 30rpx;
