@@ -50,6 +50,38 @@ App({
     });
   },
 
+  // 体验版：领一个试用身份。不用微信、不用等批准，点一下就进。
+  //
+  // 服务端给的是真会话（uid=trial），只是被白名单关在「每日复习/造句/钉子户」
+  // 三个版块里 —— 这样判分仍然走 /api/grade 那一份实现，不用在小程序里抄一套。
+  loginTrial(cb) {
+    this.request('/api/auth/trial', 'POST', {}, false)
+      .then((res) => {
+        this.globalData.token = res.token || '';
+        this.globalData.uid = res.uid || '';
+        this.globalData.role = res.role || '';
+        this.globalData.name = res.name || '';
+        this.globalData.logged = true;
+        wx.setStorageSync('jrp_token', this.globalData.token);
+        if (cb) cb(null, res);
+      })
+      .catch((e) => { if (cb) cb(e); });
+  },
+
+  isTrial() { return this.globalData.role === 'trial'; },
+
+  // 退出（含退出试用）：清掉本地 token 回登录页。
+  // 服务端的会话本来就没必要撤 —— 它 30 天自己过期，没人拿着 token 也就没意义。
+  logout() {
+    this.globalData.token = '';
+    this.globalData.uid = '';
+    this.globalData.role = '';
+    this.globalData.name = '';
+    this.globalData.logged = false;
+    wx.removeStorageSync('jrp_token');
+    wx.reLaunch({ url: '/pages/welcome/welcome' });
+  },
+
   refreshMe() {
     this.request('/api/auth/me', 'GET', {}, true)
       .then((res) => {

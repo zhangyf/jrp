@@ -16,6 +16,12 @@ import (
 // 存在的意义：写一半关掉标签页，换来的是「119 个词要重写一遍」。
 // 草稿按「日期 + 模式」分键，回写成功后立即清除。
 func (s *server) handleDraft(w http.ResponseWriter, r *http.Request, st *Storage) {
+	// 体验版：草稿是落档的东西，试用不要 —— 直接回空，不碰 COS。
+	if st.uid == trialUID {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+		return
+	}
+
 	date := r.URL.Query().Get("date")
 	if date == "" {
 		date = time.Now().Format("2006-01-02")

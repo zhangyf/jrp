@@ -8,9 +8,30 @@
   </view>
   <view class="err" wx:if="{{message}}">{{message}}</view>
 
+  <!-- 体验版：只有三个版块。题目固定、进度不保存，白纸黑字写在这儿，
+       免得试用的人以为练了会留下记录。 -->
+  <block wx:if="{{trial}}">
+    <view class="trial-note">体验版 · 题目固定 · 进度不保存</view>
+    <view class="grid">
+      <view class="tile t-words" data-mode="words" bindtap="go" hover-class="tile-press">
+        <view class="tile-title">每日复习</view>
+        <view class="tile-desc">5 个词</view>
+      </view>
+      <view class="tile t-sentences" data-mode="sentences" bindtap="go" hover-class="tile-press">
+        <view class="tile-title">造句</view>
+        <view class="tile-desc">3 句</view>
+      </view>
+      <view class="tile t-hard" data-mode="hard" bindtap="go" hover-class="tile-press">
+        <view class="tile-title">钉子户</view>
+        <view class="tile-desc">5 个词</view>
+      </view>
+    </view>
+    <view class="trial-exit" bindtap="exitTrial">退出试用 · 用微信登录</view>
+  </block>
+
   <!-- 双列色块入口：每个版块一个颜色，一眼看出能点（width:49% + space-between，
        别用 flex-basis calc() —— 部分机型 WebView 不认）。 -->
-  <view class="grid">
+  <view class="grid" wx:else>
     <view class="tile t-words" data-mode="words" bindtap="go" hover-class="tile-press">
       <view class="tile-title">列表复习</view>
       <view class="tile-desc">今天该复习的词</view>

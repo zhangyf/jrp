@@ -1585,6 +1585,27 @@ tabBar 三项：**练习 / 统计 / 录入**。
 小程序「对答案」整屏一次请求拿回 `results:[bool]`；web 端仍在浏览器本地用 `web/grade.js` 判。
 ⚠️ 别在小程序里再抄一份判分规则，两份迟早漂移。
 
+#### 体验版（试用账号，2026-10-28）
+
+`pages/welcome` 是 `app.json` 的第一页：微信登录 / 试用账号二选一。
+试用 = 服务端一个**真实会话**（`POST /api/auth/trial`，uid=`trial`，**不写用户表**），
+只是被 `api_trial.go` 的 `trialAllowed()` 白名单关在三个版块里：
+
+- 放行：`/api/plan` `/api/hard` `/api/grade` `/api/judge-sentence` `/api/auth/me` `/api/review` `/api/draft`
+- 其余一律 403（`/api/lexicon` `/api/stats` `/api/words` `/api/record` `/api/vision` …）
+- ⚠️ 加路由进白名单前先问一句「会不会带出老师的个人数据」，会 → 不许加。
+  判句放行是因为它只读请求里的句子 + `sharedBase` 下的 prompt，但**会花钱调模型**。
+
+题面写死在 `api_trial.go`（每日复习 5 词 / 钉子户 5 词 / 造句 3 句课本原文），
+**固定不轮换** —— `TestTrialQuestionsAreStable` 盯着。
+`/api/plan` `/api/hard` 对 trial 直接 `writeTrialPlan()` 返回，**一次都不碰 COS**
+（走正常路径会在 `users/trial/` 下凭空初始化档案）；`/api/review` `/api/draft` 直接回空。
+
+返回里带 `trial:true` + `read_only:true`，前端据此：首页只留三个色块 + tabBar 收成一项
+（`custom-tab-bar` 的 `observers:{'trial'}`）；练习页/造句页**藏掉「提交」**并在 `submit()`
+里再挡一次（`/api/record` 是 403，藏了不挡就是点了弹个错）。进度不落档。
+首页有「退出试用 · 用微信登录」→ `app.logout()` 清 token + `reLaunch` 回 welcome。
+
 写这五个页踩到的坑，都写进注释了：
 
 1. **JLPT 进度**：`jlpt.n5.vocab` / `n5.lesson` 是**门槛值**（800 词 / 第 22 课），

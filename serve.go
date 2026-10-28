@@ -96,6 +96,7 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 	mux.HandleFunc("/api/auth/qr", srv.handleAuthQR)
 	mux.HandleFunc("/api/auth/status", srv.handleAuthStatus)
 	mux.HandleFunc("/api/auth/wxlogin", srv.handleAuthWXLogin)
+	mux.HandleFunc("/api/auth/trial", srv.handleAuthTrial) // 体验版：领试用身份，匿名可用
 	mux.HandleFunc("/api/auth/confirm", srv.handleAuthConfirm)
 	mux.HandleFunc("/api/auth/me", srv.handleAuthMe)
 	mux.HandleFunc("/api/auth/logout", srv.handleAuthLogout)
@@ -231,20 +232,30 @@ func (s *server) withUser(next authedHandler) http.HandlerFunc {
 		if logged {
 			uid = sess.UID
 			// 角色改了（被禁用 / 还没批准）要让存量会话立刻失效。
-		if u, ok := findUserByUID(cachedUsers(r.Context(), s.storage), uid); ok {
-			if u.Role == rolePending || u.Role == roleDisabled {
-				writeJSON(w, http.StatusForbidden, map[string]interface{}{
-					"success": false, "error": "账号未启用，等管理员批准",
-				})
-				return
-			}
-			// owner 恒用空 uid 走老路径。存量会话里存的是旧 uid（历史上给 owner 也发过
-			// u_xxx），这里自愈一下，免得老师还得重新扫码。
-			if u.Role == roleOwner {
-				uid = ""
+			if u, ok := findUserByUID(cachedUsers(r.Context(), s.storage), uid); ok {
+				if u.Role == rolePending || u.Role == roleDisabled {
+					writeJSON(w, http.StatusForbidden, map[string]interface{}{
+						"success": false, "error": "账号未启用，等管理员批准",
+					})
+					return
+				}
+				// owner 恒用空 uid 走老路径。存量会话里存的是旧 uid（历史上给 owner 也发过
+				// u_xxx），这里自愈一下，免得老师还得重新扫码。
+				if u.Role == roleOwner {
+					uid = ""
+				}
 			}
 		}
+
+		// 体验版（试用账号）：凭证是公开的，所以除了三个版块和判分一律挡掉。
+		// 白名单见 api_trial.go —— 加路由进去之前先确认它不带出老师的个人数据。
+		if uid == trialUID && !trialAllowed(r.URL.Path) {
+			writeJSON(w, http.StatusForbidden, map[string]interface{}{
+				"success": false, "error": "体验版只有每日复习、造句、钉子户三个版块",
+			})
+			return
 		}
+
 		next(w, r, s.storage.ForUser(uid))
 	}
 }

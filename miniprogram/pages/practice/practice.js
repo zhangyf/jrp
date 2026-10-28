@@ -30,7 +30,10 @@ Page({
     reviewOnly: false,
     // 第二轮：只练今天的错词。⚠️ 不回写 —— 同一个词一天只能进档案一次，
     // 回写两次会把艾宾浩斯间隔和 LastReview 各改一遍（web 的 list.js 同样处理）。
-    requeue: false
+    requeue: false,
+    // 体验版（试用账号）：题是服务端给的一套固定词，能写能判分，
+    // 但 /api/record 不在体验版白名单里 —— 提交按钮收掉，进度不落档案。
+    readOnly: false
   },
 
   onLoad(q) {
@@ -67,7 +70,8 @@ Page({
     app.request(path, 'GET', {}, true)
       .then((res) => {
         const words = res.words || [];
-        this.setData({ date: res.date || '' });
+        // 体验版：/api/plan /api/hard 会带 read_only + trial
+        this.setData({ date: res.date || '', readOnly: !!res.read_only });
         if (!words.length) {
           // plan 空 = 今天的到期词都回写过了 → 拉当天快照只读回看。
           // 快照也没有（真的一天没练）才是真的「没有要练的」。
@@ -93,6 +97,7 @@ Page({
           items, loading: false, graded: false, summary: null,
           answered: 0, reviewOnly: false
         });
+        if (this.data.readOnly) return; // 体验版没有草稿，也不用回填
         this.loadDraft();
       })
       .catch((e) => this.setData({ err: e.message, loading: false }));
@@ -222,7 +227,7 @@ Page({
   // 草稿保存：防抖 1.2 秒（跟 web 一致，每敲一个字发一次太吵）。
   // 静默失败 —— 草稿存不上不该打断练习。
   scheduleDraft() {
-    if (this.data.reviewOnly || !this.data.date) return;
+    if (this.data.reviewOnly || this.data.readOnly || !this.data.date) return;
     clearTimeout(this._draftTimer);
     this._draftTimer = setTimeout(() => this.saveDraft(), 1200);
   },
@@ -375,6 +380,11 @@ Page({
   },
 
   submit() {
+    // 体验版不落档案 —— 双保险：按钮层已经藏了，这里再挡一次
+    if (this.data.readOnly) {
+      wx.showToast({ title: '体验版不保存进度', icon: 'none' });
+      return;
+    }
     // 巩固轮不进档案 —— 双保险：按钮层已经藏了，这里再挡一次
     if (this.data.requeue) {
       wx.showToast({ title: '巩固轮不计入档案', icon: 'none' });

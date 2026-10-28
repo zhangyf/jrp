@@ -129,6 +129,13 @@
   color: #0f6e56;
 }
 
+/* 体验版提示：跟练习页同一套绿字，别再造一个颜色 */
+.note-ok {
+  margin-bottom: 12rpx;
+  font-size: 24rpx;
+  color: #2f6f4f;
+}
+
 .bar {
   position: fixed;
   left: 0;

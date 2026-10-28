@@ -14,6 +14,12 @@ import (
 // 存在的意义：回写成功后到期日被推到未来，「今日练习」就空了，老师当天练了什么、
 // 哪题写错，从此查不到。快照在 /api/record 回写成功时自动写，这里只负责读。
 func (s *server) handleReview(w http.ResponseWriter, r *http.Request, st *Storage) {
+	// 体验版：没有快照可言（试用从不落档），直接回空，别去 COS 找。
+	if st.uid == trialUID {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+		return
+	}
+
 	date := r.URL.Query().Get("date")
 	if date == "" {
 		date = time.Now().Format("2006-01-02")

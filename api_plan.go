@@ -34,6 +34,13 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request, st *Storage)
 		mode = "words"
 	}
 
+	// 体验版：直接给内置固定题面，一次都不碰 COS。
+	// 走正常路径会在 users/trial/ 下凭空初始化一份档案，之后每次拉计划都往里写。
+	if st.uid == trialUID {
+		writeTrialPlan(w, mode)
+		return
+	}
+
 	today := time.Now()
 	readOnly := !sameDay(targetDate, today) && targetDate.After(today)
 
@@ -116,6 +123,12 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request, st *Storage)
 //
 //	GET /api/hard?min_accuracy=0.6&min_reviews=3
 func (s *server) handleHard(w http.ResponseWriter, r *http.Request, st *Storage) {
+	// 体验版：内置固定题面，不碰 COS（理由同 handlePlan）。
+	if st.uid == trialUID {
+		writeTrialPlan(w, "hard")
+		return
+	}
+
 	ctx := s.ctx()
 
 	targetDate, ok := parseDateParam(r)

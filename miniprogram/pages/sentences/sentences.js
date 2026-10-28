@@ -66,7 +66,9 @@ Page({
     submitting: false,
     grammarOpen: false,
     particles: PARTICLE_ROWS,
-    modify: MODIFY_ROWS
+    modify: MODIFY_ROWS,
+    // 体验版：3 句固定的示范题，能写能判，不落档案（/api/record 不在白名单里）
+    readOnly: false
   },
 
   toggleGrammar() {
@@ -92,7 +94,10 @@ Page({
           graded: false,
           reason: ''
         }));
-        this.setData({ items, date: res.date || '', loading: false });
+        this.setData({
+          items, date: res.date || '', loading: false,
+          readOnly: !!res.read_only
+        });
       })
       .catch((e) => this.setData({ err: e.message, loading: false }));
   },
@@ -141,6 +146,11 @@ Page({
   },
 
   submit() {
+    // 体验版不落档案 —— 双保险：按钮层已经藏了，这里再挡一次
+    if (this.data.readOnly) {
+      wx.showToast({ title: '体验版不保存进度', icon: 'none' });
+      return;
+    }
     const items = this.data.items;
     const written = items.filter((it) => (it.input || '').trim() !== '');
     if (!written.length) {

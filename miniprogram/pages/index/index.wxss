@@ -3,6 +3,27 @@
   padding: 24rpx 24rpx 180rpx;
 }
 
+/* 体验版提示条：写清「固定题 + 不保存」，别让试用的人以为练了会留记录 */
+.trial-note {
+  margin: 0 0 20rpx;
+  padding: 16rpx 20rpx;
+  background: #fdf6e3;
+  border: 1rpx solid #e8dcb8;
+  border-radius: 12rpx;
+  font-size: 25rpx;
+  color: #8a6d3b;
+  text-align: center;
+}
+
+/* 退出试用：放在色块下面，比提示条低一档的存在感，但一眼能看到 */
+.trial-exit {
+  margin: 24rpx 0 0;
+  padding: 18rpx 0;
+  font-size: 26rpx;
+  color: #6b8fd4;
+  text-align: center;
+}
+
 /* 自定义导航栏：浅底，logo 与标题同一行 */
 .nav {
   background: #f7f7f5;

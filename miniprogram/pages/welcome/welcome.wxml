@@ -1,0 +1,19 @@
+<view class="wrap">
+  <view class="brand">
+    <image class="logo" src="/images/logo.png" mode="aspectFit" />
+    <view class="title">jrp 日语复习</view>
+    <view class="sub">按艾宾浩斯曲线安排每天的复习</view>
+  </view>
+
+  <view class="acts">
+    <view class="btn main" bindtap="onWxLogin">{{busy ? '登录中…' : '微信登录'}}</view>
+    <view class="btn ghost" bindtap="onTrial">{{busy ? '进入中…' : '试用账号'}}</view>
+  </view>
+
+  <view class="note">
+    试用账号只开放「每日复习 · 造句 · 钉子户」三个版块，各 5 词 / 3 句，
+    题目固定、进度不保存。想完整使用请微信登录。
+  </view>
+
+  <view class="err" wx:if="{{message}}">{{message}}</view>
+</view>

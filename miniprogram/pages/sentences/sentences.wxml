@@ -7,6 +7,8 @@
   <view class="err" wx:if="{{err}}">{{err}}</view>
   <view class="empty" wx:if="{{!loading && !err && items.length === 0}}">今天没有造句任务。</view>
 
+  <view class="note-ok" wx:if="{{readOnly}}">体验版：这 {{items.length}} 句是固定的示范题，可以写、可以「对答案」，但不保存进度。</view>
+
   <view class="card item {{item.graded ? (item.correct ? 'right' : 'wrong') : ''}}"
         wx:for="{{items}}" wx:key="number">
     <view class="q">
@@ -62,6 +64,11 @@
 
   <view class="bar" wx:if="{{items.length}}">
     <button class="btn ghost" bindtap="grade" loading="{{grading}}">对答案</button>
-    <button class="btn primary" bindtap="submit" loading="{{submitting}}">提交</button>
+    <!-- 体验版不给「提交」：/api/record 不在白名单里，点了只会 403 -->
+    <button class="btn primary" wx:if="{{!readOnly}}" bindtap="submit" loading="{{submitting}}">提交</button>
+  </view>
+
+  <view class="tip" wx:if="{{items.length && readOnly}}">
+    想记录进度、练自己的句库，回到首页退出试用、用微信登录。
   </view>
 </view>
