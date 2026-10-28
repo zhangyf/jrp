@@ -16,14 +16,28 @@ App({
     logged: false
   },
 
-  onLaunch() {
+  // 退出标记：老师主动退出后，冷启动不许再把他静默登回去 ——
+  // 否则「退出登录」点了个寂寞，也永远看不到登录页上的「试用账号」。
+  // 只有他在登录页重新点了微信登录 / 试用账号才清除（见 login / loginTrial）。
+  logoutFlagKey: 'jrp_logged_out',
+
+  loggedOut() { return !!wx.getStorageSync(this.logoutFlagKey); },
+  clearLogoutFlag() { wx.removeStorageSync(this.logoutFlagKey); },
+
+  // 冷启动：有退出标记就什么都不做，停在登录页等人选。
+  autoLogin() {
+    if (this.loggedOut()) return;
     const cached = wx.getStorageSync('jrp_token');
     if (cached) {
       this.globalData.token = cached;
       this.refreshMe();
-    } else {
-      this.login();
+      return;
     }
+    this.login();
+  },
+
+  onLaunch() {
+    this.autoLogin();
   },
 
   // login 用 wx.login 的 code 换 openid → 后端发会话 token。静默，不弹授权。
@@ -42,6 +56,7 @@ App({
             this.globalData.name = res.name || '';
             this.globalData.logged = true;
             wx.setStorageSync('jrp_token', this.globalData.token);
+            this.clearLogoutFlag(); // 主动登录过，下次冷启动照旧直接进
             if (cb) cb(null, res);
           })
           .catch((e) => { if (cb) cb(e); });
@@ -63,6 +78,7 @@ App({
         this.globalData.name = res.name || '';
         this.globalData.logged = true;
         wx.setStorageSync('jrp_token', this.globalData.token);
+        this.clearLogoutFlag();
         if (cb) cb(null, res);
       })
       .catch((e) => { if (cb) cb(e); });
@@ -70,7 +86,7 @@ App({
 
   isTrial() { return this.globalData.role === 'trial'; },
 
-  // 退出（含退出试用）：清掉本地 token 回登录页。
+  // 退出（含退出试用）：清掉本地 token 回登录页，并留个「别再自动登我」的标记。
   // 服务端的会话本来就没必要撤 —— 它 30 天自己过期，没人拿着 token 也就没意义。
   logout() {
     this.globalData.token = '';
@@ -79,6 +95,7 @@ App({
     this.globalData.name = '';
     this.globalData.logged = false;
     wx.removeStorageSync('jrp_token');
+    wx.setStorageSync(this.logoutFlagKey, 1);
     wx.reLaunch({ url: '/pages/welcome/welcome' });
   },
 
@@ -91,9 +108,10 @@ App({
         this.globalData.logged = true;
       })
       .catch(() => {
-        // token 过期了：清掉，重新静默登录。
+        // token 过期了：清掉，重新静默登录（退出过就别自作主张登回去）。
         this.globalData.logged = false;
         wx.removeStorageSync('jrp_token');
+        if (this.loggedOut()) return;
         this.login();
       });
   },

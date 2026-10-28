@@ -14,6 +14,7 @@ Page({
   data: {
     busy: false,
     checking: false, // 有缓存 token 时在验票，先别把登录按钮亮出来
+    loggedOut: false, // 上一次是主动退出的，别自作主张登回去
     message: ''
   },
 
@@ -28,7 +29,7 @@ Page({
     // 这段等待里显示「正在登录…」而不是两个按钮 —— 否则老师每次冷启动
     // 都会先闪一下登录页，看着像掉登录了。
     const cached = wx.getStorageSync('jrp_token');
-    if (cached && !app.globalData.logged) {
+    if (cached && !app.globalData.logged && !app.loggedOut()) {
       app.globalData.token = cached;
       this.setData({ checking: true });
       app.refreshMe();
@@ -41,7 +42,9 @@ Page({
         }
         this.setData({ checking: false });
       }, 800);
+      return;
     }
+    this.setData({ loggedOut: app.loggedOut() });
   },
 
   onWxLogin() {

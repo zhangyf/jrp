@@ -15,8 +15,8 @@
   text-align: center;
 }
 
-/* 退出试用：放在色块下面，比提示条低一档的存在感，但一眼能看到 */
-.trial-exit {
+/* 退出登录 / 退出试用：放在色块下面，比提示条低一档的存在感，但一眼能看到 */
+.foot-link {
   margin: 24rpx 0 0;
   padding: 18rpx 0;
   font-size: 26rpx;

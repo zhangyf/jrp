@@ -26,7 +26,7 @@
         <view class="tile-desc">5 个词</view>
       </view>
     </view>
-    <view class="trial-exit" bindtap="exitTrial">退出试用 · 用微信登录</view>
+    <view class="foot-link" bindtap="exitTrial">退出试用 · 用微信登录</view>
   </block>
 
   <!-- 双列色块入口：每个版块一个颜色，一眼看出能点（width:49% + space-between，
@@ -54,5 +54,10 @@
       <view class="tile-title">词汇总表</view>
       <view class="tile-desc">查词 · 看掌握情况</view>
     </view>
+  </view>
+
+  <!-- 退出登录：换账号 / 想看试用版都靠它。退出后停在登录页，不会被静默登录登回去。 -->
+  <view class="foot-link" bindtap="logout">
+    退出登录<text wx:if="{{name}}">（{{name}}）</text>
   </view>
 </view>
