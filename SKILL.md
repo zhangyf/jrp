@@ -1691,15 +1691,19 @@ tabBar 三项：**练习 / 统计 / 录入**。
   ⛔ 不许再回 `success:false`——审核看到「页面报错」就是拒审。
 - 测试 `TestBootstrapEmptyAccount`（memObjStore 桩，含空档案录第一个词）。
 
-## 先浏览后登录（2026-11-02 审核要求）
+## 先浏览后登录（2026-11-02 审核要求；登录页已删）
 
-「打开小程序就要求登录」违反运营规范。改法：
-- **入口是 `pages/index/index`**（app.json 第一项），不再落到 welcome 登录页。
-- 冷启动没 token → `autoLogin()` **静默领体验版**（loginTrial），不做 wx.login ——
-  登录必须是用户自己在登录页点的。退出过的人（`jrp_logged_out` 标记）首页 onShow 送去 welcome。
-- 首页试用态的底部链接是「**微信登录后可保存进度**」→ reLaunch welcome（不写退出标记）；
-  登录态才是「退出登录」。「退出试用」没有了 —— 试用是默认态，没有退一说。
-- welcome 的 onShow 跳回首页要加 `!app.isTrial()`：试用态点进来是来登录的，弹回去就是死循环。
+「打开小程序就要求登录」违反运营规范。老师 2026-11-02 再进一步：**登录页这一屏整个不该存在**，
+`pages/welcome/` 已删除。现在的形态：
+
+- **入口是 `pages/index/index`**（app.json 第一项），也是唯一门户。
+- 冷启动没 token → `autoLogin()` **静默领体验版**（loginTrial），不做 wx.login。
+- 主动退出过（`jrp_logged_out` 标记）→ 首页就地摆「微信登录 / 体验模式」两个色块
+  （`needLogin` 态），**不跳任何页**。
+- 登录动作**就地发生**：试用态底部链接「微信登录后可保存进度」、锁定输入框的登录浮层、
+  退出态的「微信登录」色块，全都直接 `app.login()`（wx.login 静默，不弹授权）。
+  浮层的 `goLogin` 成功后顺手 `page.load()`（有这方法的页面）按真身份重拉数据 + 解锁。
+- ⛔ 新代码里不许再出现 `wx.reLaunch('/pages/welcome/welcome')` —— 页面已经没了。
 
 ## 试用态：能看不能写（2026-11-02 老师定口径）
 

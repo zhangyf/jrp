@@ -32,7 +32,8 @@ App({
   // 冷启动：
   //   有 token → 验票续用；
   //   没 token → **静默领体验版**（2026-11-02 审核要求：先能浏览，登录必须是用户自己选的）。
-  // 有退出标记就什么都不做 —— 首页 onShow 会把他送去登录页，别在这里抢。
+  // 有退出标记就什么都不做 —— 首页 onShow 会摆出「微信登录 / 体验模式」两个按钮，
+  // 别在这里抢（没有单独的登录页了）。
   // ⚠️ 不再默认 wx.login：那是替陌生人注册 pending 账号，审核也把「进门就要登录」算违规。
   autoLogin() {
     if (this.loggedOut()) return;
@@ -99,8 +100,10 @@ App({
 
   isTrial() { return this.globalData.role === 'trial'; },
 
-  // 退出（含退出试用）：清掉本地 token 回登录页，并留个「别再自动登我」的标记。
+  // 退出（含退出试用）：清掉本地 token 回首页，并留个「别再自动登我」的标记。
   // 服务端的会话本来就没必要撤 —— 它 30 天自己过期，没人拿着 token 也就没意义。
+  // 首页对退出过的人只给「微信登录 / 体验模式」两个按钮 —— 没有单独的登录页
+  // （2026-11-02 老师定：登录页这一屏不该存在，登录动作就地发生）。
   logout() {
     this.globalData.token = '';
     this.globalData.uid = '';
@@ -111,7 +114,7 @@ App({
     this.globalData.logged = false;
     wx.removeStorageSync('jrp_token');
     wx.setStorageSync(this.logoutFlagKey, 1);
-    wx.reLaunch({ url: '/pages/welcome/welcome' });
+    wx.reLaunch({ url: '/pages/index/index' });
   },
 
   refreshMe() {

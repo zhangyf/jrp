@@ -10,9 +10,13 @@ Page({
     logged: false,
     role: '',
     trial: false, // 体验版：题量少、统计是假数据、写了不保存
+    // 主动退出过：不给卡片（没身份点了也白点），就地给「微信登录 / 体验模式」两个按钮。
+    // ⚠️ 没有单独的登录页 —— 2026-11-02 老师定「不应该有这一屏」，登录动作就地发生。
+    needLogin: false,
     pending: false, // 已扫码等批准：7 个自然日的完整体验期，首页摆一句还剩几天
     daysLeft: 0,
     message: '',
+    busy: false, // 正在登录，防止连点
     // 自定义导航栏（原生导航栏放不了图片，logo 画在自己画的导航里）
     statusBarH: 20,
     navH: 44
@@ -34,6 +38,7 @@ Page({
     const trial = app.isTrial();
     this.setData({
       logged: !!g.logged, role: g.role || '', trial: trial,
+      needLogin: !g.logged && app.loggedOut(),
       pending: !!g.pending, daysLeft: g.daysLeft || 0
     });
 
@@ -41,14 +46,10 @@ Page({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 0 });
     }
-    if (!g.logged) {
-      // 退出过的人送去登录页，让他自己选；别在这里自作主张登回去。
-      if (app.loggedOut()) {
-        wx.reLaunch({ url: '/pages/welcome/welcome' });
-        return;
-      }
+    if (!g.logged && !this.data.needLogin) {
       // 冷启动还没身份 → 静默领体验版，先让页面能用。
-      // ⚠️ 不做 wx.login：登录必须是用户自己在登录页点的（2026-11-02 审核要求）。
+      // ⚠️ 不做 wx.login：登录必须是用户自己点的（2026-11-02 审核要求）。
+      // 退出过的人（needLogin）也别自作主张登回去，按钮摆在那等他点。
       if (!g.booting) {
         g.booting = true;
         app.loginTrial((err) => {
@@ -66,15 +67,47 @@ Page({
     }
   },
 
-  // 退出登录：清本地身份回登录页（app 里留了标记，冷启动不会把他静默登回去）。
+  // 退出登录：清本地身份回首页（app 里留了标记，冷启动不会把他静默登回去）。
   // 试用态不放这个按钮 —— 试用是默认态，没有「退」一说，要登录点「微信登录后可保存进度」。
   onExit() {
     app.logout();
   },
 
-  // 试用态去登录：登录页自己选微信登录。不写退出标记（这不是退出，是主动要登录）。
-  goLogin() {
-    wx.reLaunch({ url: '/pages/welcome/welcome' });
+  // 就地微信登录（wx.login 静默，不弹授权）：浮层和退出态都用它。
+  // 登录成功刷新本页状态；试用态的底部链接也走这里 —— 不再有中间那屏登录页。
+  onWxLogin() {
+    if (this.data.busy) return;
+    this.setData({ busy: true, message: '' });
+    app.login((err) => {
+      this.setData({ busy: false });
+      if (err) {
+        this.setData({ message: '登录失败：' + err.message });
+        return;
+      }
+      const g = app.globalData;
+      this.setData({
+        logged: true, role: g.role || '', trial: app.isTrial(),
+        needLogin: false, pending: !!g.pending, daysLeft: g.daysLeft || 0
+      });
+    });
+  },
+
+  // 退出态的「先用体验模式逛逛」：领试用身份，回正常试用态。
+  onTrial() {
+    if (this.data.busy) return;
+    this.setData({ busy: true, message: '' });
+    app.loginTrial((err) => {
+      this.setData({ busy: false });
+      if (err) {
+        this.setData({ message: '进不去体验版：' + err.message });
+        return;
+      }
+      const g = app.globalData;
+      this.setData({
+        logged: true, role: g.role || '', trial: app.isTrial(),
+        needLogin: false, pending: !!g.pending, daysLeft: g.daysLeft || 0
+      });
+    });
   },
 
   go(e) {

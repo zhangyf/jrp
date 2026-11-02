@@ -1,7 +1,6 @@
 {
   "pages": [
     "pages/index/index",
-    "pages/welcome/welcome",
     "pages/practice/practice",
     "pages/sentences/sentences",
     "pages/conj/conj",

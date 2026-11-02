@@ -39,12 +39,21 @@ function closeLogin() {
   this.setData({ needLogin: false });
 }
 
-// 浮层上的「微信登录」：去登录页自己选。
-// ⛔ 不写退出标记 —— 那是「退出登录」专用的；写了冷启动就不再静默登进来，
-//    连登录页上的「试用账号」入口都看不到了。
+// 浮层上的「微信登录」：当场就登，不再跳登录页（登录页已删 —— 老师 2026-11-02：
+// 「我的意思是不应该有这一屏」）。wx.login 是静默的，不弹任何授权。
+// 登录成功后如果页面有 load()（练习/造句/活用/词汇），按真身份把数据重拉一遍，
+// 顺便把锁解开；addword 没有数据要拉，解锁就够。
 function goLogin() {
+  const self = this;
   this.setData({ needLogin: false });
-  wx.reLaunch({ url: '/pages/welcome/welcome' });
+  getApp().login((err) => {
+    if (err) {
+      wx.showToast({ title: '登录失败：' + err.message, icon: 'none' });
+      return;
+    }
+    self.setData({ trial: false });
+    if (typeof self.load === 'function') self.load();
+  });
 }
 
 // 空方法：遮罩上 catchtap / catchtouchmove 需要一个名字来吃掉点击和滑动，
