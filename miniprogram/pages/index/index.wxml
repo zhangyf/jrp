@@ -8,23 +8,9 @@
   </view>
   <view class="err" wx:if="{{message}}">{{message}}</view>
 
-  <!-- 主动退出过：就地给两个按钮，不再有单独的登录页（2026-11-02 老师定「不应该有这一屏」） -->
-  <block wx:if="{{needLogin}}">
-    <view class="trial-note">已退出登录</view>
-    <view class="grid">
-      <view class="tile t-words" bindtap="onWxLogin" hover-class="tile-press">
-        <view class="tile-title">{{busy ? '登录中…' : '微信登录'}}</view>
-        <view class="tile-desc">接着练，进度照记</view>
-      </view>
-      <view class="tile t-sentences" bindtap="onTrial" hover-class="tile-press">
-        <view class="tile-title">{{busy ? '进入中…' : '体验模式'}}</view>
-        <view class="tile-desc">先逛逛，不保存</view>
-      </view>
-    </view>
-  </block>
-
-  <!-- 体验版：五个版块都能进，只是题量少、数据是假的、进度不保存。 -->
-  <block wx:elif="{{trial}}">
+  <!-- 体验版：五个版块都能进，只是题量少、数据是假的、进度不保存。
+       退出过的人也落在这里 —— 试用态就是默认态，没有「已退出」的门。 -->
+  <block wx:if="{{trial}}">
     <view class="trial-note">体验版 · 题目固定 · 进度不保存</view>
     <view class="grid">
       <view class="tile t-words" data-mode="words" bindtap="go" hover-class="tile-press">

@@ -21,9 +21,9 @@ App({
     booting: false // 冷启动正在领体验版，防止 onShow 反复触发重复领
   },
 
-  // 退出标记：老师主动退出后，冷启动不许再把他静默登回去 ——
-  // 否则「退出登录」点了个寂寞，也永远看不到登录页上的「试用账号」。
-  // 只有他在登录页重新点了微信登录 / 试用账号才清除（见 login / loginTrial）。
+  // 退出标记：老师主动退出后，冷启动**不许再静默 wx.login**（那等于把他登回账号，
+  // 「退出登录」点了个寂寞）。但**不挡领试用身份** —— 试用态是默认态，退出后照常能逛，
+  // 只写了不保存。只有他重新点了「微信登录」才清除（见 login）。
   logoutFlagKey: 'jrp_logged_out',
 
   loggedOut() { return !!wx.getStorageSync(this.logoutFlagKey); },
@@ -32,11 +32,9 @@ App({
   // 冷启动：
   //   有 token → 验票续用；
   //   没 token → **静默领体验版**（2026-11-02 审核要求：先能浏览，登录必须是用户自己选的）。
-  // 有退出标记就什么都不做 —— 首页 onShow 会摆出「微信登录 / 体验模式」两个按钮，
-  // 别在这里抢（没有单独的登录页了）。
+  //   退出过也一样领 —— 试用身份不是账号，不违反「别把我静默登回去」。
   // ⚠️ 不再默认 wx.login：那是替陌生人注册 pending 账号，审核也把「进门就要登录」算违规。
   autoLogin() {
-    if (this.loggedOut()) return;
     const cached = wx.getStorageSync('jrp_token');
     if (cached) {
       this.globalData.token = cached;
@@ -97,7 +95,9 @@ App({
         this.globalData.name = res.name || '';
         this.globalData.logged = true;
         wx.setStorageSync('jrp_token', this.globalData.token);
-        this.clearLogoutFlag();
+        // ⚠️ 不清退出标记：领试用身份是自动的，不是用户主动登录。
+        //    清了的话「退出 → 冷启动自动领试用 → 标记没了 → 下次 token 过期
+        //    就被静默 wx.login 登回账号」，退出就白点了。标记只有 login() 清。
         this.broadcastIdentity();
         if (cb) cb(null, res);
       })
@@ -116,10 +116,9 @@ App({
     });
   },
 
-  // 退出（含退出试用）：清掉本地 token 回首页，并留个「别再自动登我」的标记。
+  // 退出登录：清掉本地 token 回首页，并留个「别再静默 wx.login」的标记。
+  // 之后落回试用态照常能逛（写了不保存）；重新登录只在用户点「微信登录」时发生。
   // 服务端的会话本来就没必要撤 —— 它 30 天自己过期，没人拿着 token 也就没意义。
-  // 首页对退出过的人只给「微信登录 / 体验模式」两个按钮 —— 没有单独的登录页
-  // （2026-11-02 老师定：登录页这一屏不该存在，登录动作就地发生）。
   logout() {
     this.globalData.token = '';
     this.globalData.uid = '';
@@ -146,10 +145,11 @@ App({
         this.broadcastIdentity(); // role 可能变了（批准/冻结），同步一次锁定态
       })
       .catch(() => {
-        // token 过期了：清掉，重新静默登录（退出过就别自作主张登回去）。
+        // token 过期了：清掉。退出过的只补试用身份（别把他静默登回账号），
+        // 没退出过的静默 wx.login 回原账号 —— 跟冷启动一个待遇。
         this.globalData.logged = false;
         wx.removeStorageSync('jrp_token');
-        if (this.loggedOut()) return;
+        if (this.loggedOut()) { this.loginTrial(); return; }
         this.login();
       });
   },

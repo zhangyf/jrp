@@ -10,9 +10,6 @@ Page({
     logged: false,
     role: '',
     trial: false, // 体验版：题量少、统计是假数据、写了不保存
-    // 主动退出过：不给卡片（没身份点了也白点），就地给「微信登录 / 体验模式」两个按钮。
-    // ⚠️ 没有单独的登录页 —— 2026-11-02 老师定「不应该有这一屏」，登录动作就地发生。
-    needLogin: false,
     pending: false, // 已扫码等批准：7 个自然日的完整体验期，首页摆一句还剩几天
     daysLeft: 0,
     message: '',
@@ -41,7 +38,6 @@ Page({
     const trial = !g.logged || app.isTrial();
     this.setData({
       logged: !!g.logged, role: g.role || '', trial: trial,
-      needLogin: !g.logged && app.loggedOut(),
       pending: !!g.pending, daysLeft: g.daysLeft || 0
     });
 
@@ -49,10 +45,10 @@ Page({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 0 });
     }
-    if (!g.logged && !this.data.needLogin) {
+    if (!g.logged) {
       // 冷启动还没身份 → 静默领体验版，先让页面能用。
-      // ⚠️ 不做 wx.login：登录必须是用户自己点的（2026-11-02 审核要求）。
-      // 退出过的人（needLogin）也别自作主张登回去，按钮摆在那等他点。
+      // ⚠️ 退出过的人也照领：试用身份不是账号，「退出」要挡的只是静默微信登录，
+      //    不是把人挡在门外看不了（2026-11-02：那个「已退出登录」门就是错的，已删）。
       if (!g.booting) {
         g.booting = true;
         app.loginTrial((err) => {
@@ -70,14 +66,14 @@ Page({
     }
   },
 
-  // 退出登录：清本地身份回首页（app 里留了标记，冷启动不会把他静默登回去）。
+  // 退出登录：清本地身份回首页，之后是试用态（照常能逛，写了不保存）。
   // 试用态不放这个按钮 —— 试用是默认态，没有「退」一说，要登录点「微信登录后可保存进度」。
   onExit() {
     app.logout();
   },
 
-  // 就地微信登录（wx.login 静默，不弹授权）：浮层和退出态都用它。
-  // 登录成功刷新本页状态；试用态的底部链接也走这里 —— 不再有中间那屏登录页。
+  // 就地微信登录（wx.login 静默，不弹授权）：试用态底部链接用。
+  // 登录成功刷新本页状态 —— 不再有中间那屏登录页。
   onWxLogin() {
     if (this.data.busy) return;
     this.setData({ busy: true, message: '' });
@@ -90,25 +86,7 @@ Page({
       const g = app.globalData;
       this.setData({
         logged: true, role: g.role || '', trial: !g.logged || app.isTrial(),
-        needLogin: false, pending: !!g.pending, daysLeft: g.daysLeft || 0
-      });
-    });
-  },
-
-  // 退出态的「先用体验模式逛逛」：领试用身份，回正常试用态。
-  onTrial() {
-    if (this.data.busy) return;
-    this.setData({ busy: true, message: '' });
-    app.loginTrial((err) => {
-      this.setData({ busy: false });
-      if (err) {
-        this.setData({ message: '进不去体验版：' + err.message });
-        return;
-      }
-      const g = app.globalData;
-      this.setData({
-        logged: true, role: g.role || '', trial: !g.logged || app.isTrial(),
-        needLogin: false, pending: !!g.pending, daysLeft: g.daysLeft || 0
+        pending: !!g.pending, daysLeft: g.daysLeft || 0
       });
     });
   },
