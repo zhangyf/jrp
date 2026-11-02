@@ -45,6 +45,7 @@ Page({
 
   // 冷启动领试用身份是异步的，进页面那一刻可能还没拿到 —— onShow 里每次同步一次
   onShow: trial.sync,
+  syncTrial: trial.sync, // 身份变了由 app.broadcastIdentity() 叫到
   onTapLocked: trial.onTapLocked,
   closeLogin: trial.closeLogin,
   goLogin: trial.goLogin,

@@ -64,6 +64,16 @@ page {
   align-items: center;
 }
 
+/* 试用态的按钮：跟锁定输入框一个观感 —— 置灰，点了弹登录浮层，不响应真实动作。
+   ⚠️ display 必须显式写回 block：上面 .locked 带 display:flex，
+      会让按钮里的文字变成 flex item 靠左。 */
+.btn.locked {
+  display: block;
+  background: #f2f1ec;
+  color: #9a9a90;
+  border: 1rpx solid #e6e4da;
+}
+
 /* 登录浮层：底部半屏；点遮罩或「先随便看看」收起 */
 .lg-mask {
   position: fixed;

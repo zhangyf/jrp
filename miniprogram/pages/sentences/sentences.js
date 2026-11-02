@@ -78,6 +78,7 @@ Page({
 
   // 冷启动领试用身份是异步的，进页面那一刻可能还没拿到 —— onShow 里每次同步一次
   onShow: trial.sync,
+  syncTrial: trial.sync, // 身份变了由 app.broadcastIdentity() 叫到
   onTapLocked: trial.onTapLocked,
   closeLogin: trial.closeLogin,
   goLogin: trial.goLogin,
@@ -123,6 +124,8 @@ Page({
   },
 
   grade() {
+    // 试用态：不响应真实动作，弹登录浮层（按钮层已经置灰，这里是双保险）
+    if (trial.locked(this)) { this.onTapLocked(); return Promise.resolve(); }
     const items = this.data.items;
     const targets = [];
     items.forEach((it, i) => {
@@ -159,8 +162,8 @@ Page({
 
   submit() {
     // 体验版不落档案 —— 双保险：按钮层已经藏了，这里再挡一次
-    if (this.data.readOnly) {
-      wx.showToast({ title: '体验版不保存进度', icon: 'none' });
+    if (this.data.readOnly || trial.locked(this)) {
+      this.onTapLocked();
       return;
     }
     const items = this.data.items;

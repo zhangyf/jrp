@@ -3,7 +3,7 @@
     <text class="tab {{type === t.key ? 'on' : ''}}"
           wx:for="{{types}}" wx:for-item="t" wx:key="key"
           data-type="{{t.key}}" bindtap="onType">{{t.label}}</text>
-    <text class="link" bindtap="load">换一批</text>
+    <text class="link" bindtap="reload">换一批</text>
   </view>
 
   <view class="grammar">
@@ -67,8 +67,8 @@
   </view>
 
   <view class="bar" wx:if="{{items.length}}">
-    <button class="btn ghost" bindtap="load">换一批</button>
-    <button class="btn primary" bindtap="grade">对答案</button>
+    <button class="btn ghost {{trial ? 'locked' : ''}}" bindtap="reload">换一批</button>
+    <button class="btn primary {{trial ? 'locked' : ''}}" bindtap="grade">对答案</button>
   </view>
 
   <view class="tip">活用练习只练不计档，不写档案、不进统计。</view>

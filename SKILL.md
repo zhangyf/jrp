@@ -1718,12 +1718,19 @@ tabBar 三项：**练习 / 统计 / 录入**。
   正常态才是真 input。样式 `.locked` 在 app.wxss（灰底 + flex 居中）。
 - `trial.sync` 挂 onShow：冷启动领身份是异步的，进页面那刻可能还没拿到；
   从登录页换身份回来也靠它把锁解开。addword 本来有 onShow，改成在里面调 `trial.sync(this)`。
-- 锁的不止输入框：practice 的「不会」、addword 的「加入待录列表」/「选图片」/「录进档案」
-  都是往里写，试用态一律走 `onTapLocked`（按钮同步置灰，见 `.btn.locked`）。
-- ⚠️ 判断用 `trial.locked(this)`，别只信 `data.trial`：冷启动领身份是异步的，
-  页面第一帧可能还没拿到身份。tabBar 页（录入）更要在 onShow 自己补一次
-  `app.loginTrial(() => trial.sync(this))`，否则首帧渲染成「能写」看着像 bug。
-  `onTapLocked` 每次也会以 app 身份为准重新同步一遍，兜住这个窗口。
+- **锁定态 = 没有真实身份**（`!globalData.logged || isTrial()`），⛔ 别只写
+  `role === 'trial'`：领试用身份会失败（限流 429、断网、首帧还没回来），
+  那时 role 是空的 → 反而放开输入框。这正是老师看到的「录入页没锁」。
+- 判断统一用 `trial.locked(this)`；`onTapLocked` 每次也以 app 身份重同步一次兜底。
+  ⚠️ `app.autoLogin()` 拿到缓存 token 时必须**先把 `logged` 置 true** 再 refreshMe ——
+  否则每次冷启动都会闪一下「全锁住」。
+- 身份一变（login / loginTrial / logout / refreshMe）app 会 `broadcastIdentity()`
+  叫所有页面的 `syncTrial`（= `trial.sync`），别指望只有 onShow 会刷新。
+- 锁的不止输入框：**practice 的「不会」「算对」「对答案」「再练错词」「提交」、
+  sentences 的「对答案」「提交」、conj 的「换一批」「对答案」、addword 的
+  「加入待录列表」「选图片」「录进档案」** 一律走 `onTapLocked`，按钮同步置灰
+  （`.btn.locked` 在 app.wxss；addword 自己定义了 `.btn/.btn.ghost`，页面 wxss
+  优先级更高，所以在它那里又写了一遍且必须放在 `.btn.ghost` 后面）。
 - ⛔ 页面 onLoad 里不许 `app.login()`（替陌生人注册 + 违反先浏览后登录），
   要补身份就用 `app.loginTrial()`。lexicon 原来就是这么写的，已改。
 

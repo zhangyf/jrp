@@ -40,6 +40,10 @@ App({
     const cached = wx.getStorageSync('jrp_token');
     if (cached) {
       this.globalData.token = cached;
+      // ⚠️ 先当成已登录：验票是异步的，那一瞬 globalData.logged 还是 false，
+      //    所有页面会按「没身份」先锁一遍（老师每次冷启动都闪一下灰的）。
+      //    真过期了 refreshMe 会把它改回来并重新登录。
+      this.globalData.logged = true;
       this.refreshMe();
       return;
     }
@@ -69,6 +73,7 @@ App({
             this.globalData.logged = true;
             wx.setStorageSync('jrp_token', this.globalData.token);
             this.clearLogoutFlag(); // 主动登录过，下次冷启动照旧直接进
+            this.broadcastIdentity(); // 解锁所有已打开的页面
             if (cb) cb(null, res);
           })
           .catch((e) => { if (cb) cb(e); });
@@ -93,12 +98,23 @@ App({
         this.globalData.logged = true;
         wx.setStorageSync('jrp_token', this.globalData.token);
         this.clearLogoutFlag();
+        this.broadcastIdentity();
         if (cb) cb(null, res);
       })
       .catch((e) => { if (cb) cb(e); });
   },
 
   isTrial() { return this.globalData.role === 'trial'; },
+
+  // 身份一变（登录 / 领试用 / 退出 / 验票拿到新 role）就通知所有已打开的页面
+  // 重新同步「锁定态」。页面只要挂了 `syncTrial: trial.sync` 就会被叫到。
+  // 没有它的话，登录成功后留在栈里的上一个页面还是锁着的，要等下次 onShow 才解开。
+  broadcastIdentity() {
+    const pages = getCurrentPages();
+    pages.forEach((p) => {
+      if (p && typeof p.syncTrial === 'function') p.syncTrial();
+    });
+  },
 
   // 退出（含退出试用）：清掉本地 token 回首页，并留个「别再自动登我」的标记。
   // 服务端的会话本来就没必要撤 —— 它 30 天自己过期，没人拿着 token 也就没意义。
@@ -114,6 +130,7 @@ App({
     this.globalData.logged = false;
     wx.removeStorageSync('jrp_token');
     wx.setStorageSync(this.logoutFlagKey, 1);
+    this.broadcastIdentity(); // 剩下的页面立刻锁回去
     wx.reLaunch({ url: '/pages/index/index' });
   },
 
@@ -126,6 +143,7 @@ App({
         this.globalData.daysLeft = res.days_left || 0;
         this.globalData.name = res.name || '';
         this.globalData.logged = true;
+        this.broadcastIdentity(); // role 可能变了（批准/冻结），同步一次锁定态
       })
       .catch(() => {
         // token 过期了：清掉，重新静默登录（退出过就别自作主张登回去）。

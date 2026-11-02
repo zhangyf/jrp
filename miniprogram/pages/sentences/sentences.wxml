@@ -65,7 +65,7 @@
   </view>
 
   <view class="bar" wx:if="{{items.length}}">
-    <button class="btn ghost" bindtap="grade" loading="{{grading}}">对答案</button>
+    <button class="btn ghost {{trial ? 'locked' : ''}}" bindtap="grade" loading="{{grading}}">对答案</button>
     <!-- 体验版不给「提交」：/api/record 不在白名单里，点了只会 403 -->
     <button class="btn primary" wx:if="{{!readOnly}}" bindtap="submit" loading="{{submitting}}">提交</button>
   </view>

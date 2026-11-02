@@ -15,7 +15,7 @@
   <!-- 回看态的错词巩固入口：跟 web 回看卡上「再练这 N 个错词」一个意思 -->
   <view class="requeue" wx:if="{{reviewOnly && summary.wrong > 0}}">
     <text class="rq-text">今天错了 {{summary.wrong}} 个</text>
-    <button class="btn rq-btn" bindtap="onRequeue">再练这 {{summary.wrong}} 个错词</button>
+    <button class="btn rq-btn {{trial ? 'locked' : ''}}" bindtap="onRequeue">再练这 {{summary.wrong}} 个错词</button>
   </view>
 
   <view class="note-ok" wx:if="{{requeue}}">错词巩固轮：只练今天错的词，不回写档案。</view>
@@ -71,7 +71,7 @@
   </view>
 
   <view class="bar" wx:if="{{items.length && !reviewOnly}}">
-    <button class="btn ghost" bindtap="grade">对答案</button>
+    <button class="btn ghost {{trial ? 'locked' : ''}}" bindtap="grade">对答案</button>
     <!-- 巩固轮不给「提交」：今天的成绩已经写过一次了。
          体验版也不给：/api/record 不在体验版白名单里，点了只会 403。 -->
     <button class="btn primary" wx:if="{{!requeue && !readOnly}}" bindtap="submit" loading="{{submitting}}">提交</button>

@@ -35,7 +35,10 @@ Page({
 
   onShow() {
     const g = app.globalData;
-    const trial = app.isTrial();
+    // ⚠️ 「体验态」= 没有真实身份（没登录 或 只是试用身份），跟 utils/trial.js 一个口径。
+    //    只看 role==='trial' 会漏掉「领试用身份失败（限流/断网）」那一段，
+    //    那时候首页会误显示成已登录的样子（带「退出登录」）。
+    const trial = !g.logged || app.isTrial();
     this.setData({
       logged: !!g.logged, role: g.role || '', trial: trial,
       needLogin: !g.logged && app.loggedOut(),
@@ -60,7 +63,7 @@ Page({
           }
           this.setData({
             logged: true, role: app.globalData.role,
-            trial: app.isTrial(), message: ''
+            trial: !app.globalData.logged || app.isTrial(), message: ''
           });
         });
       }
@@ -86,7 +89,7 @@ Page({
       }
       const g = app.globalData;
       this.setData({
-        logged: true, role: g.role || '', trial: app.isTrial(),
+        logged: true, role: g.role || '', trial: !g.logged || app.isTrial(),
         needLogin: false, pending: !!g.pending, daysLeft: g.daysLeft || 0
       });
     });
@@ -104,7 +107,7 @@ Page({
       }
       const g = app.globalData;
       this.setData({
-        logged: true, role: g.role || '', trial: app.isTrial(),
+        logged: true, role: g.role || '', trial: !g.logged || app.isTrial(),
         needLogin: false, pending: !!g.pending, daysLeft: g.daysLeft || 0
       });
     });
@@ -112,7 +115,9 @@ Page({
 
   go(e) {
     const mode = e.currentTarget.dataset.mode;
-    if (!this.data.logged) {
+    // 试用态（没真实身份）照样能进 —— 进去看得到题，只是写不了（页面自己锁）。
+    // 只有「连身份都还没拿到、也不是试用态」才挡一下。
+    if (!this.data.logged && !this.data.trial) {
       wx.showToast({ title: '正在登录…', icon: 'none' });
       return;
     }

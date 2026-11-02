@@ -50,6 +50,7 @@ Page({
   // 冷启动领试用身份是异步的，进页面那一刻可能还没拿到 —— onShow 里每次同步一次，
   // 登录页换了身份回来（试用 → 微信登录）也靠这一下把锁解开。
   onShow: trial.sync,
+  syncTrial: trial.sync, // 身份变了由 app.broadcastIdentity() 叫到
   onTapLocked: trial.onTapLocked,
   closeLogin: trial.closeLogin,
   goLogin: trial.goLogin,
@@ -134,6 +135,7 @@ Page({
   // 「再练这 N 个错词」：回看态里的入口，跟 web 回看卡上那个按钮一个意思。
   // 只取判错的行（含主动标「不会」的），不回写 —— 见 data 里 requeue 的说明。
   onRequeue() {
+    if (trial.locked(this)) { this.onTapLocked(); return; }
     const wrongs = this.data.items.filter((it) => !it.blank && !it.correct);
     if (!wrongs.length) {
       wx.showToast({ title: '今天没有错的词', icon: 'none' });
@@ -316,6 +318,7 @@ Page({
   //   · 取消：回到「按写的判」，这一题重新判一次
   // ⚠️ 主动标了「不会」的行不给改判（web 也是这样）。
   onPick(e) {
+    if (trial.locked(this)) { this.onTapLocked(); return; }
     const i = e.currentTarget.dataset.index;
     const it = this.data.items[i];
     if (!it.manual) {
@@ -366,6 +369,8 @@ Page({
   // 判分：整屏一次请求（不是每敲一个字打一次）。判分规则在服务端，跟网页同源。
   // 返回 Promise，提交时会串在前面 —— 「填了没判就回写 = 白练」这条红线靠它兜住。
   grade() {
+    // 试用态：不响应真实动作，弹登录浮层（按钮层已经置灰，这里是双保险）
+    if (trial.locked(this)) { this.onTapLocked(); return Promise.resolve(); }
     const items = this.data.items;
     const payload = {
       mode: 'either',
@@ -395,8 +400,8 @@ Page({
 
   submit() {
     // 体验版不落档案 —— 双保险：按钮层已经藏了，这里再挡一次
-    if (this.data.readOnly) {
-      wx.showToast({ title: '体验版不保存进度', icon: 'none' });
+    if (this.data.readOnly || trial.locked(this)) {
+      this.onTapLocked();
       return;
     }
     // 巩固轮不进档案 —— 双保险：按钮层已经藏了，这里再挡一次

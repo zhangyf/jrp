@@ -59,6 +59,7 @@ Page({
 
   // 冷启动领试用身份是异步的，进页面那一刻可能还没拿到 —— onShow 里每次同步一次
   onShow: trial.sync,
+  syncTrial: trial.sync, // 身份变了由 app.broadcastIdentity() 叫到
   onTapLocked: trial.onTapLocked,
   closeLogin: trial.closeLogin,
   goLogin: trial.goLogin,
@@ -111,7 +112,14 @@ Page({
     this.setData(patch);
   },
 
+  // 「换一批」：试用态不响应真实动作，弹登录浮层（按钮层已置灰，双保险）
+  reload() {
+    if (trial.locked(this)) { this.onTapLocked(); return; }
+    this.load();
+  },
+
   grade() {
+    if (trial.locked(this)) { this.onTapLocked(); return; }
     const items = this.data.items;
     const payload = { mode: 'either', items: [] };
     items.forEach((it) => {

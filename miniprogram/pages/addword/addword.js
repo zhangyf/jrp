@@ -124,6 +124,7 @@ Page({
   },
 
   // 试用态：点被锁住的输入框 → 弹登录浮层（utils/trial.js）
+  syncTrial: trial.sync, // 身份变了由 app.broadcastIdentity() 叫到
   onTapLocked: trial.onTapLocked,
   closeLogin: trial.closeLogin,
   goLogin: trial.goLogin,

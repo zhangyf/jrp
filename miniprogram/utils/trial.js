@@ -23,10 +23,20 @@
 
 function app() { return getApp(); }
 
+// 锁定态 = **没有真实身份**（压根没登录，或只是试用身份）。
+//
+// ⚠️ 特意不写成「role === 'trial'」：领试用身份是有可能失败的（限流 429、断网、
+//    冷启动那一瞬还没回来），那时候 role 是空的 —— 只看 role 会把它当成「已登录」
+//    而放开输入框，正是老师看到的 bug。凡是没有真实身份，一律锁。
+function lockedState() {
+  const a = app();
+  return !a.globalData.logged || a.isTrial();
+}
+
 // 试用身份是冷启动异步领的，进页面那一瞬可能还没拿到 —— 所以 onShow 里每次同步一次。
-// 从登录页切换身份回来（试用 → 微信登录）也靠这次刷新把锁解开。
+// 登录后 app 会广播（broadcastIdentity）再把所有页面同步一遍。
 function sync() {
-  this.setData({ trial: app().isTrial() });
+  this.setData({ trial: lockedState() });
 }
 
 // 点被锁住的入口 → 弹浮层。
@@ -34,7 +44,7 @@ function sync() {
 //    冷启动领试用身份是异步的，页面第一帧可能还没拿到身份而渲染成「可写」，
 //    这时候点下去必须照样弹浮层（顺手把状态纠正过来）。
 function onTapLocked() {
-  const t = getApp().isTrial();
+  const t = lockedState();
   if (t !== this.data.trial) this.setData({ trial: t });
   if (!t) return;
   this.setData({ needLogin: true });
@@ -43,7 +53,7 @@ function onTapLocked() {
 // 「这一下算不算被锁」：data.trial 可能因异步还没同步过来，所以两处都看。
 // 用法：if (trial.locked(this)) { this.onTapLocked(); return; }
 function locked(page) {
-  return getApp().isTrial() || !!(page && page.data && page.data.trial);
+  return lockedState() || !!(page && page.data && page.data.trial);
 }
 
 function closeLogin() {
@@ -62,7 +72,7 @@ function goLogin() {
       wx.showToast({ title: '登录失败：' + err.message, icon: 'none' });
       return;
     }
-    self.setData({ trial: false });
+    sync.call(self); // 解锁（app 也会广播一遍，这里是本页立即生效）
     if (typeof self.load === 'function') self.load();
   });
 }
