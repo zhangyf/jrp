@@ -29,10 +29,21 @@ function sync() {
   this.setData({ trial: app().isTrial() });
 }
 
-// 点被锁住的输入框 → 弹浮层。正常登录态不拦（那时 trial=false，遮罩根本不渲染）
+// 点被锁住的入口 → 弹浮层。
+// ⚠️ 每次都以 app 的身份为准重新同步一次，不只看 data.trial：
+//    冷启动领试用身份是异步的，页面第一帧可能还没拿到身份而渲染成「可写」，
+//    这时候点下去必须照样弹浮层（顺手把状态纠正过来）。
 function onTapLocked() {
-  if (!this.data.trial) return;
+  const t = getApp().isTrial();
+  if (t !== this.data.trial) this.setData({ trial: t });
+  if (!t) return;
   this.setData({ needLogin: true });
+}
+
+// 「这一下算不算被锁」：data.trial 可能因异步还没同步过来，所以两处都看。
+// 用法：if (trial.locked(this)) { this.onTapLocked(); return; }
+function locked(page) {
+  return getApp().isTrial() || !!(page && page.data && page.data.trial);
 }
 
 function closeLogin() {
@@ -62,6 +73,7 @@ function noop() {}
 
 module.exports = {
   sync: sync,
+  locked: locked,
   onTapLocked: onTapLocked,
   closeLogin: closeLogin,
   goLogin: goLogin,

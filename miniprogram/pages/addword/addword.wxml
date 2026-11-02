@@ -1,6 +1,6 @@
 <view class="wrap">
   <!-- 体验版：这一页只让人看看长什么样，大模型和写词库都对它关着 -->
-  <view class="trial-note" wx:if="{{trial}}">体验版不接大模型、不写词库，这里只展示页面。</view>
+  <view class="trial-note" wx:if="{{trial}}">体验版 · 只展示页面，登录后才能录词（大模型和写词库都没开）</view>
 
   <view class="result" wx:if="{{result}}">
     <view class="r-title">录好了</view>
@@ -26,13 +26,13 @@
              placeholder="词形，如 みず(水)"
              value="{{word}}"
              bindinput="onWord" />
-      <view class="btn sm" bindtap="addManual">{{looking ? '查中文中…' : '加入待录列表'}}</view>
+      <view class="btn sm {{trial ? 'locked' : ''}}" bindtap="addManual">{{looking ? '查中文中…' : '加入待录列表'}}</view>
       <view class="note">中文意思不用填，服务端自己查（先查词库，查不到再问模型）。</view>
     </view>
 
     <view class="sec">
       <view class="sec-title">拍照 / 相册取词</view>
-      <view class="btn ghost" bindtap="pickImages">{{ocrBusy ? '识别中…' : '选图片（可多张）'}}</view>
+      <view class="btn ghost {{trial ? 'locked' : ''}}" bindtap="pickImages">{{ocrBusy ? '识别中…' : '选图片（可多张）'}}</view>
       <view class="note" wx:if="{{ocrNote}}">{{ocrNote}}</view>
       <view class="note" wx:else>拍课本的生词表最准：一行一个词，认出来后自己勾。</view>
     </view>

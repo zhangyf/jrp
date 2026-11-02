@@ -114,6 +114,12 @@ Page({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 2 });
     }
+    // 这是 tabBar 页，可能比首页的静默登录更早渲染 —— 没身份就自己先领一个，
+    // 领完再同步一次，否则第一帧会渲染成「能写」的样子（看着像 bug）。
+    // 退出过的人别替他登（他在首页已经选过一次了）。
+    if (!app.globalData.logged && !app.loggedOut()) {
+      app.loginTrial(() => trial.sync(this));
+    }
     trial.sync(this);
   },
 
@@ -125,15 +131,10 @@ Page({
 
   onWord(e) { this.setData({ word: e.detail.value }); },
 
-  // 体验版：这一页要的是「看看长什么样」，不是真录 —— 大模型和写词库都挡着。
-  trialBlocked() {
-    wx.showToast({ title: '体验版不接大模型，只展示页面', icon: 'none' });
-  },
-
   // 手打：只写假名，汉字和中文都让服务端补
   addManual() {
-    // 体验版不接大模型、也不写词库 —— 这里是纯展示，点了只给一句说明。
-    if (this.data.trial) { this.trialBlocked(); return; }
+    // 试用态：跟输入框一个待遇 —— 点任何入口都是弹登录浮层，不给单独的 toast
+    if (trial.locked(this)) { this.onTapLocked(); return; }
     const word = (this.data.word || '').trim();
     if (!word) { wx.showToast({ title: '先写词形', icon: 'none' }); return; }
     this.setData({ word: '', looking: true });
@@ -176,7 +177,8 @@ Page({
   //   ② **中文服务端已经补好**：课本照片上常常只有假名没中文，以前要等老师勾完
   //      再点一次「加入待录」才去查，中间那段时间看到的就是一片空白。
   pickImages() {
-    if (this.data.trial) { this.trialBlocked(); return; }
+    // 试用态：不接大模型、也不写词库，跟手打一样弹登录浮层
+    if (trial.locked(this)) { this.onTapLocked(); return; }
     const self = this;
     wx.chooseMedia({
       count: 9,
@@ -377,7 +379,7 @@ Page({
   },
 
   submit() {
-    if (this.data.trial) { this.trialBlocked(); return; }
+    if (trial.locked(this)) { this.onTapLocked(); return; }
     const n = this.data.pending.length;
     if (!n) { wx.showToast({ title: '还没有要录的词', icon: 'none' }); return; }
     const noDef = this.data.pending.filter((p) => !p.def).length;

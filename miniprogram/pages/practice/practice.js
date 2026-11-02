@@ -297,7 +297,7 @@ Page({
 
   onUnknown(e) {
     // 试用态：标「不会」也是往里写，跟输入框一个待遇 —— 点一下弹登录浮层
-    if (this.data.trial) { this.onTapLocked(); return; }
+    if (trial.locked(this)) { this.onTapLocked(); return; }
     const i = e.currentTarget.dataset.index;
     const it = this.data.items[i];
     const patch = {};

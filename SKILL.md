@@ -1718,7 +1718,12 @@ tabBar 三项：**练习 / 统计 / 录入**。
   正常态才是真 input。样式 `.locked` 在 app.wxss（灰底 + flex 居中）。
 - `trial.sync` 挂 onShow：冷启动领身份是异步的，进页面那刻可能还没拿到；
   从登录页换身份回来也靠它把锁解开。addword 本来有 onShow，改成在里面调 `trial.sync(this)`。
-- 锁的不止输入框：practice 的「不会」也是往里写，试用态同样走 `onTapLocked`。
+- 锁的不止输入框：practice 的「不会」、addword 的「加入待录列表」/「选图片」/「录进档案」
+  都是往里写，试用态一律走 `onTapLocked`（按钮同步置灰，见 `.btn.locked`）。
+- ⚠️ 判断用 `trial.locked(this)`，别只信 `data.trial`：冷启动领身份是异步的，
+  页面第一帧可能还没拿到身份。tabBar 页（录入）更要在 onShow 自己补一次
+  `app.loginTrial(() => trial.sync(this))`，否则首帧渲染成「能写」看着像 bug。
+  `onTapLocked` 每次也会以 app 身份为准重新同步一遍，兜住这个窗口。
 - ⛔ 页面 onLoad 里不许 `app.login()`（替陌生人注册 + 违反先浏览后登录），
   要补身份就用 `app.loginTrial()`。lexicon 原来就是这么写的，已改。
 

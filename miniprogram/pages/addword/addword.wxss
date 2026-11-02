@@ -93,6 +93,16 @@
   border: 1rpx solid #2f6f4f;
 }
 
+/* 试用态：按钮也跟输入框一个待遇 —— 置灰，点了弹登录浮层。
+   ⚠️ display 必须显式写回 block：app.wxss 的 .locked 带 display:flex，
+      会让按钮里的文字变成 flex item 靠左。 */
+.btn.locked {
+  display: block;
+  background: #f2f1ec;
+  color: #9a9a90;
+  border: 1rpx solid #e6e4da;
+}
+
 .row-btn {
   display: flex;
   justify-content: space-between;
