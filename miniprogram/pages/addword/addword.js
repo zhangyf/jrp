@@ -98,7 +98,7 @@ Page({
 
     ocrBusy: false,
     ocrNote: '',
-    trial: false, // 体验版：只展示页面，拍照/查词/写入全挡掉
+    trial: true, // ⚠️ 默认锁：onShow / 广播同步到真身份才解开（见 utils/trial.js） // 体验版：只展示页面，拍照/查词/写入全挡掉
     needLogin: false, // 试用态登录浮层（utils/trial.js）
     looking: false,
     saving: false,

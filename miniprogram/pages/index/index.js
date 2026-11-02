@@ -35,7 +35,7 @@ Page({
     // ⚠️ 「体验态」= 没有真实身份（没登录 或 只是试用身份），跟 utils/trial.js 一个口径。
     //    只看 role==='trial' 会漏掉「领试用身份失败（限流/断网）」那一段，
     //    那时候首页会误显示成已登录的样子（带「退出登录」）。
-    const trial = !g.logged || app.isTrial();
+    const trial = !g.logged || !g.role || app.isTrial();
     this.setData({
       logged: !!g.logged, role: g.role || '', trial: trial,
       pending: !!g.pending, daysLeft: g.daysLeft || 0
@@ -59,7 +59,7 @@ Page({
           }
           this.setData({
             logged: true, role: app.globalData.role,
-            trial: !app.globalData.logged || app.isTrial(), message: ''
+            trial: !app.globalData.logged || !app.globalData.role || app.isTrial(), message: ''
           });
         });
       }
@@ -85,7 +85,7 @@ Page({
       }
       const g = app.globalData;
       this.setData({
-        logged: true, role: g.role || '', trial: !g.logged || app.isTrial(),
+        logged: true, role: g.role || '', trial: !g.logged || !g.role || app.isTrial(),
         pending: !!g.pending, daysLeft: g.daysLeft || 0
       });
     });

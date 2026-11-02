@@ -39,7 +39,7 @@ Page({
     q: '',
     openIdx: -1,
     // 试用态（未登录）：搜索框锁死，点一下弹登录浮层 —— 详见 utils/trial.js
-    trial: false,
+    trial: true, // ⚠️ 默认锁：onShow / 广播同步到真身份才解开（见 utils/trial.js）
     needLogin: false
   },
 

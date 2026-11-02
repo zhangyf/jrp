@@ -72,7 +72,7 @@ Page({
     // 体验版：3 句固定的示范题，能写能判，不落档案（/api/record 不在白名单里）
     readOnly: false,
     // 试用态（未登录）：输入框锁死，点一下弹登录浮层 —— 详见 utils/trial.js
-    trial: false,
+    trial: true, // ⚠️ 默认锁：onShow / 广播同步到真身份才解开（见 utils/trial.js）
     needLogin: false
   },
 

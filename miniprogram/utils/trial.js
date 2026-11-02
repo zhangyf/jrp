@@ -23,14 +23,18 @@
 
 function app() { return getApp(); }
 
-// 锁定态 = **没有真实身份**（压根没登录，或只是试用身份）。
+// 锁定态 = **没有确凿的真实身份**。
 //
-// ⚠️ 特意不写成「role === 'trial'」：领试用身份是有可能失败的（限流 429、断网、
-//    冷启动那一瞬还没回来），那时候 role 是空的 —— 只看 role 会把它当成「已登录」
-//    而放开输入框，正是老师看到的 bug。凡是没有真实身份，一律锁。
+// ⛔ 判定方向是「默认锁，只有拿到真身份才开」，反过来写（找出理由才锁）迟早漏：
+//    · 只看 `role === 'trial'`：领试用身份会失败（限流 429、断网、首帧没回来），
+//      那时 role 是空的 → 被当成已登录，输入框全放开；
+//    · 只看 `!logged`：冷启动验票是异步的，那一瞬 logged 还是 false → 该开的不开。
+//
+// 真实身份的三个条件必须同时成立：logged 为真、role 非空、且不是 trial。
 function lockedState() {
   const a = app();
-  return !a.globalData.logged || a.isTrial();
+  const real = a.globalData.logged && !!a.globalData.role && !a.isTrial();
+  return !real;
 }
 
 // 试用身份是冷启动异步领的，进页面那一瞬可能还没拿到 —— 所以 onShow 里每次同步一次。
