@@ -68,17 +68,11 @@ func (s *server) handleLexicon(w http.ResponseWriter, r *http.Request, st *Stora
 	}
 	ctx := s.ctx()
 
-	data, _, err := st.DownloadLatestArchive(ctx)
+	// LoadArchiveForRead：新账号没档案 → 回 0 行，别 500（2026-11-02 审核被拒）。
+	arc, err := st.LoadArchiveForRead(ctx, s.lang)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"success": false, "error": "读取档案失败：" + err.Error(),
-		})
-		return
-	}
-	arc, err := ParseArchive(string(data), s.lang)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"success": false, "error": "解析档案失败：" + err.Error(),
+			"success": false, "error": err.Error(),
 		})
 		return
 	}

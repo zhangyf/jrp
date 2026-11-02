@@ -41,13 +41,11 @@ func addWordsToArchive(ctx context.Context, st *Storage, group string, words []W
 		group = "未分组"
 	}
 
-	data, oldFilename, err := st.DownloadLatestArchive(ctx)
+	// EnsureArchive：新账号录第一个词时目录里还没有档案，直接给他造一份空的。
+	// 之前这里报「读取最新档案失败：no archives found」，新用户一个词都录不进去。
+	arc, oldFilename, err := st.EnsureArchive(ctx, st.lang)
 	if err != nil {
-		return nil, fmt.Errorf("读取最新档案失败：%w", err)
-	}
-	arc, err := ParseArchive(string(data), st.lang)
-	if err != nil {
-		return nil, fmt.Errorf("解析档案失败：%w", err)
+		return nil, err
 	}
 
 	// 找或建组

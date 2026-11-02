@@ -19,8 +19,9 @@ Page({
 
   onShow() {
     // 已经登录过（token 还在、且没过期）就直接进练习页。
-    // 老师自己每天打开小程序不该看到这个登录页。
-    if (app.globalData.logged && app.globalData.token) {
+    // ⚠️ 体验版不算「已登录」：从首页「微信登录后可保存进度」过来的就是试用态，
+    //    得让他看到登录按钮，不然点了登录又被弹回去，死循环。
+    if (app.globalData.logged && app.globalData.token && !app.isTrial()) {
       wx.switchTab({ url: '/pages/index/index' });
       return;
     }
@@ -28,7 +29,7 @@ Page({
     // 这段等待里显示「正在登录…」而不是两个按钮 —— 否则老师每次冷启动
     // 都会先闪一下登录页，看着像掉登录了。
     const cached = wx.getStorageSync('jrp_token');
-    if (cached && !app.globalData.logged && !app.loggedOut()) {
+    if (cached && !app.globalData.logged && !app.loggedOut() && !app.isTrial()) {
       app.globalData.token = cached;
       this.setData({ checking: true });
       app.refreshMe();

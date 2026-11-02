@@ -392,17 +392,12 @@ func (s *server) handleConjugation(w http.ResponseWriter, r *http.Request, st *S
 		return
 	}
 
-	data, _, err := st.DownloadLatestArchive(bgctx())
+	// LoadArchiveForRead：新账号没档案 → 空池子，下面正常回「共 0 题」。
+	// 之前这里 500「no archives found」，审核直接判白屏（2026-11-02）。
+	arc, err := st.LoadArchiveForRead(bgctx(), s.lang)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"success": false, "error": "读取档案失败：" + err.Error(),
-		})
-		return
-	}
-	arc, err := ParseArchive(string(data), s.lang)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"success": false, "error": "解析档案失败：" + err.Error(),
+			"success": false, "error": err.Error(),
 		})
 		return
 	}
@@ -487,9 +482,13 @@ func (s *server) handleConjugation(w http.ResponseWriter, r *http.Request, st *S
 	}
 
 	if len(pool) == 0 {
+		// 空池子是**正常态**（新账号没词 / 没标词性），不是错误：
+		// 回 success=true + 空 items，页面自己有「共 0 题」的空态。
+		// 之前回 success=false，审核看到的就是「页面报错」。
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"success": false,
-			"error":   "档案里没有可用于活用练习的词条（需要 word_meta 里标注了词性的动词/形容词）",
+			"success": true, "type": typ, "count": 0, "pool": 0, "items": []ConjItem{},
+			"note":     "档案里没有可用于活用练习的词条（需要 word_meta 里标注了词性的动词/形容词）",
+			"dry_run":  s.dryRun,
 		})
 		return
 	}

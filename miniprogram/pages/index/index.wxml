@@ -33,7 +33,7 @@
         <view class="tile-desc">10 个词</view>
       </view>
     </view>
-    <view class="foot-link" bindtap="onExit">退出试用</view>
+    <view class="foot-link" bindtap="goLogin">微信登录后可保存进度</view>
   </block>
 
   <!-- 双列色块入口：每个版块一个颜色，一眼看出能点（width:49% + space-between，

@@ -42,24 +42,39 @@ Page({
       this.getTabBar().setData({ selected: 0 });
     }
     if (!g.logged) {
-      app.login((err) => {
-        if (err) {
-          this.setData({ message: '登录失败：' + err.message });
-          return;
-        }
-        this.setData({
-          logged: true, role: app.globalData.role,
-          trial: app.isTrial(), message: ''
+      // 退出过的人送去登录页，让他自己选；别在这里自作主张登回去。
+      if (app.loggedOut()) {
+        wx.reLaunch({ url: '/pages/welcome/welcome' });
+        return;
+      }
+      // 冷启动还没身份 → 静默领体验版，先让页面能用。
+      // ⚠️ 不做 wx.login：登录必须是用户自己在登录页点的（2026-11-02 审核要求）。
+      if (!g.booting) {
+        g.booting = true;
+        app.loginTrial((err) => {
+          g.booting = false;
+          if (err) {
+            this.setData({ message: '网络开小差了，下拉重试' });
+            return;
+          }
+          this.setData({
+            logged: true, role: app.globalData.role,
+            trial: app.isTrial(), message: ''
+          });
         });
-      });
+      }
     }
   },
 
-  // 退出：一个入口，两种状态共用（试用态按钮上写「退出试用」，登录态写「退出登录」）。
-  // 不弹确认框 —— 退回去就是登录页，点一下还能回来，多一层提示纯属噪音。
-  // 退出后停在登录页（app 里留了标记，冷启动不会把他静默登回去）。
+  // 退出登录：清本地身份回登录页（app 里留了标记，冷启动不会把他静默登回去）。
+  // 试用态不放这个按钮 —— 试用是默认态，没有「退」一说，要登录点「微信登录后可保存进度」。
   onExit() {
     app.logout();
+  },
+
+  // 试用态去登录：登录页自己选微信登录。不写退出标记（这不是退出，是主动要登录）。
+  goLogin() {
+    wx.reLaunch({ url: '/pages/welcome/welcome' });
   },
 
   go(e) {

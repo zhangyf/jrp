@@ -17,7 +17,8 @@ App({
     // 到期服务端直接 403，这两个字段只是让首页摆一句还剩几天。
     pending: false,
     daysLeft: 0,
-    logged: false
+    logged: false,
+    booting: false // 冷启动正在领体验版，防止 onShow 反复触发重复领
   },
 
   // 退出标记：老师主动退出后，冷启动不许再把他静默登回去 ——
@@ -28,7 +29,11 @@ App({
   loggedOut() { return !!wx.getStorageSync(this.logoutFlagKey); },
   clearLogoutFlag() { wx.removeStorageSync(this.logoutFlagKey); },
 
-  // 冷启动：有退出标记就什么都不做，停在登录页等人选。
+  // 冷启动：
+  //   有 token → 验票续用；
+  //   没 token → **静默领体验版**（2026-11-02 审核要求：先能浏览，登录必须是用户自己选的）。
+  // 有退出标记就什么都不做 —— 首页 onShow 会把他送去登录页，别在这里抢。
+  // ⚠️ 不再默认 wx.login：那是替陌生人注册 pending 账号，审核也把「进门就要登录」算违规。
   autoLogin() {
     if (this.loggedOut()) return;
     const cached = wx.getStorageSync('jrp_token');
@@ -37,7 +42,7 @@ App({
       this.refreshMe();
       return;
     }
-    this.login();
+    this.loginTrial();
   },
 
   onLaunch() {

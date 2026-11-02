@@ -44,17 +44,12 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request, st *Storage)
 	today := time.Now()
 	readOnly := !sameDay(targetDate, today) && targetDate.After(today)
 
-	data, archiveFilename, err := st.DownloadLatestArchive(ctx)
+	// EnsureArchive：新账号第一次进来目录里什么都没有，造一份空档案。
+	// 不然 /api/plan 500「no archives found」，首页直接白屏（2026-11-02 审核被拒）。
+	arc, archiveFilename, err := st.EnsureArchive(ctx, s.lang)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"success": false, "error": fmt.Sprintf("download archive: %v", err),
-		})
-		return
-	}
-	arc, err := ParseArchive(string(data), s.lang)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"success": false, "error": fmt.Sprintf("parse archive: %v", err),
+			"success": false, "error": err.Error(),
 		})
 		return
 	}
@@ -142,17 +137,10 @@ func (s *server) handleHard(w http.ResponseWriter, r *http.Request, st *Storage)
 	minAcc := parseFloatParam(r, "min_accuracy", DefaultHardMinAccuracy)
 	minRev := intParam(r, "min_reviews", DefaultHardMinReviews)
 
-	data, _, err := st.DownloadLatestArchive(ctx)
+	arc, err := st.LoadArchiveForRead(ctx, s.lang) // 新账号没档案 → 空池子，回 0 个钉子户
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"success": false, "error": fmt.Sprintf("download archive: %v", err),
-		})
-		return
-	}
-	arc, err := ParseArchive(string(data), s.lang)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"success": false, "error": fmt.Sprintf("parse archive: %v", err),
+			"success": false, "error": err.Error(),
 		})
 		return
 	}
