@@ -4,7 +4,9 @@
 
   <block wx:if="{{!loading && !err}}">
     <view class="tools">
-      <input class="search"
+      <!-- 试用态：换成一块假输入框，点了弹登录浮层（utils/trial.js） -->
+      <view class="search locked" wx:if="{{trial}}" bindtap="onTapLocked">登录后才能搜</view>
+      <input class="search" wx:else
              placeholder="搜假名 / 汉字 / 中文"
              value="{{q}}"
              bindinput="onSearch" />
@@ -58,4 +60,6 @@
 
     <view class="empty" wx:else>没有符合条件的词。</view>
   </block>
+
+  <include src="../../trial-sheet.wxml" />
 </view>

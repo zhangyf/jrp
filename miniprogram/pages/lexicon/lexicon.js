@@ -6,6 +6,7 @@
 // ⚠️ 900 行不能一次渲染完，会卡：先渲染 60 条，上拉再补（onReachBottom）。
 
 const app = getApp();
+const trial = require('../../utils/trial.js');
 const PAGE = 60;
 
 // 档案里的 status 带 emoji（🟢已掌握），列表里只留文字 + 一个色点，
@@ -36,13 +37,25 @@ Page({
     filtered: 0,
 
     q: '',
-    openIdx: -1
+    openIdx: -1,
+    // 试用态（未登录）：搜索框锁死，点一下弹登录浮层 —— 详见 utils/trial.js
+    trial: false,
+    needLogin: false
   },
 
+  // 冷启动领试用身份是异步的，进页面那一刻可能还没拿到 —— onShow 里每次同步一次
+  onShow: trial.sync,
+  onTapLocked: trial.onTapLocked,
+  closeLogin: trial.closeLogin,
+  goLogin: trial.goLogin,
+  noop: trial.noop,
+
   onLoad() {
-    // 直接进这页（比如分享/扫码）时可能还没登录，先补一次静默登录再拉数据
+    // 直接进这页（比如分享/扫码）时可能还没身份。
+    // ⛔ 不能在这里 app.login()：那是替陌生人注册账号，也违反「先浏览后登录」。
+    //    领试用身份就够看数据了（服务端对 trial 返回内置词表）。
     if (!app.globalData.logged) {
-      app.login(() => this.load());
+      app.loginTrial(() => this.load());
     } else {
       this.load();
     }

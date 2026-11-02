@@ -20,7 +20,12 @@
   <block wx:else>
     <view class="sec">
       <view class="sec-title">手打录入</view>
-      <input class="ipt" placeholder="词形，如 みず(水)" value="{{word}}" bindinput="onWord" />
+      <!-- 试用态：换成一块假输入框，点了弹登录浮层（utils/trial.js） -->
+      <view class="ipt locked" wx:if="{{trial}}" bindtap="onTapLocked">登录后才能录词</view>
+      <input class="ipt" wx:else
+             placeholder="词形，如 みず(水)"
+             value="{{word}}"
+             bindinput="onWord" />
       <view class="btn sm" bindtap="addManual">{{looking ? '查中文中…' : '加入待录列表'}}</view>
       <view class="note">中文意思不用填，服务端自己查（先查词库，查不到再问模型）。</view>
     </view>
@@ -77,8 +82,10 @@
       <view class="pend" wx:for="{{pending}}" wx:key="word">
         <view class="p-l">
           <view class="p-w">{{item.word}}</view>
-          <input class="ipt tiny" wx:if="{{item.editing}}"
-                 placeholder="补中文意思" value="{{item.def}}"
+          <view class="ipt tiny locked" wx:if="{{item.editing && trial}}" bindtap="onTapLocked">登录后才能改</view>
+          <input class="ipt tiny" wx:elif="{{item.editing}}"
+                 placeholder="补中文意思"
+                 value="{{item.def}}"
                  data-index="{{index}}" bindinput="editDef" />
           <view class="p-d" wx:else>{{item.def || '（还没中文）'}}</view>
         </view>
@@ -88,4 +95,6 @@
       <view class="btn" bindtap="submit">{{saving ? '正在写入…' : '录进档案'}}</view>
     </view>
   </block>
+
+  <include src="../../trial-sheet.wxml" />
 </view>

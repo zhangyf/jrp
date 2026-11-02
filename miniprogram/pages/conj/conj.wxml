@@ -38,6 +38,8 @@
     <text class="count">共 {{items.length}} 题，词池 {{pool}}</text>
   </view>
 
+  <view class="note-ok" wx:if="{{trial}}">体验版 · 登录后才能写答案</view>
+
   <view class="err" wx:if="{{err}}">{{err}}</view>
   <view class="empty" wx:if="{{!loading && !err && items.length === 0}}">档案里没有可用于活用练习的词条。</view>
 
@@ -50,7 +52,9 @@
 
     <view class="task" wx:for="{{it.tasks}}" wx:for-item="t" wx:for-index="j" wx:key="label">
       <text class="label">{{t.label}}</text>
-      <input class="answer small"
+      <!-- 试用态：换成一块假输入框，点了弹登录浮层（utils/trial.js） -->
+      <view class="answer small locked" wx:if="{{trial}}" bindtap="onTapLocked">登录后才能写</view>
+      <input class="answer small" wx:else
              placeholder="写活用形"
              value="{{t.input}}"
              disabled="{{graded}}"
@@ -68,4 +72,6 @@
   </view>
 
   <view class="tip">活用练习只练不计档，不写档案、不进统计。</view>
+
+  <include src="../../trial-sheet.wxml" />
 </view>

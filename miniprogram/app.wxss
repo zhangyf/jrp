@@ -50,3 +50,65 @@ page {
   font-size: 30rpx;
   margin-top: 16rpx;
 }
+
+/* ===== 试用态：输入框锁死 + 点一下弹登录浮层（utils/trial.js + trial-sheet.wxml） ===== */
+
+/* 试用态把输入框换成一块「假输入框」（同 class，灰底），点它弹登录浮层。
+   ⚠️ 没走「disabled + 透明遮罩」那条路：input/textarea 是原生组件，
+      在部分机型上直接盖在普通 view 上面，遮罩接不到点击 —— 点了没反应更糟。
+      换成 view 之后点击一定落在自己身上。 */
+.locked {
+  background: #f2f1ec;
+  color: #9a9a90;
+  display: flex;
+  align-items: center;
+}
+
+/* 登录浮层：底部半屏；点遮罩或「先随便看看」收起 */
+.lg-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 999;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.lg-sheet {
+  background: #ffffff;
+  border-radius: 24rpx 24rpx 0 0;
+  padding: 40rpx 40rpx calc(40rpx + env(safe-area-inset-bottom));
+}
+
+.lg-title {
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.lg-desc {
+  margin-top: 14rpx;
+  font-size: 27rpx;
+  line-height: 1.7;
+  color: #6f6e68;
+}
+
+.lg-btn {
+  margin-top: 32rpx;
+  background: #2f6f4f;
+  color: #ffffff;
+  border-radius: 12rpx;
+  font-size: 30rpx;
+  text-align: center;
+  padding: 22rpx 0;
+}
+
+.lg-later {
+  margin-top: 24rpx;
+  text-align: center;
+  font-size: 27rpx;
+  color: #8a8a86;
+}

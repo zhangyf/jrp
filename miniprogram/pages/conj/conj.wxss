@@ -11,6 +11,13 @@
   margin-bottom: 12rpx;
 }
 
+/* 试用态提示：跟 practice / sentences 一个样式 */
+.note-ok {
+  margin-bottom: 12rpx;
+  font-size: 24rpx;
+  color: #2f6f4f;
+}
+
 .link {
   margin-left: auto;
   color: #2f6f4f;

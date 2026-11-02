@@ -7,7 +7,7 @@
   <view class="err" wx:if="{{err}}">{{err}}</view>
   <view class="empty" wx:if="{{!loading && !err && items.length === 0}}">今天没有造句任务。</view>
 
-  <view class="note-ok" wx:if="{{readOnly}}">体验版 · 固定 {{items.length}} 句 · 不保存进度</view>
+  <view class="note-ok" wx:if="{{readOnly}}">体验版 · 固定 {{items.length}} 句 · 登录后才能写、保存进度</view>
 
   <view class="card item {{item.graded ? (item.correct ? 'right' : 'wrong') : ''}}"
         wx:for="{{items}}" wx:key="number">
@@ -19,7 +19,9 @@
     <!-- ⚠️ 不用 auto-height：textarea 是原生组件，auto-height 首帧按默认尺寸渲染，
          等异步测量完才缩回去 —— 老师看到的「刚进去特别宽、几秒后恢复」就是它。
          固定高度，首帧就是最终尺寸。 -->
-    <textarea class="answer"
+    <!-- 试用态：换成一块假输入框，点了弹登录浮层（utils/trial.js） -->
+    <view class="answer locked" wx:if="{{trial}}" bindtap="onTapLocked">登录后才能写</view>
+    <textarea class="answer" wx:else
               placeholder="写日语整句"
               value="{{item.input}}"
               disabled="{{item.graded}}"
@@ -67,4 +69,6 @@
     <!-- 体验版不给「提交」：/api/record 不在白名单里，点了只会 403 -->
     <button class="btn primary" wx:if="{{!readOnly}}" bindtap="submit" loading="{{submitting}}">提交</button>
   </view>
+
+  <include src="../../trial-sheet.wxml" />
 </view>

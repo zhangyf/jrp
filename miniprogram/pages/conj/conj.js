@@ -5,6 +5,7 @@
 // 写任意一个就算对（如 じゃありません/ではありません）。
 
 const app = getApp();
+const trial = require('../../utils/trial.js');
 
 const TYPES = [
   { key: 'verb', label: '动词' },
@@ -50,8 +51,18 @@ Page({
     // 默认收起（老师 2026-10-20 要求）：点标题才展开，别一进页就挡住题
     grammarOpen: false,
     grammar: GRAMMAR_ROWS,
-    grammarNotes: GRAMMAR_NOTES
+    grammarNotes: GRAMMAR_NOTES,
+    // 试用态（未登录）：输入框锁死，点一下弹登录浮层 —— 详见 utils/trial.js
+    trial: false,
+    needLogin: false
   },
+
+  // 冷启动领试用身份是异步的，进页面那一刻可能还没拿到 —— onShow 里每次同步一次
+  onShow: trial.sync,
+  onTapLocked: trial.onTapLocked,
+  closeLogin: trial.closeLogin,
+  goLogin: trial.goLogin,
+  noop: trial.noop,
 
   onLoad() {
     this.load();

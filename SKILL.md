@@ -1701,6 +1701,23 @@ tabBar 三项：**练习 / 统计 / 录入**。
   登录态才是「退出登录」。「退出试用」没有了 —— 试用是默认态，没有退一说。
 - welcome 的 onShow 跳回首页要加 `!app.isTrial()`：试用态点进来是来登录的，弹回去就是死循环。
 
+## 试用态：能看不能写（2026-11-02 老师定口径）
+
+既然后台默认给试用身份，就别让人填完才发现不保存。**所有输入框在试用态一律锁死**，
+点一下弹登录浮层（底部半屏，一个「微信登录」+ 一个「先随便看看」）。
+
+- 共用 `miniprogram/utils/trial.js`（`sync` / `onTapLocked` / `closeLogin` / `goLogin` / `noop`）
+  + `<include src="../../trial-sheet.wxml" />`。页面只要挂方法、data 里带 `trial`/`needLogin`。
+- ⛔ **别写成「真 input + disabled + 透明遮罩」**：input/textarea 是原生组件，部分机型上
+  盖在普通 view 上面，遮罩接不到点击 → 点了没反应更糟。
+  正解是一对 `wx:if/wx:else`：试用态渲染同 class 的 `<view class="answer locked">`，
+  正常态才是真 input。样式 `.locked` 在 app.wxss（灰底 + flex 居中）。
+- `trial.sync` 挂 onShow：冷启动领身份是异步的，进页面那刻可能还没拿到；
+  从登录页换身份回来也靠它把锁解开。addword 本来有 onShow，改成在里面调 `trial.sync(this)`。
+- 锁的不止输入框：practice 的「不会」也是往里写，试用态同样走 `onTapLocked`。
+- ⛔ 页面 onLoad 里不许 `app.login()`（替陌生人注册 + 违反先浏览后登录），
+  要补身份就用 `app.loginTrial()`。lexicon 原来就是这么写的，已改。
+
 ## 安全基线（2026-10-28 全量评审后立的规矩）
 
 老师问「从一个黑客角度反观下我的 web 端和小程序端」。评完立的几条铁律，

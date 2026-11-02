@@ -56,6 +56,8 @@ const MODIFY_ROWS = [
   { k: 'm9', cls: '', joint: 'ANで＋Aい/AN', ex: '静かで 広い（第16课）', contC: true }
 ];
 
+const trial = require('../../utils/trial.js');
+
 Page({
   data: {
     date: '',
@@ -68,8 +70,18 @@ Page({
     particles: PARTICLE_ROWS,
     modify: MODIFY_ROWS,
     // 体验版：3 句固定的示范题，能写能判，不落档案（/api/record 不在白名单里）
-    readOnly: false
+    readOnly: false,
+    // 试用态（未登录）：输入框锁死，点一下弹登录浮层 —— 详见 utils/trial.js
+    trial: false,
+    needLogin: false
   },
+
+  // 冷启动领试用身份是异步的，进页面那一刻可能还没拿到 —— onShow 里每次同步一次
+  onShow: trial.sync,
+  onTapLocked: trial.onTapLocked,
+  closeLogin: trial.closeLogin,
+  goLogin: trial.goLogin,
+  noop: trial.noop,
 
   toggleGrammar() {
     this.setData({ grammarOpen: !this.data.grammarOpen });

@@ -13,11 +13,15 @@
 // 会把「今天」判成未来 → read_only → 回写题号映射不到词，白练。
 
 const app = getApp();
+const trial = require('../../utils/trial.js');
 
 Page({
   data: {
     mode: 'words',
     date: '',
+    // 试用态（未登录）：输入框锁死，点一下弹登录浮层 —— 详见 utils/trial.js
+    trial: false,
+    needLogin: false,
     items: [],
     loading: true,
     err: '',
@@ -42,6 +46,14 @@ Page({
     wx.setNavigationBarTitle({ title: mode === 'hard' ? '钉子户' : '列表复习' });
     this.load();
   },
+
+  // 冷启动领试用身份是异步的，进页面那一刻可能还没拿到 —— onShow 里每次同步一次，
+  // 登录页换了身份回来（试用 → 微信登录）也靠这一下把锁解开。
+  onShow: trial.sync,
+  onTapLocked: trial.onTapLocked,
+  closeLogin: trial.closeLogin,
+  goLogin: trial.goLogin,
+  noop: trial.noop,
 
   // 草稿 / 快照的模式名，跟服务端白名单（words / hard）对齐
   serverMode() {
@@ -284,6 +296,8 @@ Page({
   },
 
   onUnknown(e) {
+    // 试用态：标「不会」也是往里写，跟输入框一个待遇 —— 点一下弹登录浮层
+    if (this.data.trial) { this.onTapLocked(); return; }
     const i = e.currentTarget.dataset.index;
     const it = this.data.items[i];
     const patch = {};

@@ -1,0 +1,11 @@
+<!-- 试用态登录浮层：点任何被锁住的输入框都弹这个。
+     ⚠️ 用 <include> 引进来的，数据取的是当前页面 —— 所以每个引用它的页面
+        都得有 needLogin 字段和 closeLogin / goLogin / noop 三个方法（见 utils/trial.js）。 -->
+<view class="lg-mask" wx:if="{{needLogin}}" bindtap="closeLogin" catchtouchmove="noop">
+  <view class="lg-sheet" catchtap="noop">
+    <view class="lg-title">登录后才能写</view>
+    <view class="lg-desc">现在是体验模式：五个版块都能看，但写了不会保存进度。微信登录后就能正常练习、记录进度。</view>
+    <view class="lg-btn" bindtap="goLogin">微信登录</view>
+    <view class="lg-later" bindtap="closeLogin">先随便看看</view>
+  </view>
+</view>

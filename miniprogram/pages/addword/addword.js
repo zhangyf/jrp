@@ -12,6 +12,7 @@
 //   ② 不填中文 —— 服务端 POST /api/word-def 自己查（先查档案，再问模型）。
 
 const app = getApp();
+const trial = require('../../utils/trial.js');
 
 // 词形里已经带括号 = 已经有汉字写法（みず(水)）或语法注释（さん（敬称）），不用再补
 function hasParen(s) {
@@ -98,6 +99,7 @@ Page({
     ocrBusy: false,
     ocrNote: '',
     trial: false, // 体验版：只展示页面，拍照/查词/写入全挡掉
+    needLogin: false, // 试用态登录浮层（utils/trial.js）
     looking: false,
     saving: false,
     result: null // { added, duplicates, dup_definitions[], dup_core_definitions[] }
@@ -112,8 +114,14 @@ Page({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 2 });
     }
-    this.setData({ trial: app.isTrial() });
+    trial.sync(this);
   },
+
+  // 试用态：点被锁住的输入框 → 弹登录浮层（utils/trial.js）
+  onTapLocked: trial.onTapLocked,
+  closeLogin: trial.closeLogin,
+  goLogin: trial.goLogin,
+  noop: trial.noop,
 
   onWord(e) { this.setData({ word: e.detail.value }); },
 

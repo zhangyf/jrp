@@ -20,7 +20,7 @@
 
   <view class="note-ok" wx:if="{{requeue}}">错词巩固轮：只练今天错的词，不回写档案。</view>
 
-  <view class="note-ok" wx:if="{{readOnly}}">体验版 · 固定 {{items.length}} 词 · 不保存进度</view>
+  <view class="note-ok" wx:if="{{readOnly}}">体验版 · 固定 {{items.length}} 词 · 登录后才能写、保存进度</view>
 
   <view class="err" wx:if="{{err}}">{{err}}</view>
   <view class="empty" wx:if="{{!loading && !err && items.length === 0}}">今天没有要练的词。</view>
@@ -46,7 +46,9 @@
     <block wx:if="{{!reviewOnly}}">
       <!-- 判过分也照样能改：改了就清掉这一行的对错，失焦时自动重判一次。
            改错字、换个写法是常事，锁死反而逼着人重来一遍。 -->
-      <input class="answer"
+      <!-- 试用态：换成一块假输入框，点了弹登录浮层（utils/trial.js） -->
+      <view class="answer locked" wx:if="{{trial}}" bindtap="onTapLocked">登录后才能写</view>
+      <input class="answer" wx:else
              placeholder="写日语"
              value="{{item.answer}}"
              data-index="{{index}}"
@@ -82,4 +84,6 @@
   <view class="tip" wx:if="{{items.length && requeue}}">
     这是今天的错词巩固，只当场练一遍，不回写档案 —— 同一天回写两次会把间隔改两遍。
   </view>
+
+  <include src="../../trial-sheet.wxml" />
 </view>
