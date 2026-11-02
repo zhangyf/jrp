@@ -1343,6 +1343,36 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 | `lesson-status` | `--lesson <N>` \\| `--all` | 一次查某一课四件套：知识点 / 汇编·基本课文 / 汇编·应用课文 / 单词 / 句库 |
 | `encrypt-env` | (none) | Encrypt the plaintext `.env` into `.env.enc` (AES-256-GCM, keyed to machine/user/skillDir). Backs up the old `.env.enc` first. Does NOT need `--lang` | 
 | `serve` | `--addr <ip>` `--port <n>` | Start the web review UI (keyboard + handwriting input) |
+| `dump-lexicon` | `--output <path>` | 导出词汇总表（跟 `GET /api/lexicon` 同一份数据）。⛔ 只读 |
+| `circle` | `import --input <json>` \| `tag --input <json>` \| `unhold --lesson <N>` `--dry-run` | 三圆手册分级，见下节 |
+
+### 三圆手册分级（circle，2026-11-02 起）
+
+《标日初上 三圆词汇速记手册》把每课的词分成 **三圆（核心）/ 二圆 / 一圆**。
+分级和「挂起」都存在 **`word_meta.json`** 的 `WordPOS` 里（`circle` / `hold` 字段），
+⛔ **不动档案的 7 列 markdown 表格** —— 动表格要改所有读写档案的地方，不值。
+
+- `circle import`：手册里有、总表没有的词 → 按课建「第N课 手册补录」组追加，**并 Hold**
+- `circle tag`：只写 `circle` 标，不动词库（已有词用这个）
+- `circle unhold --lesson N`：学到第 N 课了，把这一课的词放出来进练习（N=0 全放开）
+
+⚠️ **Hold 的语义**：挂起的词**在词汇总表里照常显示**，只是不进 `BuildDuePlan`（每日练习）。
+补录那批大多是还没学到的课（21–24 课），让它们涌进待复习毫无意义。
+
+⚠️ **fail-open**：`holdSet(nil)` 返回 nil。读不到 word_meta 就一个都不排除 ——
+拿不到挂起名单不能把整个计划清空，宁可多出题。
+
+⚠️ **def_fix 必须在加词之前应用**。输入里的 `def_fix` 是给老词补区分括号用的；
+顺序反了的话，新词撞车检查看到的是「还没补括号的老词」，会报一堆假警告
+（2026-11-02 第一次 dry-run 就报了 11 条）。
+
+⚠️ **部署必须先于写数据**：旧二进制不认 `hold`，先写数据会让补录的词全涌进每日练习。
+
+**跟手册对词时的匹配顺序**（`tmp/cmp2.py`，本地比对用）：
+原形精确 → ます形（手册给原形 `洗う`、档案存 `洗います`）→ 平片假名互转（`ごみ`/`ゴミ`）
+→ 单假名兜底（`き`/`ひ`/`め`，⚠️ 必须最后，否则 `の` 会误命中助词）→ 近似前缀。
+漏了ます形那步，14/19 课会假缺一大片；漏了单假名，木/日/気/火/目/子 全假缺。
+
 | `user` | `list` \\| `approve <uid>` \\| `set-role <uid> <owner\\|member\\|pending\\|disabled>` \\| `disable <uid>` \\| `rename <uid> <名字>` | 账号管理。列出/批准/改角色/停用/改名。第一个登录的人自动成为 owner |
 
 ## Web Review UI (`serve`)
