@@ -3,6 +3,17 @@
 // 老师要的是「看着复习」的浏览表 —— 不答题、不回写，纯展示。
 // 词性来自服务端 word_meta.json（不在档案里），没标到的显示「—」。
 
+// 手册分级（三圆词汇速记手册）：三圆(核心) > 二圆 > 一圆。
+// 手册没收的词 circle 为空 → 显示「—」。
+// hold = 手册里有但还没学到，不进每日练习 —— 列表里挂个灰标，提醒别找它练。
+var CIRCLE_CLS = { 三圆: 'c3', 二圆: 'c2', 一圆: 'c1' };
+
+function circleCell(it) {
+  if (!it.circle) return '<span class="muted">·</span>';
+  return '<span class="chip-circle ' + (CIRCLE_CLS[it.circle] || '') + '">' + esc(it.circle) + '</span>' +
+    (it.hold ? ' <span class="chip-hold">未学</span>' : '');
+}
+
 var lexicon = {
   items: [],
   view: [],
@@ -27,13 +38,22 @@ var lexicon = {
 
   // 下拉选项：词性 / 阶段，都从实际数据里抽，不写死
   fillSelects: function (d) {
-    var poss = {}, stats = {};
+    var poss = {}, stats = {}, circles = {};
     this.items.forEach(function (it) {
       poss[it.pos || ''] = (poss[it.pos || ''] || 0) + 1;
       stats[it.status || ''] = (stats[it.status || ''] || 0) + 1;
+      circles[it.circle || ''] = (circles[it.circle || ''] || 0) + 1;
     });
     var posKeys = Object.keys(poss).filter(Boolean).sort();
     var statKeys = Object.keys(stats).filter(Boolean).sort();
+    // 手册分级就三档，顺序写死（三圆最重要）；「手册未收录」放最后
+    var circleKeys = ['三圆', '二圆', '一圆'].filter(function (k) { return circles[k]; });
+
+    el('lexCircle').innerHTML = '<option value="">全部分级</option>' +
+      circleKeys.map(function (k) {
+        return '<option value="' + esc(k) + '">' + esc(k) + '（' + circles[k] + '）</option>';
+      }).join('') +
+      '<option value="__none">手册未收录（' + (circles[''] || 0) + '）</option>';
 
     el('lexPos').innerHTML = '<option value="">全部词性</option>' +
       posKeys.map(function (k) {
@@ -59,7 +79,7 @@ var lexicon = {
       clearTimeout(t);
       t = setTimeout(function () { self.render(); }, 200);
     });
-    ['lexPos', 'lexStatus'].forEach(function (id) {
+    ['lexPos', 'lexStatus', 'lexCircle'].forEach(function (id) {
       el(id).addEventListener('change', function () { self.render(); });
     });
     el('lexWrongOnly').addEventListener('change', function () { self.render(); });
@@ -69,11 +89,14 @@ var lexicon = {
     var q = el('lexSearch').value.trim().toLowerCase();
     var pos = el('lexPos').value;
     var st = el('lexStatus').value;
+    var circle = el('lexCircle').value;
     var wrongOnly = el('lexWrongOnly').checked;
 
     return this.items.filter(function (it) {
       if (pos && (it.pos || '') !== pos) return false;
       if (st && (it.status || '') !== st) return false;
+      if (circle === '__none') { if (it.circle) return false; }
+      else if (circle && (it.circle || '') !== circle) return false;
       if (wrongOnly && !(it.errors > 0)) return false;
       if (q) {
         var hay = ((it.kana || '') + (it.kanji || '') + (it.def || '')).toLowerCase();
@@ -113,7 +136,7 @@ var lexicon = {
 
     var head = [
       ['number', '#'], ['kana', '假名'], ['kanji', '汉字'], ['def', '中文释义'],
-      ['pos', '词性'], ['status', '阶段'], ['reviews', '复习'], ['errors', '错'],
+      ['pos', '词性'], ['circle', '手册分级'], ['status', '阶段'], ['reviews', '复习'], ['errors', '错'],
       ['word_note', '备注']
     ];
     var self = this;
@@ -131,6 +154,7 @@ var lexicon = {
         '<td class="kanji">' + esc(it.kanji || '—') + '</td>' +
         '<td class="def">' + esc(it.def) + (it.note ? ' <span class="muted">（' + esc(it.note) + '）</span>' : '') + '</td>' +
         '<td class="pos' + (it.sub ? ' has-sub' : '') + '">' + esc(posText || '—') + '</td>' +
+        '<td class="circle">' + circleCell(it) + '</td>' +
         '<td class="st">' + esc(it.status || '') + '</td>' +
         '<td class="num">' + it.reviews + '</td>' +
         '<td class="num' + (it.errors > 0 ? ' bad' : '') + '">' + (it.errors || '·') + '</td>' +

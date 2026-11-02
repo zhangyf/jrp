@@ -26,6 +26,13 @@ function rate(it) {
   return Math.round(((it.reviews - it.errors) / it.reviews) * 100);
 }
 
+// 手册分级：三圆(核心) > 二圆 > 一圆。手册没收的词 circle 为空，不显示。
+// 2026-11-02 按《标日初上 三圆词汇速记手册》给总表逐个打标。
+const CIRCLE_CLS = { 三圆: 'c3', 二圆: 'c2', 一圆: 'c1' };
+function splitCircle(c) {
+  return { text: c || '', cls: CIRCLE_CLS[c] || '' };
+}
+
 Page({
   data: {
     loading: true,
@@ -68,9 +75,14 @@ Page({
       .then((res) => {
         const items = (res.items || []).map((it) => {
           const st = splitStatus(it.status);
+          const ci = splitCircle(it.circle);
           return Object.assign({}, it, {
             stText: st.text,
             stCls: st.cls,
+            circleText: ci.text,
+            circleCls: ci.cls,
+            // 挂起 = 手册里有但还没学到，不进每日练习（词汇总表里照常看到）
+            hold: !!it.hold,
             rate: rate(it),
             // 服务端叫 word_note，页面里统一读 wordNote
             wordNote: it.word_note || '',

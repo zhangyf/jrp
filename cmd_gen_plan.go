@@ -83,7 +83,8 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 
 	// Find due words, assign categories, sort, and build the plan (reused by server)
 	dateStr := targetDate.Format("2006-01-02")
-	plan := BuildDuePlan(arc, lang, targetDate)
+	meta, _ := storage.DownloadWordMeta(ctx)
+	plan := BuildDuePlan(arc, lang, targetDate, holdSet(meta))
 
 	// Sentences-only mode: drop the entire word section. Requires --sentences.
 	if *sentencesOnly {
@@ -226,13 +227,48 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 	})
 }
 
+// dueHold 读词性表拿挂起名单。读失败返回 nil —— 照样出题，
+// 不因为一份展示增强用的配置读不到就把整个计划清空。
+func dueHold(ctx context.Context, st *Storage) *WordMeta {
+	m, err := st.DownloadWordMeta(ctx)
+	if err != nil {
+		return nil
+	}
+	return m
+}
+
+// holdSet 把词性表里的 hold 标记抽成一张「要跳过」的集合。
+//
+// ⚠️ meta 为 nil（读不到 word_meta.json）时返回 nil —— 拿不到挂起名单就一个都不排除，
+// 宁可多出题也不能因为读不到配置而把整份计划清空。
+func holdSet(meta *WordMeta) map[string]bool {
+	if meta == nil || len(meta.Items) == 0 {
+		return nil
+	}
+	out := map[string]bool{}
+	for w, p := range meta.Items {
+		if p.Hold {
+			out[w] = true
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // BuildDuePlan finds all words due on targetDate, assigns review categories,
 // sorts by status priority (钉子户 > 待巩固 > 待测试 > 基本掌握 > 抽查), and
 // returns a numbered ReviewPlan (without sentences/Excel). Reused by the CLI
 // and the HTTP server.
-func BuildDuePlan(arc *Archive, lang string, targetDate time.Time) *ReviewPlan {
+//
+// hold 里点名的词直接跳过（还没学到的课，2026-11-02 手册补录那批）。传 nil 表示不排除。
+func BuildDuePlan(arc *Archive, lang string, targetDate time.Time, hold map[string]bool) *ReviewPlan {
 	var dueWords []Word
 	for _, w := range AllWords(arc.Groups) {
+		if hold[w.Word] {
+			continue
+		}
 		if IsDue(w, targetDate) {
 			w.Status = GetReviewCategory(w)
 			dueWords = append(dueWords, w)

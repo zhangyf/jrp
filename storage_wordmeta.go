@@ -31,6 +31,17 @@ type WordPOS struct {
 	Pos  string `json:"pos"`
 	Sub  string `json:"sub"`
 	Note string `json:"note,omitempty"`
+
+	// Circle 是《标日初上 三圆词汇速记手册》给的分级：三圆 / 二圆 / 一圆。
+	// 空串 = 手册里没有这个词（老师课外补录的，或者手册没收）。
+	Circle string `json:"circle,omitempty"`
+
+	// Hold = true 的词不进每日练习计划。
+	//
+	// 2026-11-02：按手册批量补录了 21–24 课的词，这些课根本还没学到，
+	// 让它们涌进待复习列表毫无意义。挂起的词在词汇总表里照常显示，
+	// 学到那一课时用 `jrp circle unhold --lesson N` 放开。
+	Hold bool `json:"hold,omitempty"`
 }
 
 func (s *Storage) wordMetaKey() string {

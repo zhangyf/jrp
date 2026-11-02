@@ -92,7 +92,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request, st *Storag
 		})
 
 	default: // daily：到期词 + 20 句造句
-		plan := BuildDuePlan(arc, s.lang, targetDate)
+		plan := BuildDuePlan(arc, s.lang, targetDate, holdSet(dueHold(ctx, st)))
 		plan.Sentences = BuildSentencePlanFrom(st, targetDate, 20, arc)
 		filename = fmt.Sprintf("review_%s.xlsx", dateStr)
 		genErr = GenerateExcelWithMeta(plan, tmp.Name(), &ExcelMeta{

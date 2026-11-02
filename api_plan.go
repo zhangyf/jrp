@@ -93,7 +93,7 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request, st *Storage)
 		out["sentences"] = plan.Sentences
 
 	default:
-		plan := BuildDuePlan(arc, s.lang, targetDate)
+		plan := BuildDuePlan(arc, s.lang, targetDate, holdSet(dueHold(ctx, st)))
 		if !readOnly {
 			// plan JSON 供 /api/record 把序号映射回词
 			if err := st.UploadPlan(ctx, plan); err != nil {

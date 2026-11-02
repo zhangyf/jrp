@@ -166,7 +166,7 @@ func (s *server) tomorrowPreview(st *Storage) map[string]interface{} {
 	if err != nil {
 		return map[string]interface{}{"error": err.Error()}
 	}
-	plan := BuildDuePlan(arc, s.lang, tomorrow)
+	plan := BuildDuePlan(arc, s.lang, tomorrow, holdSet(dueHold(ctx, st)))
 	return map[string]interface{}{
 		"date":      tomorrow.Format("2006-01-02"),
 		"due_count": len(plan.Words),

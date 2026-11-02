@@ -3,7 +3,6 @@ package main
 import (
 	"net/http"
 	"regexp"
-	"sort"
 	"strings"
 )
 
@@ -23,6 +22,8 @@ type LexiconItem struct {
 	Sub      string `json:"sub"`       // 细分：一类/二类/三类、い形/な形
 	Status   string `json:"status"`    // 🟢已掌握 / 🟡基本掌握 / 🔴待巩固 ...
 	Group    string `json:"group"`     // 课分组
+	Circle   string `json:"circle"`    // 手册分级：三圆 / 二圆 / 一圆（手册没收录则为空）
+	Hold     bool   `json:"hold"`      // true = 挂起，不进每日练习（还没学到）
 	Reviews  int    `json:"reviews"`   // 复习总次数
 	Errors   int    `json:"errors"`    // 答错次数
 	Last     string `json:"last"`      // 最近复习日期
@@ -85,47 +86,7 @@ func (s *server) handleLexicon(w http.ResponseWriter, r *http.Request, st *Stora
 		meta.Items = map[string]WordPOS{}
 	}
 
-	words := AllWords(arc.Groups)
-	items := make([]LexiconItem, 0, len(words))
-	posSummary := map[string]int{}
-	groupSet := map[string]bool{}
-
-	for i, w := range words {
-		kana, kanji, note := splitLexiconWord(w.Word)
-		pos := meta.Items[w.Word]
-		it := LexiconItem{
-			Number:   i + 1,
-			Word:     w.Word,
-			Kana:     kana,
-			Kanji:    kanji,
-			Note:     note,
-			WordNote: pos.Note,
-			Def:      w.Definition,
-			Pos:      pos.Pos,
-			Sub:      pos.Sub,
-			Status:   w.Status,
-			Group:    w.Group,
-			Reviews:  w.ReviewCount,
-			Errors:   w.ErrorCount,
-			Last:     w.LastReview,
-		}
-		items = append(items, it)
-
-		key := pos.Pos
-		if key == "" {
-			key = "未标注"
-		}
-		posSummary[key]++
-		if w.Group != "" {
-			groupSet[w.Group] = true
-		}
-	}
-
-	groups := make([]string, 0, len(groupSet))
-	for g := range groupSet {
-		groups = append(groups, g)
-	}
-	sort.Strings(groups)
+	items, posSummary, groups := buildLexicon(arc, meta)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success":      true,

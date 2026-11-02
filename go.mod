@@ -3,6 +3,11 @@ module github.com/zhangyf/jrp
 go 1.25.0
 
 require (
+	github.com/xuri/excelize/v2 v2.11.0
+	github.com/zhangyf/objstore v0.17.0
+)
+
+require (
 	github.com/aws/aws-sdk-go-v2 v1.41.6 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.9 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.32.16 // indirect
@@ -30,9 +35,7 @@ require (
 	github.com/tencentyun/cos-go-sdk-v5 v0.7.73 // indirect
 	github.com/tiendc/go-deepcopy v1.7.2 // indirect
 	github.com/xuri/efp v0.0.1 // indirect
-	github.com/xuri/excelize/v2 v2.11.0 // indirect
 	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
-	github.com/zhangyf/objstore v0.17.0 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/text v0.38.0 // indirect

@@ -354,6 +354,22 @@ tr.unknown { opacity: 1; }
 .lex-table td.num.bad { color: var(--bad); font-weight: 600; }
 .lex-table td.grp { font-size: 12px; white-space: nowrap; }
 .lex-table td.note { font-size: 12px; color: var(--muted); min-width: 120px; }
+/* 手册分级（三圆词汇速记手册）：三圆最核心，颜色最重 */
+.lex-table td.circle { white-space: nowrap; }
+.chip-circle {
+  display: inline-block; font-size: 12px; line-height: 1.6;
+  padding: 0 8px; border-radius: 999px;
+  background: #efefec; color: var(--muted);
+}
+.chip-circle.c3 { background: var(--bad-soft); color: var(--bad); font-weight: 600; }
+.chip-circle.c2 { background: var(--unknown-soft); color: var(--unknown); }
+.chip-circle.c1 { background: #eef1f6; color: #4a5a78; }
+/* 挂起：手册里有但还没学到，不进每日练习 */
+.chip-hold {
+  display: inline-block; font-size: 11px; line-height: 1.6;
+  padding: 0 7px; border-radius: 999px;
+  background: #efefec; color: var(--muted);
+}
 
 /* 「不会」按钮 / 标签 */
 button.unk {

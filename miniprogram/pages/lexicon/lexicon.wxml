@@ -27,6 +27,7 @@
             <text class="kanji" wx:if="{{item.kanji}}">（{{item.kanji}}）</text>
           </view>
           <view class="pos" wx:if="{{item.pos}}">{{item.pos}}<text class="sub" wx:if="{{item.sub}}">·{{item.sub}}</text></view>
+          <text class="circle {{item.circleCls}}" wx:if="{{item.circleText}}">{{item.circleText}}</text>
         </view>
         <view class="rline2">
           <text class="def">{{item.def}}</text>
@@ -49,6 +50,12 @@
           </view>
           <view class="dl" wx:if="{{item.group}}">
             <text>课</text><text>{{item.group}}</text>
+          </view>
+          <view class="dl" wx:if="{{item.circleText}}">
+            <text>手册分级</text><text>{{item.circleText}}</text>
+          </view>
+          <view class="dl" wx:if="{{item.hold}}">
+            <text>练习</text><text>已挂起，还没学到</text>
           </view>
           <view class="dnote" wx:if="{{item.wordNote}}">备注：{{item.wordNote}}</view>
         </view>

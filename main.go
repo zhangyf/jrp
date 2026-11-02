@@ -178,6 +178,10 @@ func main() {
 		runSentenceImport(fs, lang)
 	case "lesson-status":
 		runLessonStatus(fs, lang)
+	case "dump-lexicon":
+		runDumpLexicon(fs, lang)
+	case "circle":
+		runCircle(fs, lang)
 	case "user":
 		runUser(fs, lang)
 	default:
