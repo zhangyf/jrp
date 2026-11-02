@@ -1679,6 +1679,28 @@ tabBar 三项：**练习 / 统计 / 录入**。
 
 ---
 
+## 新账号引导（2026-11-02 审核被拒后补的）
+
+审核员拒审两次的原因之一：新用户目录里**什么都没有**，/api/plan、/api/conjugation、
+/api/lexicon 全 500「no archives found」—— 整个 app 默认老师那种已有档案的老账号。
+
+- **写路径**（plan / hard / 录词）用 `EnsureArchive`：没档案就造一份空档案落盘，之后照旧。
+  ⚠️ 里面有 `hasArchive()` 兜底：**有档案却读不出来 = 真故障**，报错，绝不拿空档案盖真数据。
+- **纯读路径**（conjugation / lexicon）用 `LoadArchiveForRead`：没档案回空数据（**不落盘**），
+  别让一次 GET 凭空写对象。conjugation 空池子回 `success:true + items:[]`（页面有「共 0 题」空态），
+  ⛔ 不许再回 `success:false`——审核看到「页面报错」就是拒审。
+- 测试 `TestBootstrapEmptyAccount`（memObjStore 桩，含空档案录第一个词）。
+
+## 先浏览后登录（2026-11-02 审核要求）
+
+「打开小程序就要求登录」违反运营规范。改法：
+- **入口是 `pages/index/index`**（app.json 第一项），不再落到 welcome 登录页。
+- 冷启动没 token → `autoLogin()` **静默领体验版**（loginTrial），不做 wx.login ——
+  登录必须是用户自己在登录页点的。退出过的人（`jrp_logged_out` 标记）首页 onShow 送去 welcome。
+- 首页试用态的底部链接是「**微信登录后可保存进度**」→ reLaunch welcome（不写退出标记）；
+  登录态才是「退出登录」。「退出试用」没有了 —— 试用是默认态，没有退一说。
+- welcome 的 onShow 跳回首页要加 `!app.isTrial()`：试用态点进来是来登录的，弹回去就是死循环。
+
 ## 安全基线（2026-10-28 全量评审后立的规矩）
 
 老师问「从一个黑客角度反观下我的 web 端和小程序端」。评完立的几条铁律，
