@@ -1729,9 +1729,13 @@ tabBar 三项：**练习 / 统计 / 录入**。
   refreshMe 写入、logout / 验票失败时清除，`autoLogin` 恢复 token 时一并恢复 role。
   ⛔ 只置 `logged=true` 不恢复 role：缓存的是试用 token 时，验票回来之前
   `isTrial()` 是 false，页面会按「已登录的真实账号」渲染，输入框全放开。
-- **锁定态 = 没有真实身份**（`!globalData.logged || isTrial()`），⛔ 别只写
-  `role === 'trial'`：领试用身份会失败（限流 429、断网、首帧还没回来），
-  那时 role 是空的 → 反而放开输入框。这正是老师看到的「录入页没锁」。
+- **锁定态 = 没有确凿真实身份**：`lockedState()` 写成
+  `!(logged && role && !isTrial())`，即 **默认锁、只有拿到真身份才开**。
+  ⛔ 反过来「找出理由才锁」必漏：只看 `role==='trial'` → 领试用身份失败
+  （限流 429 / 断网 / 首帧没回来）时 role 是空的 → 反而放开输入框；
+  只看 `!logged` → 验票异步未回那一下该开的没开。
+  页面 `data.trial` 初值一律 **true**（先锁着），靠 onShow 的 `trial.sync` /
+  `broadcastIdentity` 同步到真身份才解开。首页同口径（三条件都看）。
 - 判断统一用 `trial.locked(this)`；`onTapLocked` 每次也以 app 身份重同步一次兜底。
   ⚠️ `app.autoLogin()` 拿到缓存 token 时必须**先把 `logged` 置 true** 再 refreshMe ——
   否则每次冷启动都会闪一下「全锁住」。
