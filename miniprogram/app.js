@@ -151,13 +151,13 @@ App({
         this.broadcastIdentity(); // role 可能变了（批准/冻结），同步一次锁定态
       })
       .catch(() => {
-        // token 过期了：清掉。退出过的只补试用身份（别把他静默登回账号），
-        // 没退出过的静默 wx.login 回原账号 —— 跟冷启动一个待遇。
+        // token 过期了：清掉，一律落回试用态。
+        // ⛔ 别在这里静默 wx.login 登回账号 —— 那会造成「我没登录啊怎么什么都能点」：
+        //    登录态必须来自用户亲手点的那一下「微信登录」，界面上才有迹可循。
         this.globalData.logged = false;
         wx.removeStorageSync('jrp_token');
         wx.removeStorageSync('jrp_role');
-        if (this.loggedOut()) { this.loginTrial(); return; }
-        this.login();
+        this.loginTrial();
       });
   },
 

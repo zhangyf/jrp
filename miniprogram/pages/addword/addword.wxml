@@ -1,6 +1,7 @@
 <view class="wrap">
   <!-- 体验版：这一页只让人看看长什么样，大模型和写词库都对它关着 -->
   <view class="trial-note" wx:if="{{trial}}">体验版 · 只展示页面，登录后才能录词（大模型和写词库都没开）</view>
+  <view class="trial-note logged-note" wx:else>已登录 · 录入直接写入档案</view>
 
   <view class="result" wx:if="{{result}}">
     <view class="r-title">录好了</view>

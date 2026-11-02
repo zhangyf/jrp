@@ -15,6 +15,14 @@
   text-align: center;
 }
 
+/* 登录态的提示条：跟体验版黄条同一个位置、绿色系 —— 两种状态一眼分得清，
+   不然「没登录怎么还能输入」和「其实已经登录了」根本分不出来。 */
+.logged-note {
+  background: #eef6f0;
+  border-color: #cfe3d6;
+  color: #2f6f4f;
+}
+
 .sec {
   background: #ffffff;
   border: 1rpx solid #e2e2dd;
