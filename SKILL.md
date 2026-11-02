@@ -1720,6 +1720,10 @@ tabBar 三项：**练习 / 统计 / 录入**。
   正常态才是真 input。样式 `.locked` 在 app.wxss（灰底 + flex 居中）。
 - `trial.sync` 挂 onShow：冷启动领身份是异步的，进页面那刻可能还没拿到；
   从登录页换身份回来也靠它把锁解开。addword 本来有 onShow，改成在里面调 `trial.sync(this)`。
+- ⚠️ **`role` 也要落本地存储（`jrp_role`）**，跟 token 一起在 login / loginTrial /
+  refreshMe 写入、logout / 验票失败时清除，`autoLogin` 恢复 token 时一并恢复 role。
+  ⛔ 只置 `logged=true` 不恢复 role：缓存的是试用 token 时，验票回来之前
+  `isTrial()` 是 false，页面会按「已登录的真实账号」渲染，输入框全放开。
 - **锁定态 = 没有真实身份**（`!globalData.logged || isTrial()`），⛔ 别只写
   `role === 'trial'`：领试用身份会失败（限流 429、断网、首帧还没回来），
   那时 role 是空的 → 反而放开输入框。这正是老师看到的「录入页没锁」。

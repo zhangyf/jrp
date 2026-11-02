@@ -38,10 +38,12 @@ App({
     const cached = wx.getStorageSync('jrp_token');
     if (cached) {
       this.globalData.token = cached;
-      // ⚠️ 先当成已登录：验票是异步的，那一瞬 globalData.logged 还是 false，
-      //    所有页面会按「没身份」先锁一遍（老师每次冷启动都闪一下灰的）。
-      //    真过期了 refreshMe 会把它改回来并重新登录。
+      // ⚠️ logged 和 role 都要先从本地恢复，再异步验票：
+      //    只置 logged 不置 role 的话，「缓存的是试用 token」这种情形会在
+      //    验票回来之前被渲染成「已登录的真实账号」—— 输入框全放开（老师 13:42 撞上的就是这个）。
+      //    role 存储在 login / loginTrial / refreshMe 时同步写入。
       this.globalData.logged = true;
+      this.globalData.role = wx.getStorageSync('jrp_role') || '';
       this.refreshMe();
       return;
     }
@@ -70,6 +72,7 @@ App({
             this.globalData.name = res.name || '';
             this.globalData.logged = true;
             wx.setStorageSync('jrp_token', this.globalData.token);
+            wx.setStorageSync('jrp_role', this.globalData.role);
             this.clearLogoutFlag(); // 主动登录过，下次冷启动照旧直接进
             this.broadcastIdentity(); // 解锁所有已打开的页面
             if (cb) cb(null, res);
@@ -95,6 +98,7 @@ App({
         this.globalData.name = res.name || '';
         this.globalData.logged = true;
         wx.setStorageSync('jrp_token', this.globalData.token);
+        wx.setStorageSync('jrp_role', this.globalData.role);
         // ⚠️ 不清退出标记：领试用身份是自动的，不是用户主动登录。
         //    清了的话「退出 → 冷启动自动领试用 → 标记没了 → 下次 token 过期
         //    就被静默 wx.login 登回账号」，退出就白点了。标记只有 login() 清。
@@ -128,6 +132,7 @@ App({
     this.globalData.name = '';
     this.globalData.logged = false;
     wx.removeStorageSync('jrp_token');
+    wx.removeStorageSync('jrp_role');
     wx.setStorageSync(this.logoutFlagKey, 1);
     this.broadcastIdentity(); // 剩下的页面立刻锁回去
     wx.reLaunch({ url: '/pages/index/index' });
@@ -142,6 +147,7 @@ App({
         this.globalData.daysLeft = res.days_left || 0;
         this.globalData.name = res.name || '';
         this.globalData.logged = true;
+        wx.setStorageSync('jrp_role', this.globalData.role);
         this.broadcastIdentity(); // role 可能变了（批准/冻结），同步一次锁定态
       })
       .catch(() => {
@@ -149,6 +155,7 @@ App({
         // 没退出过的静默 wx.login 回原账号 —— 跟冷启动一个待遇。
         this.globalData.logged = false;
         wx.removeStorageSync('jrp_token');
+        wx.removeStorageSync('jrp_role');
         if (this.loggedOut()) { this.loginTrial(); return; }
         this.login();
       });
