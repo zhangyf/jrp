@@ -11,6 +11,7 @@
 //   1. data 里加 trial / needLogin 两个字段
 //   2. 页面 js 挂这几个方法（⚠️ 是挂方法不是调函数：里面用 this 取页面实例）
 //        onShow: trial.sync            // 页面本来就有 onShow 的，在里面加一行 trial.sync(this)
+//                                      // —— 两种都行，sync 认参数也认 this（见 sync 的注释）
 //        onTapLocked: trial.onTapLocked
 //        closeLogin: trial.closeLogin
 //        goLogin: trial.goLogin
@@ -39,8 +40,28 @@ function lockedState() {
 
 // 试用身份是冷启动异步领的，进页面那一瞬可能还没拿到 —— 所以 onShow 里每次同步一次。
 // 登录后 app 会广播（broadcastIdentity）再把所有页面同步一遍。
-function sync() {
-  this.setData({ trial: lockedState() });
+//
+// ⚠️ 两种挂法都得能跑（2026-11-03 的真事故）：
+//     onShow: trial.sync          → 方法调用，this 就是页面实例
+//     onShow(){ trial.sync(this) } → 页面从参数进来，this 是 trial 模块对象
+//   以前只认 this，于是第二种挂法里 this.setData 不存在 → onShow 直接抛异常，
+//   data.trial 永远是初始的 true（默认锁）—— 表现就是「进了页面还是未登录，
+//   点一下输入框才恢复」（onTapLocked 是挂在页面上的，this 正常，所以点一下就对了）。
+//   ⚠️ 两个都不是（比如直接 trial.sync()）就静默返回，别抛。
+function sync(page) {
+  const p = (page && typeof page.setData === 'function') ? page
+    : (this && typeof this.setData === 'function') ? this
+      : null;
+  if (!p) return;
+  // 有凭证却没身份（refreshMe 还在飞 / 上一次验票失败了）→ 主动核一次。
+  // 核完 app 会广播，各页 syncTrial 再来一遍，那时候就解锁了。
+  // ⛔ 没 token 不核（那是真没登录，领试用身份归 app 管，别在这儿自作主张）；
+  // ⛔ role 已经是 trial 也不核（没有真身份可核）。所以最多多打一个请求。
+  const a = app();
+  if (a.globalData.token && (!a.globalData.logged || !a.globalData.role)) {
+    a.refreshMe();
+  }
+  p.setData({ trial: lockedState() });
 }
 
 // 点被锁住的入口 → 弹浮层。

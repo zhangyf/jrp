@@ -30,7 +30,10 @@ Page({
     } catch (e) { /* 取不到就用默认值 */ }
   },
 
-  onShow() {
+  // 身份刷成页面状态。onShow 每次调，身份广播（broadcastIdentity）也会叫到 ——
+  // 别的页面登了录，留在栈里的首页要能当场跟着变，不能等切回来才对得上
+  // （2026-11-03 老师：「小程序里经常能看到这种不一致」）。
+  syncTrial() {
     const g = app.globalData;
     // ⚠️ 「体验态」= 没有真实身份（没登录 或 只是试用身份），跟 utils/trial.js 一个口径。
     //    只看 role==='trial' 会漏掉「领试用身份失败（限流/断网）」那一段，
@@ -40,11 +43,16 @@ Page({
       logged: !!g.logged, role: g.role || '', trial: trial,
       pending: !!g.pending, daysLeft: g.daysLeft || 0
     });
+  },
+
+  onShow() {
+    this.syncTrial();
 
     // 自定义 tabBar 每个页面各一份实例，切回来时要告诉它「现在是我在前面」。
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 0 });
     }
+    const g = app.globalData;
     if (!g.logged) {
       // 冷启动还没身份 → 静默领体验版，先让页面能用。
       // ⚠️ 退出过的人也照领：试用身份不是账号，「退出」要挡的只是静默微信登录，

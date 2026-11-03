@@ -1839,6 +1839,16 @@ tabBar 三项：**练习 / 统计 / 录入**。
   正常态才是真 input。样式 `.locked` 在 app.wxss（灰底 + flex 居中）。
 - `trial.sync` 挂 onShow：冷启动领身份是异步的，进页面那刻可能还没拿到；
   从登录页换身份回来也靠它把锁解开。addword 本来有 onShow，改成在里面调 `trial.sync(this)`。
+  ⛔ **2026-11-03 的真事故**：`sync` 原来只认 `this`，而 `trial.sync(this)` 是普通函数调用
+  （`this` = trial 模块对象，不是页面）→ `this.setData` 不存在 → **onShow 里抛异常**，
+  `data.trial` 永远停在初始值 `true`（默认锁）。症状极隐蔽：**「进了页面还是未登录，
+  点一下输入框才恢复」**——因为 `onTapLocked` 是挂页面上的方法，this 正常，点一下就纠正了。
+  现在 `sync(page)` 参数、this 两种都认（都不是就静默返回）。
+  ⚠️ 用 `onShow: trial.sync`（方法挂载）的页面从没出过这问题 —— 两种写法都能跑，别混着猜。
+- **身份没确认完就进页面**：`sync` 里若「有 token 但 `logged`/`role` 缺一个」会主动
+  `refreshMe()` 核一次（核完广播回各页解锁）。⛔ 没 token / role 已是 trial 时不核。
+- 首页（`pages/index`）自己算 `trial`，也要挂 `syncTrial()` —— 否则在别的页面登录后，
+  留在栈里的首页要等切回去才更新（2026-11-03 一并修）。
 - ⚠️ **`role` 也要落本地存储（`jrp_role`）**，跟 token 一起在 login / loginTrial /
   refreshMe 写入、logout / 验票失败时清除，`autoLogin` 恢复 token 时一并恢复 role。
   ⛔ 只置 `logged=true` 不恢复 role：缓存的是试用 token 时，验票回来之前
