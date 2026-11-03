@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"strings"
+
+	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
 // 回炉变形句库的 COS 读写与圆级加权（编排层，留根包）。
@@ -59,5 +61,5 @@ func reviewCircle(ctx context.Context, st *Storage) map[string]string {
 		log.Printf("sentence-review: 词性表读不了（%v），回炉句不按圆级分层", err)
 		return nil
 	}
-	return circleMap(meta)
+	return wordmeta.CircleMap(meta)
 }

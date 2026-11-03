@@ -8,6 +8,7 @@ import (
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/sentence"
+	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
 // handleRecord 统一落库入口。
@@ -169,7 +170,7 @@ func (s *server) tomorrowPreview(st *Storage) map[string]interface{} {
 	if err != nil {
 		return map[string]interface{}{"error": err.Error()}
 	}
-	plan := BuildDuePlan(arc, s.lang, tomorrow, holdSet(dueHold(ctx, st)))
+	plan := BuildDuePlan(arc, s.lang, tomorrow, wordmeta.HoldSet(dueHold(ctx, st)))
 	return map[string]interface{}{
 		"date":      tomorrow.Format("2006-01-02"),
 		"due_count": len(plan.Words),

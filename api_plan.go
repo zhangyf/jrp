@@ -11,6 +11,7 @@ import (
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
 	"github.com/zhangyf/jrp/internal/sentencereview"
+	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
 // handlePlan 返回某天的练习计划。
@@ -100,7 +101,7 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request, st *Storage)
 		out["sentences"] = plan.Sentences
 
 	default:
-		plan := BuildDuePlan(arc, s.lang, targetDate, holdSet(dueHold(ctx, st)))
+		plan := BuildDuePlan(arc, s.lang, targetDate, wordmeta.HoldSet(dueHold(ctx, st)))
 		if !readOnly {
 			// plan JSON 供 /api/record 把序号映射回词
 			if err := st.UploadPlan(ctx, plan); err != nil {
@@ -285,21 +286,8 @@ func (s *server) enrichWordMeta(ctx context.Context, st *Storage, words []PlanWo
 	}
 	for i := range words {
 		words[i].Pos, words[i].Sub, words[i].Note, words[i].Circle =
-			lookupWordMeta(meta, words[i].Word)
+			wordmeta.LookupWordMeta(meta, words[i].Word)
 	}
-}
-
-// lookupWordMeta 按完整词形「假名(汉字)」查词性 / 备注 / 圆级。
-// 查不到返回四个空串 —— 页面显示「—」，不影响练习。
-func lookupWordMeta(meta *WordMeta, word string) (pos, sub, note, circle string) {
-	if meta == nil {
-		return "", "", "", ""
-	}
-	p, ok := meta.Items[word]
-	if !ok {
-		return "", "", "", ""
-	}
-	return p.Pos, p.Sub, p.Note, p.Circle
 }
 
 // enrichReviewMeta 给回看快照 join 词性 / 备注 —— 跟 enrichWordMeta 同一份
@@ -315,7 +303,7 @@ func (s *server) enrichReviewMeta(ctx context.Context, st *Storage, snap *Review
 	}
 	for i := range snap.Items {
 		snap.Items[i].Pos, snap.Items[i].Sub, snap.Items[i].Note, snap.Items[i].Circle =
-			lookupWordMeta(meta, snap.Items[i].Word)
+			wordmeta.LookupWordMeta(meta, snap.Items[i].Word)
 	}
 }
 

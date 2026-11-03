@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
+	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
 // ============================================================================
@@ -23,97 +23,11 @@ import (
 //
 // 分级和挂起都存在 word_meta.json（跟 pos/sub/note 同一处），
 // ⛔ 不动档案的 7 列 markdown 表格结构 —— 动表格要改所有读写档案的地方，不值。
-
-// CircleItem 一条待处理的词。
-type CircleItem struct {
-	Word   string `json:"word"`             // 档案词形：假名(汉字)
-	Def    string `json:"def,omitempty"`    // 中文释义（新增时才用；含括号区分点）
-	Pos    string `json:"pos,omitempty"`    // 词性大类
-	Sub    string `json:"sub,omitempty"`    // 细分：一类/二类/三类、い形/な形
-	Circle string `json:"circle"`           // 三圆 / 二圆 / 一圆
-	Lesson int    `json:"lesson,omitempty"` // 手册课号，决定新词进哪个组
-	Group  string `json:"group,omitempty"`  // 显式指定分组名，优先于 Lesson
-}
-
-// CircleInput 一次批量操作的输入。
-type CircleInput struct {
-	Language string       `json:"language,omitempty"`
-	Words    []CircleItem `json:"words"`
-	// DefFix 是「只改释义」的老词 —— 给原来没写区分括号的词补上，
-	// 免得新词跟老词看中文分不出该写哪个（2026-11-02 补了 10 个）。
-	DefFix []CircleItem `json:"def_fix,omitempty"`
-}
-
-// CircleOutcome 是执行结果。
-type CircleOutcome struct {
-	Added       int      `json:"added"`      // 新增进档案的词数
-	Duplicates  int      `json:"duplicates"` // 词形已存在，跳过
-	Tagged      int      `json:"tagged"`     // 打上/更新圆级标的词数
-	Held        int      `json:"held"`       // 被挂起（不进练习）的词数
-	DefFixed    int      `json:"def_fixed"`  // 改过释义的老词数
-	OldFilename string   `json:"old_filename"`
-	NewFilename string   `json:"new_filename"`
-	Version     string   `json:"version"`
-	TotalWords  int      `json:"total_words"`
-	Groups      []string `json:"groups,omitempty"` // 这次动过的分组
-	DupDefs     []string `json:"dup_definitions,omitempty"`
-	DupCores    []string `json:"dup_core_definitions,omitempty"`
-	Warnings    []string `json:"warnings,omitempty"`
-}
-
-// circleGroupOf 决定一个新词进哪个分组：按手册课号「第N课 手册补录」。
-// 课号为 0 又没显式给组名时落「未分组」，跟 add-words 保持一致。
-func circleGroupOf(it CircleItem) string {
-	if g := strings.TrimSpace(it.Group); g != "" {
-		return g
-	}
-	if it.Lesson > 0 {
-		return fmt.Sprintf("第%d课 手册补录", it.Lesson)
-	}
-	return "未分组"
-}
-
-// lessonOfGroup 从分组名里抠课号（「第21课 手册补录」→ 21）。抠不出来返回 0。
-// unhold 按课放开时用：老师说「学到第 21 课了」，就把这一课的词放出来。
-func lessonOfGroup(title string) int {
-	i := strings.Index(title, "第")
-	if i < 0 {
-		return 0
-	}
-	rest := title[i+len("第"):]
-	j := strings.Index(rest, "课")
-	if j <= 0 {
-		return 0
-	}
-	n, err := strconv.Atoi(strings.TrimSpace(rest[:j]))
-	if err != nil {
-		return 0
-	}
-	return n
-}
-
-// circleMap 摊出「词形 -> 圆级」（三圆 / 二圆 / 一圆），供造句子挑句时加权。
 //
-// 拿不到词性表（读失败 / 一条都没标）返回 nil —— 调用方按「不分层」处理，
-// 出题行为跟加这个功能之前一模一样。宁可少加权，也不能因为读不到词表就少出题。
-func circleMap(meta *WordMeta) map[string]string {
-	if meta == nil || len(meta.Items) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(meta.Items))
-	for w, p := range meta.Items {
-		if c := strings.TrimSpace(p.Circle); c != "" {
-			out[w] = c
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
-}
-
-// 圆级分档已迁 internal/sentencereview.CircleRank（纯函数）。
-// circleMap 依赖根包 WordMeta 类型，留在这里；分档只吃摊好的 map，归纯规则层。
+// 词性表 / 圆级纯规则（CircleGroupOf / LessonOfGroup / CircleMap 及 5 个类型）
+// 已迁 internal/wordmeta，根包靠 types.go 的别名保持 WordMeta 等名字不变。
+// 圆级分档 CircleRank 归 internal/sentencereview，只吃摊好的 map。
+// applyCircle / unholdLesson 要写档案，留根；编排照旧。
 
 // applyCircle 是批量导入/打标的唯一实现。
 //
@@ -172,7 +86,7 @@ func applyCircle(ctx context.Context, st *Storage, in *CircleInput, hold bool) (
 			out.Warnings = append(out.Warnings,
 				fmt.Sprintf("「%s」档案里没有，输入也没给释义 —— 只打了圆级标，没录进词库", word))
 		} else {
-			group := circleGroupOf(it)
+			group := wordmeta.CircleGroupOf(it)
 			// 撞车点名（跟 add-words 同一套规矩，不阻断）
 			if others := sameDefinitionWords(arc.Groups, it.Def, ""); len(others) > 0 {
 				out.DupDefs = append(out.DupDefs, fmt.Sprintf(
@@ -278,7 +192,7 @@ func unholdLesson(ctx context.Context, st *Storage, lesson int) (int, error) {
 	}
 	n := 0
 	for _, g := range arc.Groups {
-		if lesson > 0 && lessonOfGroup(g.Title) != lesson {
+		if lesson > 0 && wordmeta.LessonOfGroup(g.Title) != lesson {
 			continue
 		}
 		for _, w := range g.Words {

@@ -9,6 +9,7 @@ import (
 	"github.com/zhangyf/jrp/internal/planconfig"
 	"github.com/zhangyf/jrp/internal/sentence"
 	"github.com/zhangyf/jrp/internal/sentencereview"
+	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
 func TestGroupLesson(t *testing.T) {
@@ -286,7 +287,7 @@ func TestCircleMapAndRank(t *testing.T) {
 		"いす(椅子)":  {Pos: "名词"},
 		"でんわ(電話)": {Pos: "名词", Circle: "3圆"}, // 手写分级写歪了 → 落「没标」
 	}}
-	m := circleMap(meta)
+	m := wordmeta.CircleMap(meta)
 	if got := sentencereview.CircleRank(m, "みず(水)"); got != 0 {
 		t.Errorf("三圆 rank=%d，要 0", got)
 	}
@@ -302,10 +303,10 @@ func TestCircleMapAndRank(t *testing.T) {
 	if got := sentencereview.CircleRank(m, "でんわ(電話)"); got != 3 {
 		t.Errorf("写歪的分级（3圆）rank=%d，要 3（不参与优先）", got)
 	}
-	if circleMap(nil) != nil {
+	if wordmeta.CircleMap(nil) != nil {
 		t.Error("词表为 nil 时 circleMap 应返回 nil")
 	}
-	if circleMap(&WordMeta{}) != nil {
+	if wordmeta.CircleMap(&WordMeta{}) != nil {
 		t.Error("空词表 circleMap 应返回 nil")
 	}
 }

@@ -3,6 +3,8 @@ package main
 import (
 	"testing"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
 func TestCircleGroupOf(t *testing.T) {
@@ -16,7 +18,7 @@ func TestCircleGroupOf(t *testing.T) {
 		{CircleItem{Lesson: 5, Group: "自定义组"}, "自定义组"},
 	}
 	for _, c := range cases {
-		if got := circleGroupOf(c.in); got != c.want {
+		if got := wordmeta.CircleGroupOf(c.in); got != c.want {
 			t.Errorf("circleGroupOf(%+v) = %q, want %q", c.in, got, c.want)
 		}
 	}
@@ -35,7 +37,7 @@ func TestLessonOfGroup(t *testing.T) {
 		{"第课", 0},
 	}
 	for _, c := range cases {
-		if got := lessonOfGroup(c.title); got != c.want {
+		if got := wordmeta.LessonOfGroup(c.title); got != c.want {
 			t.Errorf("lessonOfGroup(%q) = %d, want %d", c.title, got, c.want)
 		}
 	}
@@ -43,17 +45,17 @@ func TestLessonOfGroup(t *testing.T) {
 
 func TestHoldSet(t *testing.T) {
 	// meta 为 nil → 一个都不排除（fail-open：读不到配置不能把计划清空）
-	if got := holdSet(nil); got != nil {
+	if got := wordmeta.HoldSet(nil); got != nil {
 		t.Errorf("holdSet(nil) = %v, want nil", got)
 	}
 	// 没有 hold → 也是 nil
 	m := &WordMeta{Items: map[string]WordPOS{"あ": {Pos: "名词"}}}
-	if got := holdSet(m); got != nil {
+	if got := wordmeta.HoldSet(m); got != nil {
 		t.Errorf("holdSet(no hold) = %v, want nil", got)
 	}
 	// 有 hold → 只收 hold 的
 	m.Items["ほーるど"] = WordPOS{Hold: true}
-	got := holdSet(m)
+	got := wordmeta.HoldSet(m)
 	if !got["ほーるど"] {
 		t.Error("holdSet 应该包含 hold 的词")
 	}

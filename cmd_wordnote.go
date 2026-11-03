@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
 // runWordNote 维护词条的「备注」—— 主要写跟近义词怎么区分。
@@ -77,7 +79,7 @@ func runWordNote(fs *flag.FlagSet, lang string) {
 		if _, ok := m.Items[w]; !ok {
 			// 词形没命中多半是括号/汉字写法对不上，给几个候选比直接报错有用
 			fmt.Fprintf(os.Stderr, "Error: 词表里没有这个词：%s\n", w)
-			if near := nearKeys(m.Items, w); len(near) > 0 {
+			if near := wordmeta.NearKeys(m.Items, w); len(near) > 0 {
 				fmt.Fprintf(os.Stderr, "是不是想找：%s\n", strings.Join(near, " / "))
 			}
 			os.Exit(1)
@@ -133,27 +135,4 @@ func listNotes(m *WordMeta) {
 		"success": true, "command": "word-note", "count": len(rows),
 		"total": len(m.Items), "notes": rows,
 	})
-}
-
-// nearKeys 找出包含给定子串的词形，最多 5 个（子串从 2 个字符起才有效）。
-func nearKeys(items map[string]WordPOS, w string) []string {
-	key := strings.TrimSpace(w)
-	// 去掉括号里的汉字写法再试，老师经常只打假名
-	if i := strings.IndexAny(key, "（("); i > 0 {
-		key = strings.TrimSpace(key[:i])
-	}
-	if len([]rune(key)) < 2 {
-		return nil
-	}
-	var out []string
-	for k := range items {
-		if strings.Contains(k, key) {
-			out = append(out, k)
-		}
-	}
-	sort.Strings(out)
-	if len(out) > 5 {
-		out = out[:5]
-	}
-	return out
 }
