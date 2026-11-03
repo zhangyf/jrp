@@ -2,13 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"regexp"
 	"sort"
-	"strings"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -69,14 +70,14 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 
 	today := time.Now()
 	type item struct {
-		Word     string        `json:"word"`
-		Pos      string        `json:"pos"`
-		Def      string        `json:"def"`
-		Lesson   string        `json:"lesson"`
-		Reviews  int           `json:"reviews"`
-		Accuracy float64       `json:"accuracy"`
-		IdleDays int           `json:"idle_days"`
-		DueIn    int           `json:"days_to_qualify,omitempty"` // 仅"在路上"的词有
+		Word     string         `json:"word"`
+		Pos      string         `json:"pos"`
+		Def      string         `json:"def"`
+		Lesson   string         `json:"lesson"`
+		Reviews  int            `json:"reviews"`
+		Accuracy float64        `json:"accuracy"`
+		IdleDays int            `json:"idle_days"`
+		DueIn    int            `json:"days_to_qualify,omitempty"` // 仅"在路上"的词有
 		Protos   []protoSuggest `json:"prototypes,omitempty"`
 	}
 	var qualified, pending []item
@@ -136,9 +137,9 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 		"language": lang,
 		"note":     "只读体检，未写入任何数据",
 		"criteria": map[string]interface{}{
-			"min_reviews":    2,
-			"min_accuracy":   0.8,
-			"min_idle_days":  DefaultReviewIdleDays,
+			"min_reviews":   2,
+			"min_accuracy":  0.8,
+			"min_idle_days": DefaultReviewIdleDays,
 		},
 		"summary": map[string]interface{}{
 			"archive_words": len(seen),
@@ -522,4 +523,343 @@ func runSentenceReviewStats(fs *flag.FlagSet, lang string) {
 func jpLen(s string) int {
 	s = strings.NewReplacer(" ", "", "\u3000", "", "\t", "").Replace(s)
 	return len([]rune(s))
+}
+
+// ---------- 回炉句库读写（2026-11-03 补） ----------
+
+// runSentenceReviewBank 回炉变形句库的上传/下载入口。
+//
+// 为什么以前没有它：句库由 AI 造（Go 里没分词器，判断不出句子里哪个位置
+// 能换什么词），造完只能靠 COS 直传写回 —— 没校验、没去重、补一批得整库覆盖。
+// 现在补批走 --merge：按锚点词去重只追加新的，已有的句子一条不动。
+//
+//	jrp --lang ja sentence-review-bank                    # 概览
+//	jrp --lang ja sentence-review-bank --dump             # 下载整库打印到 stdout
+//	jrp --lang ja sentence-review-bank --merge new.json   # 补批（推荐，只追加）
+//	jrp --lang ja sentence-review-bank --file all.json    # 全量覆盖（先 --dump 下来改）
+func runSentenceReviewBank(fs *flag.FlagSet, lang string) {
+	file := fs.String("file", "", "本地 JSON 路径，上传**覆盖**整库")
+	merge := fs.String("merge", "", "本地 JSON 路径，只**追加**（按锚点词去重，已存在则跳过）")
+	dump := fs.Bool("dump", false, "下载 COS 回炉库并打印到 stdout")
+	_ = fs.Parse(cmdArgs)
+
+	storage, err := NewStorage(lang)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	ctx := context.Background()
+
+	switch {
+	case *dump:
+		rb, err := storage.DownloadReviewBank(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 读取回炉句库失败：%v\n", err)
+			os.Exit(1)
+		}
+		outputResult(rb)
+		return
+
+	case *file != "":
+		nb, err := loadReviewFile(*file)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 读取本地文件失败：%v\n", err)
+			os.Exit(1)
+		}
+		fatal, warn := checkReviewSentences(ctx, storage, nb.Sentences, lang)
+		reportReviewCheck(fatal, warn)
+		if len(fatal) > 0 {
+			fmt.Fprintln(os.Stderr, "Error: 校验没过，没有上传（改完再来）")
+			os.Exit(1)
+		}
+		if nb.Updated == "" {
+			nb.Updated = time.Now().Format("2006-01-02")
+		}
+		if nb.Version == 0 {
+			nb.Version = 1
+		}
+		if err := storage.UploadReviewBank(ctx, nb); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 上传回炉句库失败：%v\n", err)
+			os.Exit(1)
+		}
+		outputResult(map[string]interface{}{
+			"success":   true,
+			"command":   "sentence-review-bank",
+			"mode":      "file",
+			"uploaded":  len(nb.Sentences),
+			"bank_key":  storage.reviewBankKey(),
+			"next_step": "跑 sentence-review-todo 看 missing 是否归零，再 sentence-preview 看今天会出哪些",
+		})
+		return
+
+	case *merge != "":
+		cur, err := storage.DownloadReviewBank(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 读取回炉句库失败：%v\n", err)
+			os.Exit(1)
+		}
+		add, err := loadReviewFile(*merge)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 读取本地文件失败：%v\n", err)
+			os.Exit(1)
+		}
+		haveWord := map[string]bool{}
+		haveAns := map[string]bool{}
+		haveID := map[string]bool{}
+		for _, s := range cur.Sentences {
+			if s.Word != "" {
+				haveWord[s.Word] = true
+			}
+			haveAns[normSentence(s.Answer)] = true
+			haveID[s.ID] = true
+		}
+		fatal, warn := checkReviewSentences(ctx, storage, add.Sentences, lang)
+		reportReviewCheck(fatal, warn)
+		if len(fatal) > 0 {
+			fmt.Fprintln(os.Stderr, "Error: 校验没过，没有上传（改完再来）")
+			os.Exit(1)
+		}
+		nextN := nextReviewIDNum(cur.Sentences)
+		var added []ReviewSentence
+		var skipped []string
+		for _, s := range add.Sentences {
+			switch {
+			case s.Word != "" && haveWord[s.Word]:
+				skipped = append(skipped, s.Word+"（已有变形句）")
+				continue
+			case haveAns[normSentence(s.Answer)]:
+				skipped = append(skipped, s.Answer+"（句子已存在）")
+				continue
+			}
+			if s.ID == "" || haveID[s.ID] {
+				for {
+					nextN++
+					id := fmt.Sprintf("R%03d", nextN)
+					if !haveID[id] {
+						s.ID = id
+						break
+					}
+				}
+			}
+			if s.Type == "" {
+				s.Type = "transformed"
+			}
+			haveID[s.ID] = true
+			haveAns[normSentence(s.Answer)] = true
+			if s.Word != "" {
+				haveWord[s.Word] = true
+			}
+			added = append(added, s)
+		}
+		if len(added) == 0 {
+			outputResult(map[string]interface{}{
+				"success": true, "command": "sentence-review-bank", "mode": "merge",
+				"added": 0, "skipped": skipped,
+				"hint": "没有新句子要加（可能这批词都已经有变形句了）",
+			})
+			return
+		}
+		cur.Sentences = append(cur.Sentences, added...)
+		cur.Updated = time.Now().Format("2006-01-02")
+		if cur.Version == 0 {
+			cur.Version = 1
+		}
+		if err := storage.UploadReviewBank(ctx, cur); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 上传回炉句库失败：%v\n", err)
+			os.Exit(1)
+		}
+		outputResult(map[string]interface{}{
+			"success":   true,
+			"command":   "sentence-review-bank",
+			"mode":      "merge",
+			"added":     len(added),
+			"total":     len(cur.Sentences),
+			"skipped":   skipped,
+			"bank_key":  storage.reviewBankKey(),
+			"next_step": "跑 sentence-review-todo 看 missing 是否下降，再 sentence-preview",
+		})
+		return
+
+	default:
+		rb, err := storage.DownloadReviewBank(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 读取回炉句库失败：%v\n", err)
+			os.Exit(1)
+		}
+		byLesson := map[string]int{}
+		words := map[string]bool{}
+		bySource := map[string]int{}
+		for _, s := range rb.Sentences {
+			byLesson[s.Lesson]++
+			bySource[s.Source]++
+			if s.Word != "" {
+				words[s.Word] = true
+			}
+		}
+		lessons := make([]string, 0, len(byLesson))
+		for k := range byLesson {
+			lessons = append(lessons, k)
+		}
+		sortLessons(lessons)
+		outputResult(map[string]interface{}{
+			"success":   true,
+			"command":   "sentence-review-bank",
+			"version":   rb.Version,
+			"updated":   rb.Updated,
+			"total":     len(rb.Sentences),
+			"words":     len(words),
+			"by_lesson": byLesson,
+			"by_source": bySource,
+			"bank_key":  storage.reviewBankKey(),
+		})
+	}
+}
+
+// loadReviewFile 读本地回炉句文件。两种格式都收：
+// {"sentences": [...]}（整库，--file 用）和裸数组 [...](补批，--merge 用)。
+func loadReviewFile(path string) (*ReviewBank, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var b ReviewBank
+	if err := json.Unmarshal(data, &b); err == nil && len(b.Sentences) > 0 {
+		return &b, nil
+	}
+	var ss []ReviewSentence
+	if err := json.Unmarshal(data, &ss); err != nil {
+		return nil, err
+	}
+	return &ReviewBank{Sentences: ss}, nil
+}
+
+// checkReviewSentences 上传前的体检，返回致命问题和提醒。
+//
+// 致命（阻断上传）：锚点词不在档案里（词形写错，挑句时查不到就会永远轮不到）、
+// 原型句不在主句库里（变形句必须是课本原句的改造）、answer 空/跟课本原文撞车、
+// id 重复。
+// 提醒（只打印）：变形句跟原型句的空格分段数不一致 —— 变形规则是「只换一个词、
+// 助词序列不动」，段数对不上多半是助词被改了，人看一眼再决定。
+//
+// 档案/主句库读不了时跳过对应那项（fail-open）：补批是人工活，
+// 网络抖一下不该把整批卡住，但校验项会在输出里标注"未校验"。
+func checkReviewSentences(ctx context.Context, st *Storage, ss []ReviewSentence, lang string) (fatal []string, warn []string) {
+	bank, errBank := st.DownloadSentenceBank(ctx)
+	protoBy := map[string]BankSentence{}
+	bankAns := map[string]bool{}
+	if errBank == nil && bank != nil {
+		for _, s := range bank.Sentences {
+			if s.Answer == "" {
+				continue
+			}
+			protoBy[normSentence(s.Answer)] = s
+			bankAns[normSentence(s.Answer)] = true
+		}
+	}
+	arcWords := map[string]bool{}
+	if data, _, err := st.DownloadLatestArchive(ctx); err == nil {
+		if arc, err := ParseArchive(string(data), lang); err == nil {
+			for _, g := range arc.Groups {
+				for _, w := range g.Words {
+					if w.Word != "" {
+						arcWords[w.Word] = true
+					}
+				}
+			}
+		}
+	}
+
+	seenID := map[string]bool{}
+	seenAns := map[string]bool{}
+	for i := range ss {
+		s := &ss[i]
+		tag := s.ID
+		if tag == "" {
+			tag = s.Word
+		}
+		if s.Word == "" {
+			fatal = append(fatal, fmt.Sprintf("第 %d 条：缺 word（锚点词）", i+1))
+		}
+		if s.Answer == "" {
+			fatal = append(fatal, fmt.Sprintf("%s：缺 answer", tag))
+			continue
+		}
+		if s.Word != "" && len(arcWords) > 0 && !arcWords[s.Word] {
+			fatal = append(fatal, fmt.Sprintf("%s：锚点词 %q 不在档案里（词形写错了？）", tag, s.Word))
+		}
+		if s.Prototype == "" {
+			fatal = append(fatal, fmt.Sprintf("%s：缺 prototype（原型句）", tag))
+		} else if len(protoBy) > 0 {
+			if p, ok := protoBy[normSentence(s.Prototype)]; !ok {
+				fatal = append(fatal, fmt.Sprintf("%s：原型句不在主句库里 → %s", tag, s.Prototype))
+			} else {
+				if s.PrototypeID == "" {
+					s.PrototypeID = p.ID
+				}
+				if s.Source == "" {
+					s.Source = p.Source
+				}
+				if s.SourceDoc == "" {
+					s.SourceDoc = p.SourceDoc
+				}
+				if len(strings.Fields(s.Prototype)) != len(strings.Fields(s.Answer)) {
+					warn = append(warn, fmt.Sprintf("%s：分段数跟原型句不同（%d vs %d）—— 助词序列可能被改动了：%s",
+						tag, len(strings.Fields(s.Prototype)), len(strings.Fields(s.Answer)), s.Answer))
+				}
+			}
+		}
+		if bankAns[normSentence(s.Answer)] {
+			fatal = append(fatal, fmt.Sprintf("%s：变形句跟课本原文一模一样 → %s", tag, s.Answer))
+		}
+		if seenAns[normSentence(s.Answer)] {
+			fatal = append(fatal, fmt.Sprintf("%s：这一批里句子重复 → %s", tag, s.Answer))
+		}
+		seenAns[normSentence(s.Answer)] = true
+		if s.ID != "" {
+			if seenID[s.ID] {
+				fatal = append(fatal, fmt.Sprintf("id 重复：%s", s.ID))
+			}
+			seenID[s.ID] = true
+		}
+	}
+	if errBank != nil {
+		warn = append(warn, "主句库读不了，原型句/撞车这两项没校验")
+	}
+	if len(arcWords) == 0 {
+		warn = append(warn, "档案读不了，锚点词这项没校验")
+	}
+	return fatal, warn
+}
+
+func reportReviewCheck(fatal, warn []string) {
+	if len(warn) > 0 {
+		fmt.Fprintln(os.Stderr, "提醒：")
+		for _, w := range warn {
+			fmt.Fprintf(os.Stderr, "  - %s\n", w)
+		}
+	}
+	if len(fatal) > 0 {
+		fmt.Fprintln(os.Stderr, "致命：")
+		for _, f := range fatal {
+			fmt.Fprintf(os.Stderr, "  - %s\n", f)
+		}
+	}
+}
+
+// nextReviewIDNum 现有 id 里最大的序号（R308 → 308），补批时从它往后编。
+// 取 max(现有最大序号, 条数) —— id 有空洞（比如删过中间几条）时也不会撞号。
+func nextReviewIDNum(ss []ReviewSentence) int {
+	max := len(ss)
+	re := regexp.MustCompile(`^R(\d+)$`)
+	for _, s := range ss {
+		m := re.FindStringSubmatch(strings.TrimSpace(s.ID))
+		if len(m) != 2 {
+			continue
+		}
+		n, err := strconv.Atoi(m[1])
+		if err == nil && n > max {
+			max = n
+		}
+	}
+	return max
 }
