@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/grading"
 )
 
 // 离线闭环：导出 Excel 拿去离线练，练完把填好的文件传回来自动解析。
@@ -178,7 +180,7 @@ func (s *server) handleImport(w http.ResponseWriter, r *http.Request, st *Storag
 		return
 	}
 
-	prev, err := ParseExerciseFile(tmp.Name(), ParseGradeMode(r.URL.Query().Get("grade")))
+	prev, err := ParseExerciseFile(tmp.Name(), grading.ParseGradeMode(r.URL.Query().Get("grade")))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
 			"success": false, "error": err.Error(),

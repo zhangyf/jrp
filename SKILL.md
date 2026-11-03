@@ -1383,6 +1383,13 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 - 根目录仍是 `package main`，继续从根目录 `go build .`；`serve.go` 保留 `//go:embed web`，前端和部署方式不变。
 - 目录重构不等于上线。后续模块仍须逐批确认范围，部署单独确认；不迁移或回滚学习数据。
 
+### 单词判分包边界（2026-11-03，后续批次）
+
+- `internal/grading/grade.go`：单词四档判分、答案归一化和多写法匹配；公开 `GradeMode`、档位常量、`ParseGradeMode`、`GradeAnswer`，只依赖标准库。
+- `internal/grading/grade_test.go`：原判分纯测试整体随包迁移；四档语义、空输入、IME 分隔符、片假名折叠和多形态断言不变。单包验证：`go test ./internal/grading`。
+- `api_grade.go`、`api_offline.go` 和 `excel_meta.go` 调用该包；`api_grade_test.go` 和 `excel_meta_test.go` 仍在根包验证 HTTP 与 Excel 回填。`ImportPreview.GradeMode` 仍是字符串，JSON 字段不变。
+- 网页仍使用原 `web/grade.js`，小程序仍调用 `/api/grade`，不新增第三份规则。目录迁移不改变判分口径，也不改变草稿、档案或造句判定。
+
 ## Command Reference
 
 | Command | Flags | Description |
@@ -1539,7 +1546,7 @@ for **active flashcard-style review** — one word at a time, answer by keyboard
     单独再来 —— 比整个请求 504 强得多。
 - `POST /api/grade` — 批量判分（2026-10-19 加，**给小程序用**）：
   `{"mode":"kana|kanji|full|either","items":[{"word":"すし(寿司)","answer":"寿司"}]}`
-  → `{"success":true,"mode":"either","results":[true]}`。复用 Go 的 `GradeAnswer`，
+  → `{"success":true,"mode":"either","results":[true]}`。复用 `internal/grading` 的 `GradeAnswer`，
   web 端仍在浏览器本地用 `web/grade.js` 判，两边同一份口径。空 word/answer 直接 false。
 - Frontend `web/index.html` + `web/kanji/` (KanjiCanvas, MIT). Handwriting recognizes
   **kanji + hiragana + katakana** (kana patterns were generated from KanjiCanvas XML and appended
@@ -1745,7 +1752,7 @@ tabBar 三项：**练习 / 统计 / 录入**。
 - 登录后当场解开：页面挂 `syncTrial()`（app 广播会叫到）→ 重拉当前课；
   浮层里的「微信登录」走 `utils/trial.js` 的 `goLogin`，登录成功自动调 `load()`。
 
-**判分只有一份实现**：新增 `POST /api/grade`（`api_grade.go`），复用 Go 的 `GradeAnswer`，
+**判分只有一份实现**：新增 `POST /api/grade`（`api_grade.go`），复用 `internal/grading` 的 `GradeAnswer`，
 小程序「对答案」整屏一次请求拿回 `results:[bool]`；web 端仍在浏览器本地用 `web/grade.js` 判。
 ⚠️ 别在小程序里再抄一份判分规则，两份迟早漂移。
 

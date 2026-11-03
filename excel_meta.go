@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/xuri/excelize/v2"
+	"github.com/zhangyf/jrp/internal/grading"
 )
 
 // 离线 Excel 闭环：导出时把 plan_date / language / mode 藏进 _meta sheet，
@@ -103,7 +104,7 @@ var sentenceNumRe = regexp.MustCompile(`^S(\d+)$`)
 //
 // 空白单元格 = 老师没写，按「未出现的词完全不处理」的铁律不进结果，
 // 只在 SkippedBlank 里列出序号让前端提示。
-func ParseExerciseFile(path string, mode GradeMode) (*ImportPreview, error) {
+func ParseExerciseFile(path string, mode grading.GradeMode) (*ImportPreview, error) {
 	f, err := excelize.OpenFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("打不开 Excel：%w", err)
@@ -214,7 +215,7 @@ func ParseExerciseFile(path string, mode GradeMode) (*ImportPreview, error) {
 			Definition:  def,
 			Answer:      ansWords[n],
 			Input:       e.input,
-			AutoCorrect: GradeAnswer(e.input, ansWords[n], mode),
+			AutoCorrect: grading.GradeAnswer(e.input, ansWords[n], mode),
 		})
 	}
 
