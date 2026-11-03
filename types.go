@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/zhangyf/jrp/internal/archive"
+	"github.com/zhangyf/jrp/internal/planconfig"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
 	"github.com/zhangyf/jrp/internal/sentencereview"
@@ -30,6 +31,10 @@ type WordGroup = review.WordGroup
 // Archive / ChangelogEntry 这两个名字，不用跟着改。
 type Archive = archive.Archive
 type ChangelogEntry = archive.ChangelogEntry
+
+// 出题配额类型已迁 internal/planconfig，根包只保留别名 —— COS 读写、
+// 60 秒缓存和 CLI 继续用 PlanConfig 这个名字，序列化形态不变。
+type PlanConfig = planconfig.PlanConfig
 
 // 回炉变形句库类型已迁 internal/sentencereview，根包只保留别名 ——
 // sentence_review.go 的 *Storage 方法与 cmd_sentence_review.go 的编排
