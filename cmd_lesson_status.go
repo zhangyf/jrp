@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/zhangyf/jrp/internal/archive"
+	"github.com/zhangyf/jrp/internal/lessonimport"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
 )
@@ -213,30 +214,30 @@ func (s *lessonStatusSource) docStatus(name string, lesson int) lessonDocStatus 
 	st := lessonDocStatus{Name: name}
 	if c, ok := s.fetchDoc(name); ok {
 		st.Exists = true
-		st.Section = hasLessonSection(c, lesson)
-		st.Sentences = len(extractLessonRows(c, lesson))
+		st.Section = lessonimport.HasLessonSection(c, lesson)
+		st.Sentences = len(lessonimport.ExtractLessonRows(c, lesson))
 	}
 	return st
 }
 
 func (s *lessonStatusSource) report(lesson int) lessonStatusReport {
 	r := lessonStatusReport{Lesson: lesson}
-	label := lessonLabelOf(lesson)
+	label := lessonimport.LessonLabelOf(lesson)
 
 	r.KnowledgeDoc = s.hasKnowledgeDoc(lesson, "知识点")
 
 	// 单元与课的对应关系不固定（第3单元塞了7-12课），按内容定位而不是按算术。
-	unit, basic, applied, found := resolveLessonDocs(s.fetchDoc, lesson)
+	unit, basic, applied, found := lessonimport.ResolveLessonDocs(s.fetchDoc, lesson)
 	r.Unit = unit
 	if r.Unit <= 0 {
-		r.Unit = unitOfLesson(lesson) // 没定位到就显示按 4 课一单元猜的，至少不是 0
+		r.Unit = lessonimport.UnitOfLesson(lesson) // 没定位到就显示按 4 课一单元猜的，至少不是 0
 	}
 	if found {
 		r.BasicDoc = s.docStatus(basic, lesson)
 		r.AppliedDoc = s.docStatus(applied, lesson)
 	} else {
-		r.BasicDoc = lessonDocStatus{Name: lessonDocName(r.Unit, lessonDocKinds[0])}
-		r.AppliedDoc = lessonDocStatus{Name: lessonDocName(r.Unit, lessonDocKinds[1])}
+		r.BasicDoc = lessonDocStatus{Name: lessonimport.LessonDocName(r.Unit, lessonimport.LessonDocKinds[0])}
+		r.AppliedDoc = lessonDocStatus{Name: lessonimport.LessonDocName(r.Unit, lessonimport.LessonDocKinds[1])}
 	}
 	r.Words = s.words[lesson]
 

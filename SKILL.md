@@ -1392,6 +1392,14 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 - 根 `archive_test.go` 验证类型别名/JSON形态及七列档案往返；`api_record_test.go` 用内存存储验证每日/钉子户计划编号映射、回写日期、未提交词不变及历史统计，不触真实COS。
 - 本批仅调整包归属和调用引用；HTTP/CLI流程、档案/计划格式、鉴权、COS key、`go:embed web` 和部署方式不变。无新增依赖或数据迁移；提交推送、合并、部署继续分别确认。
 
+### 汇编导入包边界（2026-11-03）
+
+- `internal/lessonimport/parse.go` + `plan.go`：承接原 `lesson_import.go` 的全部纯解析逻辑——单元/课映射、汇编文档定位与命名、Markdown 表格拆分与列判定、抽句与清洗、生词格过滤、导入计划与条目构造。常量、正则、去重与"只追加不覆盖"规则逐字迁移。
+- 导出改名：原小写标识符按需要导出为 `UnitOfLesson`、`ResolveLessonDocs`、`LessonDocName`、`LessonLabelOf`、`LessonDocKind(s)`、`DocFetcher`、`ExtractLessonRows`、`HasLessonSection`、`LessonSectionsIn`、`MaxBankSeq`、`BuildImportPlan`、`NewBankSentence`、`ImportedRow`、`ImportPlan`、`SplitCells`、`TableColumns`、`LessonsPerUnit`、`MaxUnit`；`isSeparatorRow`/`cleanImportedJP`/`isVocabCell` 及 6 个正则保持私有。根包不设转发 wrapper，根 `lesson_import.go` 已删除。
+- `cmd_lesson_import.go` 的编排（`resolveImportDocs`/`collectImport`/`cosFetcher`/`autoImportLessons`/`runSentenceImport`）与 `cmd_save_lesson.go`、`cmd_lesson_status.go` 只改包引用；CLI 行为、COS key 与导入报告结构不变。
+- 测试：`lesson_import_test.go` 14 个用例随包迁移，依赖根 `collectImport` 的 `TestResolveAndCollectImport` 留根；新增 `rules_test.go` 覆盖单元映射越界、表格拆分与列号、清洗与生词格、文档命名、课号定位、最大序号与条目全字段；单包验证：`go test ./internal/lessonimport`。
+- 已知按实现保留的行为（测试已固定，不要当 bug 顺手改）：`SplitCells` 不识别转义竖线；`NewBankSentence` 不填 `Prototype`；`UnitOfLesson` 不按 `MaxUnit` 封顶；`HasLessonSection` 只认 `## ` 标题前缀下的子串、`第190课` 不会误命中 `第19课`。
+
 ### 句子核心包边界（2026-11-03，普通句）
 
 - `internal/sentence/sentence.go`：句库类型 `SentenceBank`/`BankSentence`/`SentenceHistory`/`SentenceWrong`/`WrongSentence`/`SentenceResult`，归一化 `Norm`（原 `normSentence`）与私有 `foldWidth`/`sentenceNormRe`，容错解析 `LoadSentenceHistory`/`LoadSentenceWrong`，出题 `BuildSentencePlan` 及轮换助手，落库 `ApplySentenceState` 及 `nextSentenceDue`/`pruneSentenceHistory`/`mergeUnique`/`chineseFromResults`。函数体、正则、阈值、注释逐字迁移，选题与错句规则不变。

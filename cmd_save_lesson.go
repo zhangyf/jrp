@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/zhangyf/jrp/internal/lessonimport"
 )
 
 func runSaveLesson(fs *flag.FlagSet, lang string) {
@@ -53,7 +55,7 @@ func runSaveLesson(fs *flag.FlagSet, lang string) {
 	// 汇编文档 = 课文句子入口，存完直接把里面每一课的句子导进句库（查重后只加没有的）。
 	// 第19课（2026-10-16）就是存了汇编却没进句库，造句一直练不到那一课 ——
 	// 这条自动链路就是为了不再靠人记得补这一步。
-	if lessons := lessonSectionsIn(string(data)); len(lessons) > 0 {
+	if lessons := lessonimport.LessonSectionsIn(string(data)); len(lessons) > 0 {
 		out["lessons_in_doc"] = lessons
 		added, perLesson, err := autoImportLessons(ctx, storage, lessons, map[string]string{*name: string(data)})
 		if err != nil {
