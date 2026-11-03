@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/xuri/excelize/v2"
+	"github.com/zhangyf/jrp/internal/grading"
 )
 
 // 造一份练习计划，生成 Excel，模拟老师填几个答案，再解析回来。
@@ -103,7 +104,7 @@ func TestExcelRoundTrip(t *testing.T) {
 	f2.Close()
 
 	// --- 解析回来 ---
-	prev, err := ParseExerciseFile(path, GradeKana)
+	prev, err := ParseExerciseFile(path, grading.GradeKana)
 	if err != nil {
 		t.Fatalf("解析失败：%v", err)
 	}
@@ -182,7 +183,7 @@ func TestParseExerciseFileFallbackDate(t *testing.T) {
 	if err := GenerateExcel(plan, path); err != nil {
 		t.Fatal(err)
 	}
-	prev, err := ParseExerciseFile(path, GradeKana)
+	prev, err := ParseExerciseFile(path, grading.GradeKana)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,32 +231,32 @@ func TestParseExerciseFileGradeModes(t *testing.T) {
 
 	// 只写汉字：假名档判错，汉字档判对，任一档判对
 	fill("音楽")
-	p, _ := ParseExerciseFile(path, GradeKana)
+	p, _ := ParseExerciseFile(path, grading.GradeKana)
 	if len(p.Words) != 1 || p.Words[0].AutoCorrect {
 		t.Errorf("假名档下只写汉字应判错：%+v", p.Words)
 	}
-	p, _ = ParseExerciseFile(path, GradeKanji)
+	p, _ = ParseExerciseFile(path, grading.GradeKanji)
 	if len(p.Words) != 1 || !p.Words[0].AutoCorrect {
 		t.Errorf("汉字档下只写汉字应判对：%+v", p.Words)
 	}
-	p, _ = ParseExerciseFile(path, GradeEither)
+	p, _ = ParseExerciseFile(path, grading.GradeEither)
 	if len(p.Words) != 1 || !p.Words[0].AutoCorrect {
 		t.Errorf("任一档下只写汉字应判对：%+v", p.Words)
 	}
 
 	// 写假名：任一档判对；grade_mode 字段透传
 	fill("おんがく")
-	p, _ = ParseExerciseFile(path, GradeEither)
+	p, _ = ParseExerciseFile(path, grading.GradeEither)
 	if len(p.Words) != 1 || !p.Words[0].AutoCorrect {
 		t.Errorf("任一档下写假名应判对：%+v", p.Words)
 	}
-	if p.GradeMode != string(GradeEither) {
+	if p.GradeMode != string(grading.GradeEither) {
 		t.Errorf("grade_mode 应为 either，实为 %q", p.GradeMode)
 	}
 
 	// 写全形：完整档判对
 	fill("おんがく(音楽)")
-	p, _ = ParseExerciseFile(path, GradeFull)
+	p, _ = ParseExerciseFile(path, grading.GradeFull)
 	if len(p.Words) != 1 || !p.Words[0].AutoCorrect {
 		t.Errorf("完整档下写全形应判对：%+v", p.Words)
 	}

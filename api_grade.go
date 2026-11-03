@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/zhangyf/jrp/internal/grading"
 )
 
 // handleGrade 判分接口（给小程序用）。
@@ -13,7 +15,7 @@ import (
 //
 // web 端在浏览器里用 web/grade.js 本地判；小程序没法复用那份代码，
 // 与其在小程序里再抄一份（两份实现迟早漂移），不如让它调这里 ——
-// 判分口径复用 Go 的 GradeAnswer，全站只有一份实现。
+// 判分口径复用 Go 的 grading.GradeAnswer，全站只有一份实现。
 //
 // 「对答案」才调，一次把整屏的答案批量判完，不是每敲一个字就打一次请求。
 func (s *server) handleGrade(w http.ResponseWriter, r *http.Request, st *Storage) {
@@ -38,7 +40,7 @@ func (s *server) handleGrade(w http.ResponseWriter, r *http.Request, st *Storage
 		return
 	}
 
-	mode := ParseGradeMode(input.Mode)
+	mode := grading.ParseGradeMode(input.Mode)
 	results := make([]bool, len(input.Items))
 	for i, it := range input.Items {
 		// 空答案不可能是对的，别白跑一遍判分（也避免空串被当合法写法）
@@ -46,7 +48,7 @@ func (s *server) handleGrade(w http.ResponseWriter, r *http.Request, st *Storage
 			results[i] = false
 			continue
 		}
-		results[i] = GradeAnswer(it.Answer, it.Word, mode)
+		results[i] = grading.GradeAnswer(it.Answer, it.Word, mode)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
