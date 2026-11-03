@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 // Hard-word severity sections, split by accuracy rate.
@@ -53,15 +55,15 @@ func BuildHardPlan(arc *Archive, lang string, targetDate time.Time,
 	minAcc float64, minRev int) *ReviewPlan {
 
 	var hard []Word
-	for _, w := range AllWords(arc.Groups) {
-		if IsHardWord(w, minAcc, minRev) {
+	for _, w := range review.AllWords(arc.Groups) {
+		if review.IsHardWord(w, minAcc, minRev) {
 			hard = append(hard, w)
 		}
 	}
 
 	sort.SliceStable(hard, func(i, j int) bool {
-		ai, _ := Accuracy(hard[i])
-		aj, _ := Accuracy(hard[j])
+		ai, _ := review.Accuracy(hard[i])
+		aj, _ := review.Accuracy(hard[j])
 		if ai != aj {
 			return ai < aj // lower accuracy first
 		}
@@ -79,7 +81,7 @@ func BuildHardPlan(arc *Archive, lang string, targetDate time.Time,
 		MinReviews:  minRev,
 	}
 	for i, w := range hard {
-		acc, _ := Accuracy(w)
+		acc, _ := review.Accuracy(w)
 		accVal := acc // take address of a per-iteration copy
 		plan.Words = append(plan.Words, PlanWord{
 			Number:      i + 1,
@@ -97,8 +99,8 @@ func BuildHardPlan(arc *Archive, lang string, targetDate time.Time,
 
 func runExportHard(fs *flag.FlagSet, lang string) {
 	outputPath := fs.String("output", "", "Output Excel file path (default: outputs/hard_words_<date>_vA.B.xlsx)")
-	minAcc := fs.Float64("min-accuracy", DefaultHardMinAccuracy, "Accuracy threshold (0-1); words below this are hard words")
-	minRev := fs.Int("min-reviews", DefaultHardMinReviews, "Minimum review count required to qualify as a hard word")
+	minAcc := fs.Float64("min-accuracy", review.DefaultHardMinAccuracy, "Accuracy threshold (0-1); words below this are hard words")
+	minRev := fs.Int("min-reviews", review.DefaultHardMinReviews, "Minimum review count required to qualify as a hard word")
 	dateFlag := fs.String("date", "", "Target date used in the output filename (YYYY-MM-DD). Defaults to today.")
 	fs.Parse(cmdArgs)
 

@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 // ============================================================================
@@ -62,10 +64,10 @@ func ParseArchive(content string, lang string) (*Archive, error) {
 			}
 			// Parse changelog row
 			if strings.HasPrefix(trimmed, "|") {
-			entry := parseChangelogRow(trimmed)
-			if entry.Date != "" && entry.Date != "—" && entry.Date != "日期" {
-				arc.Changelog = append(arc.Changelog, entry)
-			}
+				entry := parseChangelogRow(trimmed)
+				if entry.Date != "" && entry.Date != "—" && entry.Date != "日期" {
+					arc.Changelog = append(arc.Changelog, entry)
+				}
 				continue
 			}
 			// Non-table, non-empty line → exit changelog
@@ -340,11 +342,11 @@ func WriteArchive(arc *Archive) string {
 	b.WriteString("|10次以上|180天|\n\n\n")
 
 	// Overall progress
-	allWords := AllWords(arc.Groups)
-	mastered, basic, needsConsol, untested := CountByStatus(allWords)
+	allWords := review.AllWords(arc.Groups)
+	mastered, basic, needsConsol, untested := review.CountByStatus(allWords)
 	totalWords := len(allWords)
-	totalErrors := TotalErrors(arc.Groups)
-	nailHouse := CountNailHouseholds(arc.Groups)
+	totalErrors := review.TotalErrors(arc.Groups)
+	nailHouse := review.CountNailHouseholds(arc.Groups)
 
 	b.WriteString("## 📊 总体进度\n\n")
 	b.WriteString("|||\n|---|---|\n")
@@ -439,8 +441,8 @@ func sameDay(a, b time.Time) bool {
 
 // AddChangelogEntry adds a new entry to the changelog and returns the formatted entry.
 func AddChangelogEntry(arc *Archive, today time.Time, major, minor int, description string) {
-	allWords := AllWords(arc.Groups)
-	mastered, basic, needsConsol, untested := CountByStatus(allWords)
+	allWords := review.AllWords(arc.Groups)
+	mastered, basic, needsConsol, untested := review.CountByStatus(allWords)
 
 	entry := ChangelogEntry{
 		Date:        today.Format("060102"),
@@ -450,8 +452,8 @@ func AddChangelogEntry(arc *Archive, today time.Time, major, minor int, descript
 		Basic:       strconv.Itoa(basic),
 		NeedsConsol: strconv.Itoa(needsConsol),
 		Untested:    strconv.Itoa(untested),
-		Errors:      strconv.Itoa(TotalErrors(arc.Groups)),
-		NailHouse:   strconv.Itoa(CountNailHouseholds(arc.Groups)),
+		Errors:      strconv.Itoa(review.TotalErrors(arc.Groups)),
+		NailHouse:   strconv.Itoa(review.CountNailHouseholds(arc.Groups)),
 		Description: description,
 	}
 	arc.Changelog = append(arc.Changelog, entry)

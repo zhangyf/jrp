@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 // isKana reports whether r is hiragana, katakana, or a kana-adjacent mark
@@ -70,7 +72,7 @@ func NormalizeWordForm(word string) (string, bool) {
 	}
 
 	outer := strings.TrimSpace(word[:open])
-	inner := strings.TrimSpace(word[open+len("("):closeIdx])
+	inner := strings.TrimSpace(word[open+len("(") : closeIdx])
 	// Anything trailing after the close paren (rare, e.g. "～です")
 	tail := word[closeIdx+len(")"):]
 
@@ -138,17 +140,17 @@ func runNormalizeWords(fs *flag.FlagSet, lang string) {
 		}
 	}
 
-	totalWords := len(AllWords(arc.Groups))
+	totalWords := len(review.AllWords(arc.Groups))
 
 	if *dryRun {
 		outputResult(map[string]interface{}{
-			"success":       true,
-			"command":       "normalize-words",
-			"dry_run":       true,
-			"archive":       oldFilename,
-			"total_words":   totalWords,
-			"change_count":  len(changes),
-			"changes":       changes,
+			"success":      true,
+			"command":      "normalize-words",
+			"dry_run":      true,
+			"archive":      oldFilename,
+			"total_words":  totalWords,
+			"change_count": len(changes),
+			"changes":      changes,
 		})
 		return
 	}
@@ -186,7 +188,7 @@ func runNormalizeWords(fs *flag.FlagSet, lang string) {
 	newFilename := ArchiveFilename(lang, today, newMajor, newMinor)
 
 	// Sanity check: word count must not change
-	newTotal := len(AllWords(arc.Groups))
+	newTotal := len(review.AllWords(arc.Groups))
 	if newTotal != totalWords {
 		fmt.Fprintf(os.Stderr,
 			"ABORT: word count changed %d → %d, refusing to upload. Backup at history/%s\n",

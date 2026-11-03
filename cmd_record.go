@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 func runRecord(fs *flag.FlagSet, lang string) {
@@ -129,17 +131,17 @@ func ApplyRecord(ctx context.Context, storage *Storage, lang string, input Recor
 			continue
 		}
 
-		w, _ := FindWord(arc.Groups, wordText)
+		w, _ := review.FindWord(arc.Groups, wordText)
 		if w == nil {
 			notFound++
 			continue
 		}
 
 		if r.Correct {
-			RecordCorrect(w, reviewDate)
+			review.RecordCorrect(w, reviewDate)
 			correctCount++
 		} else {
-			RecordWrong(w, reviewDate)
+			review.RecordWrong(w, reviewDate)
 			wrongCount++
 		}
 	}
@@ -176,7 +178,7 @@ func ApplyRecord(ctx context.Context, storage *Storage, lang string, input Recor
 		OldFilename: oldFilename,
 		NewFilename: newFilename,
 		Version:     fmt.Sprintf("v%d.%d", newMajor, newMinor),
-		TotalWords:  CountAllWords(arc.Groups),
+		TotalWords:  review.CountAllWords(arc.Groups),
 		Hard:        input.Hard,
 	}, nil
 }

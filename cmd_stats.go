@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 // StatsResult 统计结果。CLI 的 stats 与网站的 /api/stats 共用。
@@ -30,11 +32,11 @@ const (
 // buildJlptProgress 用最新档案算 JLPT 进度。课号从分组名（如「第16课 生词表」）
 // 里正则取出，取最大值 —— 老师学到哪课，就由最新的生词表分组决定。
 func buildJlptProgress(groups []WordGroup) *JlptProgress {
-	words := AllWords(groups)
+	words := review.AllWords(groups)
 
 	firm := 0
 	for _, w := range words {
-		if acc, ok := Accuracy(w); ok && acc >= 0.8 {
+		if acc, ok := review.Accuracy(w); ok && acc >= 0.8 {
 			firm++
 		}
 	}
@@ -174,8 +176,8 @@ func computeStats(ctx context.Context, storage *Storage, lang string, days int) 
 		}
 		lastArchive = arc
 
-		allWords := AllWords(arc.Groups)
-		mastered, basic, needsConsol, untested := CountByStatus(allWords)
+		allWords := review.AllWords(arc.Groups)
+		mastered, basic, needsConsol, untested := review.CountByStatus(allWords)
 
 		// Get version from filename
 		_, major, minor, _ := ParseFilename(e.filename)
@@ -188,7 +190,7 @@ func computeStats(ctx context.Context, storage *Storage, lang string, days int) 
 			Basic:       basic,
 			NeedsConsol: needsConsol,
 			Untested:    untested,
-			Errors:      TotalErrors(arc.Groups),
+			Errors:      review.TotalErrors(arc.Groups),
 		})
 	}
 
@@ -232,7 +234,7 @@ func lastIndexOf(s, substr string) int {
 // buildStatsDetail extracts per-lesson distribution, accuracy buckets, hard-word
 // counts, and top-reviewed words from the latest archive's parsed word groups.
 func buildStatsDetail(groups []WordGroup) *StatsDetail {
-	words := AllWords(groups)
+	words := review.AllWords(groups)
 
 	// Per-lesson distribution
 	lessonMap := make(map[string]int)
@@ -252,7 +254,7 @@ func buildStatsDetail(groups []WordGroup) *StatsDetail {
 		"0-30%": 0, "30-60%": 0, "60-80%": 0, "80-90%": 0, "90-100%": 0,
 	}
 	for _, w := range words {
-		acc, ok := Accuracy(w)
+		acc, ok := review.Accuracy(w)
 		if !ok {
 			continue
 		}
@@ -273,11 +275,11 @@ func buildStatsDetail(groups []WordGroup) *StatsDetail {
 	// Hard word counts by severity (using canonical IsHardWord with defaults)
 	var hw HardWordCounts
 	for _, w := range words {
-		if !IsHardWord(w, DefaultHardMinAccuracy, DefaultHardMinReviews) {
+		if !review.IsHardWord(w, review.DefaultHardMinAccuracy, review.DefaultHardMinReviews) {
 			continue
 		}
 		hw.Total++
-		acc, _ := Accuracy(w)
+		acc, _ := review.Accuracy(w)
 		switch {
 		case acc < 0.3:
 			hw.Severe++
@@ -299,7 +301,7 @@ func buildStatsDetail(groups []WordGroup) *StatsDetail {
 	topReviewed := make([]TopReviewedWord, 0, topN)
 	for i := 0; i < topN; i++ {
 		w := words[i]
-		acc, _ := Accuracy(w)
+		acc, _ := review.Accuracy(w)
 		topReviewed = append(topReviewed, TopReviewedWord{
 			Word:     w.Word,
 			Reviews:  w.ReviewCount,

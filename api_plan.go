@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 // handlePlan 返回某天的练习计划。
@@ -134,8 +136,8 @@ func (s *server) handleHard(w http.ResponseWriter, r *http.Request, st *Storage)
 		return
 	}
 
-	minAcc := parseFloatParam(r, "min_accuracy", DefaultHardMinAccuracy)
-	minRev := intParam(r, "min_reviews", DefaultHardMinReviews)
+	minAcc := parseFloatParam(r, "min_accuracy", review.DefaultHardMinAccuracy)
+	minRev := intParam(r, "min_reviews", review.DefaultHardMinReviews)
 
 	arc, err := st.LoadArchiveForRead(ctx, s.lang) // 新账号没档案 → 空池子，回 0 个钉子户
 	if err != nil {

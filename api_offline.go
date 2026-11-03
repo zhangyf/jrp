@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/grading"
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 // 离线闭环：导出 Excel 拿去离线练，练完把填好的文件传回来自动解析。
@@ -67,7 +68,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request, st *Storag
 
 	switch mode {
 	case "hard":
-		plan := BuildHardPlan(arc, s.lang, targetDate, DefaultHardMinAccuracy, DefaultHardMinReviews)
+		plan := BuildHardPlan(arc, s.lang, targetDate, review.DefaultHardMinAccuracy, review.DefaultHardMinReviews)
 		filename = fmt.Sprintf("hard_words_%s.xlsx", dateStr)
 		genErr = GenerateHardExcelWithMeta(plan, tmp.Name(), &ExcelMeta{
 			PlanDate: dateStr, Language: s.lang, Mode: "hard", Kind: "hard",

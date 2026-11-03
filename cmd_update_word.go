@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 // runUpdateWord updates a word's target-language form (the 日语单词 column),
@@ -52,14 +54,14 @@ func runUpdateWord(fs *flag.FlagSet, lang string) {
 		os.Exit(1)
 	}
 
-	w, _ := FindWord(arc.Groups, input.Word)
+	w, _ := review.FindWord(arc.Groups, input.Word)
 	if w == nil {
 		fmt.Fprintf(os.Stderr, "Word not found: %s\n", input.Word)
 		os.Exit(1)
 	}
 
 	// Guard against creating a duplicate entry.
-	if existing, _ := FindWord(arc.Groups, input.NewWord); existing != nil && existing != w {
+	if existing, _ := review.FindWord(arc.Groups, input.NewWord); existing != nil && existing != w {
 		fmt.Fprintf(os.Stderr, "Target form already exists in archive: %s\n", input.NewWord)
 		os.Exit(1)
 	}

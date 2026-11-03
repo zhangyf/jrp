@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 // runLessonStatus 一次查清某一课的「四件套」齐不齐：
@@ -149,7 +151,7 @@ func newLessonStatusSource(ctx context.Context, storage *Storage, lang string) (
 	// 档案读不到不该拖垮其它几项，词数按 0 处理即可。
 	if data, _, err := storage.DownloadLatestArchive(ctx); err == nil {
 		if arc, err := ParseArchive(string(data), lang); err == nil {
-			for _, w := range AllWords(arc.Groups) {
+			for _, w := range review.AllWords(arc.Groups) {
 				if n := groupLesson(w.Group); n > 0 {
 					s.words[n]++
 				}

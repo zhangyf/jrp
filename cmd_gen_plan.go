@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 func runGenPlan(fs *flag.FlagSet, lang string) {
@@ -265,18 +267,18 @@ func holdSet(meta *WordMeta) map[string]bool {
 // hold 里点名的词直接跳过（还没学到的课，2026-11-02 手册补录那批）。传 nil 表示不排除。
 func BuildDuePlan(arc *Archive, lang string, targetDate time.Time, hold map[string]bool) *ReviewPlan {
 	var dueWords []Word
-	for _, w := range AllWords(arc.Groups) {
+	for _, w := range review.AllWords(arc.Groups) {
 		if hold[w.Word] {
 			continue
 		}
-		if IsDue(w, targetDate) {
-			w.Status = GetReviewCategory(w)
+		if review.IsDue(w, targetDate) {
+			w.Status = review.GetReviewCategory(w)
 			dueWords = append(dueWords, w)
 		}
 	}
 
 	sort.SliceStable(dueWords, func(i, j int) bool {
-		return StatusPriority(dueWords[i].Status) < StatusPriority(dueWords[j].Status)
+		return review.StatusPriority(dueWords[i].Status) < review.StatusPriority(dueWords[j].Status)
 	})
 
 	plan := &ReviewPlan{
