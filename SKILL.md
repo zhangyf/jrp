@@ -1392,6 +1392,14 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 - 根 `archive_test.go` 验证类型别名/JSON形态及七列档案往返；`api_record_test.go` 用内存存储验证每日/钉子户计划编号映射、回写日期、未提交词不变及历史统计，不触真实COS。
 - 本批仅调整包归属和调用引用；HTTP/CLI流程、档案/计划格式、鉴权、COS key、`go:embed web` 和部署方式不变。无新增依赖或数据迁移；提交推送、合并、部署继续分别确认。
 
+### 离线练习册解析侧包边界（2026-11-03）
+
+- 只迁解析侧：`internal/offline/offline.go` 承接 `ExcelMeta`、`ImportWord`、`ImportSentence`、`ImportPreview`、三个 sheet 名常量（`MetaSheetName`/`ExerciseSheetName`/`AnswerSheetName`）、`ParseExerciseFile` 及 `col`/`firstNonEmpty`/`sortedKeys`/`dateFromFilename` 与三个正则。判分仍走 `internal/grading`，归一化仍走 `internal/sentence`。
+- **渲染侧留在根包**：`excelWriter` 全套、四个 `Generate*`、`writeTwoSheetWorkbook`、`groupPlanWordsByStatus`、`reviewCategories`、`defaultExcelLayout`、以及 `(w *excelWriter) writeMetaSheet`（receiver 不能搬）。原因是渲染侧吃 `ReviewPlan`/`PlanWord`（COS 契约类型），且 `hardCategories` 反向定义在 cmd 层，整体搬会牵动计划类型与多个 handler，风险大于收益。
+- `api_offline.go` 的 HTTP 下载与 Storage、cmd 两处入口只改符号引用；离线文件结构与 `_meta` 内容不变。
+- 测试：`internal/offline/offline_test.go` 覆盖解析各分支与四档判分（11 函数 / 103 子用例）；根包新增 `excel_test.go` 补原先零覆盖的钉子户导出、nil/空句子、左右分栏、句子区块与 `_meta` 可见性/活动表复位（5 函数 / 12 子用例）；原有 `excel_meta_test.go` 往返用例留根包不动。
+- 按实现保留的行为（测试已固定）：`GenerateHardExcelWithMeta` 内部写死传 nil 句子；hard 过滤是 `Status` 精确匹配三个常量；分栏为前 `(n+1)/2` 个在左栏；`ExcelMeta.Kind` 写入 `_meta` 但 `ImportPreview` 不读回；`dateFromFilename` 会扫整条路径且取最左日期。
+
 ### 汇编导入包边界（2026-11-03）
 
 - `internal/lessonimport/parse.go` + `plan.go`：承接原 `lesson_import.go` 的全部纯解析逻辑——单元/课映射、汇编文档定位与命名、Markdown 表格拆分与列判定、抽句与清洗、生词格过滤、导入计划与条目构造。常量、正则、去重与"只追加不覆盖"规则逐字迁移。

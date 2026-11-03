@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/xuri/excelize/v2"
+	"github.com/zhangyf/jrp/internal/offline"
 )
 
 // reviewCategories is the section order for the daily review Excel.
@@ -353,7 +354,7 @@ func groupPlanWordsByStatus(words []PlanWord) map[string][]PlanWord {
 // language / mode。离线包可能被改名、可能被微信转发，靠文件名不可靠；WPS 又会
 // 剥离自定义文档属性，所以藏一个 sheet 是最稳的。
 func writeTwoSheetWorkbook(order []string, byCat map[string][]PlanWord,
-	sentences []PlanSentence, outputPath string, meta *ExcelMeta) error {
+	sentences []PlanSentence, outputPath string, meta *offline.ExcelMeta) error {
 
 	w := newExcelWriter()
 	defer w.f.Close()
@@ -392,7 +393,7 @@ func GenerateExcel(plan *ReviewPlan, outputPath string) error {
 }
 
 // GenerateExcelWithMeta 同 GenerateExcel，额外写入隐藏的 _meta sheet。
-func GenerateExcelWithMeta(plan *ReviewPlan, outputPath string, meta *ExcelMeta) error {
+func GenerateExcelWithMeta(plan *ReviewPlan, outputPath string, meta *offline.ExcelMeta) error {
 	return writeTwoSheetWorkbook(
 		reviewCategories,
 		groupPlanWordsByStatus(plan.Words),
@@ -409,7 +410,7 @@ func GenerateHardExcel(plan *ReviewPlan, outputPath string) error {
 }
 
 // GenerateHardExcelWithMeta 同 GenerateHardExcel，额外写入隐藏的 _meta sheet。
-func GenerateHardExcelWithMeta(plan *ReviewPlan, outputPath string, meta *ExcelMeta) error {
+func GenerateHardExcelWithMeta(plan *ReviewPlan, outputPath string, meta *offline.ExcelMeta) error {
 	return writeTwoSheetWorkbook(
 		hardCategories,
 		groupPlanWordsByStatus(plan.Words),

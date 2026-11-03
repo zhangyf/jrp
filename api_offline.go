@@ -11,6 +11,7 @@ import (
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/grading"
+	"github.com/zhangyf/jrp/internal/offline"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
 )
@@ -72,7 +73,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request, st *Storag
 	case "hard":
 		plan := BuildHardPlan(arc, s.lang, targetDate, review.DefaultHardMinAccuracy, review.DefaultHardMinReviews)
 		filename = fmt.Sprintf("hard_words_%s.xlsx", dateStr)
-		genErr = GenerateHardExcelWithMeta(plan, tmp.Name(), &ExcelMeta{
+		genErr = GenerateHardExcelWithMeta(plan, tmp.Name(), &offline.ExcelMeta{
 			PlanDate: dateStr, Language: s.lang, Mode: "hard", Kind: "hard",
 		})
 
@@ -92,7 +93,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request, st *Storag
 			return
 		}
 		filename = fmt.Sprintf("review_%s_sentences.xlsx", dateStr)
-		genErr = GenerateExcelWithMeta(sp, tmp.Name(), &ExcelMeta{
+		genErr = GenerateExcelWithMeta(sp, tmp.Name(), &offline.ExcelMeta{
 			PlanDate: dateStr, Language: s.lang, Mode: "sentences", Kind: "sentences",
 		})
 
@@ -100,7 +101,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request, st *Storag
 		plan := BuildDuePlan(arc, s.lang, targetDate, holdSet(dueHold(ctx, st)))
 		plan.Sentences = BuildSentencePlanFrom(st, targetDate, 20, arc)
 		filename = fmt.Sprintf("review_%s.xlsx", dateStr)
-		genErr = GenerateExcelWithMeta(plan, tmp.Name(), &ExcelMeta{
+		genErr = GenerateExcelWithMeta(plan, tmp.Name(), &offline.ExcelMeta{
 			PlanDate: dateStr, Language: s.lang, Mode: "daily",
 		})
 	}
@@ -183,7 +184,7 @@ func (s *server) handleImport(w http.ResponseWriter, r *http.Request, st *Storag
 		return
 	}
 
-	prev, err := ParseExerciseFile(tmp.Name(), grading.ParseGradeMode(r.URL.Query().Get("grade")))
+	prev, err := offline.ParseExerciseFile(tmp.Name(), grading.ParseGradeMode(r.URL.Query().Get("grade")))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
 			"success": false, "error": err.Error(),
