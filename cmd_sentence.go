@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/sentence"
+	"github.com/zhangyf/jrp/internal/sentencereview"
 )
 
 // 造句相关的维护命令。
@@ -297,8 +298,8 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 		}
 		cfg := cfgNow
 		circle := reviewCircle(ctx, storage)
-		extra := BuildReviewSentences(rb, hist, nil, today,
-			cfg.SentenceReviewCount, exclude, DefaultReviewIdleDays,
+		extra := sentencereview.BuildReviewSentences(rb, hist, nil, today,
+			cfg.SentenceReviewCount, exclude, sentencereview.DefaultReviewIdleDays,
 			circle, planCircleRatio(cfg))
 		// 回炉句挑中了几句三圆 —— 圆级加权有没有生效，看这里。
 		// sentence.BankSentence 不带锚点词，只能拿 answer 反查回炉库。
@@ -308,7 +309,7 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 		}
 		rankName := []string{"三圆", "二圆", "一圆", "没标"}
 		for _, e := range extra {
-			circleStat[rankName[circleRank(circle, wordOf[sentence.Norm(e.Answer)])]]++
+			circleStat[rankName[sentencereview.CircleRank(circle, wordOf[sentence.Norm(e.Answer)])]]++
 		}
 		for _, e := range extra {
 			picked = append(picked, PlanSentence{

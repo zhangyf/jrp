@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/sentence"
+	"github.com/zhangyf/jrp/internal/sentencereview"
 )
 
 func TestGroupLesson(t *testing.T) {
@@ -22,17 +23,17 @@ func TestGroupLesson(t *testing.T) {
 		{"", 0},
 	}
 	for _, c := range cases {
-		if got := groupLesson(c.group); got != c.want {
+		if got := sentencereview.GroupLesson(c.group); got != c.want {
 			t.Errorf("groupLesson(%q) = %d, want %d", c.group, got, c.want)
 		}
 	}
 }
 
 func TestRoundAcc(t *testing.T) {
-	if got := roundAcc(0.9166666666666666); got != 0.92 {
+	if got := sentencereview.RoundAcc(0.9166666666666666); got != 0.92 {
 		t.Errorf("roundAcc = %v, want 0.92", got)
 	}
-	if got := roundAcc(1); got != 1 {
+	if got := sentencereview.RoundAcc(1); got != 1 {
 		t.Errorf("roundAcc(1) = %v, want 1", got)
 	}
 }
@@ -45,7 +46,7 @@ func TestGroupProtosByLesson(t *testing.T) {
 		{ID: "C1", Lesson: "第5课", Source: "基本课文", Answer: "今 4時です。"},
 		{ID: "D1", Lesson: "单元末", Source: "阅读文", Answer: "今日は 金曜日です。"},
 	}
-	by := groupProtosByLesson(ss)
+	by := sentencereview.GroupProtosByLesson(ss)
 	if len(by[3]) != 3 || len(by[5]) != 1 || len(by[0]) != 1 {
 		t.Fatalf("分组不对：%v", by)
 	}
@@ -64,8 +65,8 @@ func TestPickPrototypesSameLessonFirst(t *testing.T) {
 		{ID: "P4", Lesson: "第4课", Source: "基本课文", Answer: "吉田さんは 庭に います。"},
 		{ID: "Q1", Lesson: "第2课", Source: "基本课文", Answer: "これは 本です。"},
 	}
-	by := groupProtosByLesson(ss)
-	got := pickPrototypes(by, 4, 3, "名词")
+	by := sentencereview.GroupProtosByLesson(ss)
+	got := sentencereview.PickPrototypes(by, 4, 3, "名词")
 	if len(got) != 3 {
 		t.Fatalf("要 3 条，给了 %d 条", len(got))
 	}
@@ -82,8 +83,8 @@ func TestPickPrototypesFallsBackToNearbyLesson(t *testing.T) {
 		{ID: "P2", Lesson: "第6课", Source: "基本课文", Answer: "李さんは 先月 北京から 来ました。"},
 		{ID: "P3", Lesson: "第8课", Source: "基本课文", Answer: "李さんは 日本語で 手紙を 書きます。"},
 	}
-	by := groupProtosByLesson(ss)
-	got := pickPrototypes(by, 7, 3, "名词")
+	by := sentencereview.GroupProtosByLesson(ss)
+	got := sentencereview.PickPrototypes(by, 7, 3, "名词")
 	if len(got) != 3 {
 		t.Fatalf("要 3 条，给了 %d 条", len(got))
 	}
@@ -102,8 +103,8 @@ func TestPickPrototypesUnknownLesson(t *testing.T) {
 		{ID: "P1", Lesson: "第2课", Source: "基本课文", Answer: "これは 本です。"},
 		{ID: "P2", Lesson: "第3课", Source: "基本课文", Answer: "ここは デパートです。"},
 	}
-	by := groupProtosByLesson(ss)
-	got := pickPrototypes(by, 0, 2, "名词")
+	by := sentencereview.GroupProtosByLesson(ss)
+	got := sentencereview.PickPrototypes(by, 0, 2, "名词")
 	if len(got) != 2 {
 		t.Fatalf("课号未知时要能兜底给满，实际 %d 条", len(got))
 	}
@@ -113,27 +114,27 @@ func TestProtoScoreNounNeedsSlot(t *testing.T) {
 	// 名词要找有名词槽的句子：「はい、そうです。」这种没槽位的必须被压下去
 	withSlot := sentence.BankSentence{Lesson: "第3课", Source: "基本课文", Answer: "ここは デパートです。"}
 	noSlot := sentence.BankSentence{Lesson: "第3课", Source: "基本课文", Answer: "はい、そうです。"}
-	if protoScore(withSlot, "名词") <= protoScore(noSlot, "名词") {
+	if sentencereview.ProtoScore(withSlot, "名词") <= sentencereview.ProtoScore(noSlot, "名词") {
 		t.Errorf("有名词槽的句子该排前面：有槽=%d 无槽=%d",
-			protoScore(withSlot, "名词"), protoScore(noSlot, "名词"))
+			sentencereview.ProtoScore(withSlot, "名词"), sentencereview.ProtoScore(noSlot, "名词"))
 	}
 }
 
 func TestProtoScoreVerbPrefersMasu(t *testing.T) {
 	masu := sentence.BankSentence{Lesson: "第7课", Source: "基本课文", Answer: "李さんは 毎日 コーヒーを 飲みます。"}
 	desu := sentence.BankSentence{Lesson: "第7课", Source: "基本课文", Answer: "これは 本です。"}
-	if protoScore(masu, "动词") <= protoScore(desu, "动词") {
+	if sentencereview.ProtoScore(masu, "动词") <= sentencereview.ProtoScore(desu, "动词") {
 		t.Errorf("动词该优先ます结尾的：ます=%d です=%d",
-			protoScore(masu, "动词"), protoScore(desu, "动词"))
+			sentencereview.ProtoScore(masu, "动词"), sentencereview.ProtoScore(desu, "动词"))
 	}
 }
 
 func TestProtoScoreAdjPrefersKeiyoushi(t *testing.T) {
 	i := sentence.BankSentence{Lesson: "第9课", Source: "基本课文", Answer: "四川料理は 辛いです。"}
 	n := sentence.BankSentence{Lesson: "第9课", Source: "基本课文", Answer: "これは 本です。"}
-	if protoScore(i, "形容词") <= protoScore(n, "形容词") {
+	if sentencereview.ProtoScore(i, "形容词") <= sentencereview.ProtoScore(n, "形容词") {
 		t.Errorf("形容词该优先い形句：い=%d 普通=%d",
-			protoScore(i, "形容词"), protoScore(n, "形容词"))
+			sentencereview.ProtoScore(i, "形容词"), sentencereview.ProtoScore(n, "形容词"))
 	}
 }
 
@@ -146,8 +147,8 @@ func TestPickPrototypesPrefersUsableSlot(t *testing.T) {
 		{ID: "C", Lesson: "第4课", Source: "基本课文", Answer: "小野さんの 家は どこに ありますか。"},
 		{ID: "D", Lesson: "第4课", Source: "基本课文", Answer: "横浜に あります。"},
 	}
-	by := groupProtosByLesson(ss)
-	got := pickPrototypes(by, 4, 3, "名词")
+	by := sentencereview.GroupProtosByLesson(ss)
+	got := sentencereview.PickPrototypes(by, 4, 3, "名词")
 	if len(got) != 3 {
 		t.Fatalf("要 3 条，给了 %d 条", len(got))
 	}
@@ -160,8 +161,8 @@ func TestPickPrototypesPrefersUsableSlot(t *testing.T) {
 }
 
 func TestPickPrototypesZeroOrNegative(t *testing.T) {
-	by := groupProtosByLesson([]sentence.BankSentence{{ID: "P1", Lesson: "第1课", Answer: "李さんは 中国人です。"}})
-	if got := pickPrototypes(by, 1, 0, "名词"); got != nil {
+	by := sentencereview.GroupProtosByLesson([]sentence.BankSentence{{ID: "P1", Lesson: "第1课", Answer: "李さんは 中国人です。"}})
+	if got := sentencereview.PickPrototypes(by, 1, 0, "名词"); got != nil {
 		t.Errorf("n=0 应返回 nil，实际 %v", got)
 	}
 }
@@ -207,7 +208,7 @@ func countCircle(got []sentence.BankSentence) (three, other int) {
 func TestReviewSentencesCircleTakesMajority(t *testing.T) {
 	// 三圆池子要够 14 条 —— 不够的话其他档会补上来（那是另一个用例）
 	bank, circle := reviewBankWithCircle(16, 12)
-	got := BuildReviewSentences(bank, sentence.SentenceHistory{}, nil, time.Now(), 20, nil, 0, circle, 70)
+	got := sentencereview.BuildReviewSentences(bank, sentence.SentenceHistory{}, nil, time.Now(), 20, nil, 0, circle, 70)
 	if len(got) != 20 {
 		t.Fatalf("要 20 句，给了 %d 句", len(got))
 	}
@@ -220,7 +221,7 @@ func TestReviewSentencesCircleTakesMajority(t *testing.T) {
 // 三圆池子不够时由其他档补满 —— 配额是上限不是保底，题量绝不缩水。
 func TestReviewSentencesCircleShortfallFillsUp(t *testing.T) {
 	bank, circle := reviewBankWithCircle(3, 20)
-	got := BuildReviewSentences(bank, sentence.SentenceHistory{}, nil, time.Now(), 20, nil, 0, circle, 70)
+	got := sentencereview.BuildReviewSentences(bank, sentence.SentenceHistory{}, nil, time.Now(), 20, nil, 0, circle, 70)
 	if len(got) != 20 {
 		t.Fatalf("三圆不够也得给满 20 句，实际 %d 句", len(got))
 	}
@@ -235,7 +236,7 @@ func TestReviewSentencesCircleShortfallFillsUp(t *testing.T) {
 func TestReviewSentencesCircleDisabledKeepsOldBehaviour(t *testing.T) {
 	bank, circle := reviewBankWithCircle(12, 12)
 	base := func(ratio int, c map[string]string) []sentence.BankSentence {
-		return BuildReviewSentences(bank, sentence.SentenceHistory{}, nil, time.Now(), 20, nil, 0, c, ratio)
+		return sentencereview.BuildReviewSentences(bank, sentence.SentenceHistory{}, nil, time.Now(), 20, nil, 0, c, ratio)
 	}
 	off := base(0, circle)
 	noMeta := base(70, nil)
@@ -263,7 +264,7 @@ func TestReviewSentencesCircleKeepsPrototypeDedupe(t *testing.T) {
 		{ID: "R3", Word: "w2_a", Answer: "二圆の文1。", Prototype: "別の骨格"},
 	}}
 	circle := map[string]string{"w3_a": "三圆", "w3_b": "三圆", "w2_a": "二圆"}
-	got := BuildReviewSentences(b, sentence.SentenceHistory{}, nil, time.Now(), 3, nil, 0, circle, 70)
+	got := sentencereview.BuildReviewSentences(b, sentence.SentenceHistory{}, nil, time.Now(), 3, nil, 0, circle, 70)
 	if len(got) != 2 {
 		t.Fatalf("同骨架的两条只能留一条，应出 2 句，实际 %d 句", len(got))
 	}
@@ -285,19 +286,19 @@ func TestCircleMapAndRank(t *testing.T) {
 		"でんわ(電話)": {Pos: "名词", Circle: "3圆"}, // 手写分级写歪了 → 落「没标」
 	}}
 	m := circleMap(meta)
-	if got := circleRank(m, "みず(水)"); got != 0 {
+	if got := sentencereview.CircleRank(m, "みず(水)"); got != 0 {
 		t.Errorf("三圆 rank=%d，要 0", got)
 	}
-	if got := circleRank(m, "ほん(本)"); got != 1 {
+	if got := sentencereview.CircleRank(m, "ほん(本)"); got != 1 {
 		t.Errorf("二圆 rank=%d，要 1", got)
 	}
-	if got := circleRank(m, "つくえ(机)"); got != 2 {
+	if got := sentencereview.CircleRank(m, "つくえ(机)"); got != 2 {
 		t.Errorf("一圆 rank=%d，要 2", got)
 	}
-	if got := circleRank(m, "いす(椅子)"); got != 3 {
+	if got := sentencereview.CircleRank(m, "いす(椅子)"); got != 3 {
 		t.Errorf("没标 rank=%d，要 3", got)
 	}
-	if got := circleRank(m, "でんわ(電話)"); got != 3 {
+	if got := sentencereview.CircleRank(m, "でんわ(電話)"); got != 3 {
 		t.Errorf("写歪的分级（3圆）rank=%d，要 3（不参与优先）", got)
 	}
 	if circleMap(nil) != nil {

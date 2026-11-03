@@ -2,18 +2,16 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
-	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/sentence"
+	"github.com/zhangyf/jrp/internal/sentencereview"
 )
 
 // runSentenceReviewTodo 只读体检：列出「够格回炉、但还没做变形句」的词，
@@ -57,7 +55,7 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 		fmt.Fprintf(os.Stderr, "Error: 读取句库失败：%v\n", err)
 		os.Exit(1)
 	}
-	byLesson := groupProtosByLesson(bank.Sentences)
+	byLesson := sentencereview.GroupProtosByLesson(bank.Sentences)
 
 	data, _, err := storage.DownloadLatestArchive(ctx)
 	if err != nil {
@@ -73,15 +71,15 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 
 	today := time.Now()
 	type item struct {
-		Word     string         `json:"word"`
-		Pos      string         `json:"pos"`
-		Def      string         `json:"def"`
-		Lesson   string         `json:"lesson"`
-		Reviews  int            `json:"reviews"`
-		Accuracy float64        `json:"accuracy"`
-		IdleDays int            `json:"idle_days"`
-		DueIn    int            `json:"days_to_qualify,omitempty"` // 仅"在路上"的词有
-		Protos   []protoSuggest `json:"prototypes,omitempty"`
+		Word     string                        `json:"word"`
+		Pos      string                        `json:"pos"`
+		Def      string                        `json:"def"`
+		Lesson   string                        `json:"lesson"`
+		Reviews  int                           `json:"reviews"`
+		Accuracy float64                       `json:"accuracy"`
+		IdleDays int                           `json:"idle_days"`
+		DueIn    int                           `json:"days_to_qualify,omitempty"` // 仅"在路上"的词有
+		Protos   []sentencereview.ProtoSuggest `json:"prototypes,omitempty"`
 	}
 	var qualified, pending []item
 	var young, weak, qualifiedTotal, coveredCount int
@@ -97,29 +95,29 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 			if w.ReviewCount > 0 {
 				acc = float64(w.ReviewCount-w.ErrorCount) / float64(w.ReviewCount)
 			}
-			idle := wordIdleDays(w, today)
+			idle := sentencereview.WordIdleDays(w, today)
 			pos, _, _, _ := lookupWordMeta(meta, w.Word)
-			ln := groupLesson(w.Group)
+			ln := sentencereview.GroupLesson(w.Group)
 			it := item{
 				Word: w.Word, Pos: pos, Def: w.Definition,
-				Lesson: lessonLabel(ln), Reviews: w.ReviewCount,
-				Accuracy: roundAcc(acc), IdleDays: idle,
+				Lesson: sentencereview.LessonLabel(ln), Reviews: w.ReviewCount,
+				Accuracy: sentencereview.RoundAcc(acc), IdleDays: idle,
 			}
 			switch {
 			case w.ReviewCount < 2:
 				young++
 			case acc < 0.8:
 				weak++
-			case idle >= DefaultReviewIdleDays:
+			case idle >= sentencereview.DefaultReviewIdleDays:
 				qualifiedTotal++
 				if covered[w.Word] {
 					coveredCount++
 					break
 				}
-				it.Protos = protoList(pickPrototypes(byLesson, ln, *nproto, pos))
+				it.Protos = sentencereview.ProtoList(sentencereview.PickPrototypes(byLesson, ln, *nproto, pos))
 				qualified = append(qualified, it)
 			default:
-				it.DueIn = DefaultReviewIdleDays - idle
+				it.DueIn = sentencereview.DefaultReviewIdleDays - idle
 				pending = append(pending, it)
 			}
 		}
@@ -142,7 +140,7 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 		"criteria": map[string]interface{}{
 			"min_reviews":   2,
 			"min_accuracy":  0.8,
-			"min_idle_days": DefaultReviewIdleDays,
+			"min_idle_days": sentencereview.DefaultReviewIdleDays,
 		},
 		"summary": map[string]interface{}{
 			"archive_words": len(seen),
@@ -180,190 +178,6 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 		out["hint"] = "按 prototypes 里的原型句换一个词（助词序列别动），造好后用 sentence-bank 之外的回炉库上传入口写回。"
 	}
 	outputResult(out)
-}
-
-// roundAcc 保留两位小数，避免 JSON 里出现 0.9166666666666666 这种。
-func roundAcc(v float64) float64 {
-	return float64(int(v*100+0.5)) / 100
-}
-
-type protoSuggest struct {
-	ID      string `json:"id"`
-	Lesson  string `json:"lesson"`
-	Source  string `json:"source"`
-	Answer  string `json:"answer"`
-	Chinese string `json:"chinese"`
-}
-
-var groupLessonRe = regexp.MustCompile(`第(\d+)课`)
-
-// groupLesson 从档案分组标题里抽课号（「第1课01 基础词（5/25）」→ 1）。
-// 抽不到返回 0，调用方按"课号未知"处理。
-func groupLesson(group string) int {
-	m := groupLessonRe.FindStringSubmatch(group)
-	if len(m) != 2 {
-		return 0
-	}
-	n, err := strconv.Atoi(m[1])
-	if err != nil {
-		return 0
-	}
-	return n
-}
-
-func lessonLabel(n int) string {
-	if n <= 0 {
-		return ""
-	}
-	return fmt.Sprintf("第%d课", n)
-}
-
-// groupProtosByLesson 把原型句按课号分组，组内按「基本课文优先 + 长句优先」排序
-// —— 基本课文是课本里最典型的句型。
-//
-// ⚠️ 2026-10-20 老师反馈：变形句偏简单（平均 13.8 字，主句库 15.9；1-7 课占 64%）。
-// 原来这里按「短句优先」排（短句好改造），结果造出来的全是短句。
-// 改成「长句优先」：骨架本身有内容，换进去的那个词才练得到东西。
-// 真正决定顺序的是 protoScore（见下），这里只作为同分时的稳定次序。
-func groupProtosByLesson(sentences []sentence.BankSentence) map[int][]sentence.BankSentence {
-	out := map[int][]sentence.BankSentence{}
-	for _, s := range sentences {
-		if s.Answer == "" {
-			continue
-		}
-		n := groupLesson(s.Lesson)
-		out[n] = append(out[n], s)
-	}
-	for _, list := range out {
-		sort.SliceStable(list, func(i, j int) bool {
-			bi := list[i].Source == "基本课文"
-			bj := list[j].Source == "基本课文"
-			if bi != bj {
-				return bi
-			}
-			return len([]rune(list[i].Answer)) > len([]rune(list[j].Answer))
-		})
-	}
-	return out
-}
-
-// protoScore 给原型句打分：这个词能不能套进去。
-//
-// 只按课号匹配是不够的——「なごや（名古屋）」在第4课，同课最短的几条是
-// 「だれも いません。」这种没名词槽的句子，套不进去。所以按词性看句子里
-// 有没有对应的槽位；太短的句子（「はい、そうです。」）一律降权。
-func protoScore(s sentence.BankSentence, pos string) int {
-	a := s.Answer
-	n := len([]rune(a))
-	score := 0
-	// 长度偏好：**中长句优先**。
-	// 2026-10-20 之前是「短句优先」（n>22 扣分），造出来的变形句平均只有 13.8 字、
-	// 比主句库 15.9 字短一截，老师练着觉得太简单。现在反过来：
-	// 太短的句子没内容可练（换进去也没练到什么），14-26 字是最合适的骨架，
-	// 超过 26 字改造时容易把助词序列改坏，轻扣。
-	switch {
-	case n < 10:
-		score -= 30 // 没槽位可换，也没内容
-	case n >= 14 && n <= 26:
-		score += 15 // 够料的句子
-	case n > 26:
-		score -= 6 // 太长难改造
-	}
-	switch {
-	case strings.Contains(pos, "名词"):
-		// 名词槽：看句子里有没有能接名词的助词
-		for _, p := range []string{"は ", "が ", "を ", "に ", "へ ", "から ", "まで ", "と ", "や ", "の ", "で "} {
-			if strings.Contains(a, p) {
-				score += 10
-			}
-		}
-	case strings.Contains(pos, "动词"):
-		if strings.HasSuffix(a, "ます。") || strings.HasSuffix(a, "ました。") || strings.HasSuffix(a, "ません。") {
-			score += 25
-		}
-	case strings.Contains(pos, "形容词"):
-		if strings.Contains(a, "いです") || strings.Contains(a, "い ") || strings.Contains(a, "な ") || strings.Contains(a, "かった") {
-			score += 25
-		}
-	}
-	if s.Source == "基本课文" {
-		score += 5
-	}
-	return score
-}
-
-// pickPrototypes 给某个词挑 n 条原型句骨架：先同课，再按课号距离往外扩；
-// 同课内按「这个词能不能套进去」（protoScore）排序。
-// 同课的句子最可能就是这个词在课文里出现的句型。
-func pickPrototypes(byLesson map[int][]sentence.BankSentence, lesson int, n int, pos string) []sentence.BankSentence {
-	if n <= 0 {
-		return nil
-	}
-	// 课号未知（「追加词汇（8/7）」这类补充分组，62 个分组里有 6 个）：
-	// 没法靠课号定位，就在全库里按「这个词能不能套进去」打分挑。
-	if lesson <= 0 {
-		var all []sentence.BankSentence
-		for _, list := range byLesson {
-			all = append(all, list...)
-		}
-		sort.SliceStable(all, func(i, j int) bool {
-			return protoScore(all[i], pos) > protoScore(all[j], pos)
-		})
-		if len(all) > n {
-			all = all[:n]
-		}
-		return all
-	}
-	var out []sentence.BankSentence
-	seen := map[string]bool{}
-	for d := 0; d <= 30 && len(out) < n; d++ {
-		var ls []int
-		if d == 0 {
-			ls = []int{lesson}
-		} else {
-			// ⚠️ 先往高课扩、再往低课扩（2026-10-20 改）。
-			// 原来先 -d 再 +d，结果跨课补的句子都来自更简单的老课。
-			// 高课的句型更复杂，先拿高课的骨架才不会把变形句越造越简单。
-			ls = []int{lesson + d, lesson - d}
-		}
-		for _, l := range ls {
-			if l <= 0 {
-				continue
-			}
-			cands := append([]sentence.BankSentence(nil), byLesson[l]...)
-			sort.SliceStable(cands, func(i, j int) bool {
-				return protoScore(cands[i], pos) > protoScore(cands[j], pos)
-			})
-			for _, s := range cands {
-				if seen[s.ID] {
-					continue
-				}
-				seen[s.ID] = true
-				out = append(out, s)
-				if len(out) >= n {
-					break
-				}
-			}
-			if len(out) >= n {
-				break
-			}
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
-}
-
-func protoList(ss []sentence.BankSentence) []protoSuggest {
-	out := make([]protoSuggest, 0, len(ss))
-	for _, s := range ss {
-		out = append(out, protoSuggest{
-			ID: s.ID, Lesson: s.Lesson, Source: s.Source,
-			Answer: s.Answer, Chinese: s.Chinese,
-		})
-	}
-	return out
 }
 
 // runSentenceReviewStats —— 只读体检：回炉变形句库「覆盖到哪儿了、难不难」。
@@ -413,11 +227,11 @@ func runSentenceReviewStats(fs *flag.FlagSet, lang string) {
 		if s.Answer == "" {
 			continue
 		}
-		n := groupLesson(s.Lesson)
+		n := sentencereview.GroupLesson(s.Lesson)
 		if bankBy[n] == nil {
 			bankBy[n] = &lessonStat{}
 		}
-		l := jpLen(s.Answer)
+		l := sentencereview.JpLen(s.Answer)
 		bankBy[n].Count++
 		bankBy[n].Len += l
 		bankTotal++
@@ -434,12 +248,12 @@ func runSentenceReviewStats(fs *flag.FlagSet, lang string) {
 		if s.Answer == "" {
 			continue
 		}
-		n := groupLesson(s.Lesson)
+		n := sentencereview.GroupLesson(s.Lesson)
 		if revBy[n] == nil {
 			revBy[n] = &lessonStat{}
 			words[n] = map[string]bool{}
 		}
-		l := jpLen(s.Answer)
+		l := sentencereview.JpLen(s.Answer)
 		revBy[n].Count++
 		revBy[n].Len += l
 		if s.Word != "" {
@@ -480,7 +294,7 @@ func runSentenceReviewStats(fs *flag.FlagSet, lang string) {
 
 	rows := make([]map[string]interface{}, 0, len(lessons))
 	for _, n := range lessons {
-		name := lessonLabel(n)
+		name := sentencereview.LessonLabel(n)
 		if n == 0 {
 			name = "未标课"
 		}
@@ -492,11 +306,11 @@ func runSentenceReviewStats(fs *flag.FlagSet, lang string) {
 		if r != nil && r.Count > 0 {
 			row["review"] = r.Count
 			row["review_words"] = len(words[n])
-			row["review_avg_len"] = roundAcc(float64(r.Len) / float64(r.Count))
+			row["review_avg_len"] = sentencereview.RoundAcc(float64(r.Len) / float64(r.Count))
 		}
 		if b != nil && b.Count > 0 {
 			row["bank"] = b.Count
-			row["bank_avg_len"] = roundAcc(float64(b.Len) / float64(b.Count))
+			row["bank_avg_len"] = sentencereview.RoundAcc(float64(b.Len) / float64(b.Count))
 		}
 		rows = append(rows, row)
 	}
@@ -505,7 +319,7 @@ func runSentenceReviewStats(fs *flag.FlagSet, lang string) {
 		if n == 0 {
 			return 0
 		}
-		return roundAcc(float64(total) / float64(n))
+		return sentencereview.RoundAcc(float64(total) / float64(n))
 	}
 
 	outputResult(map[string]interface{}{
@@ -523,12 +337,6 @@ func runSentenceReviewStats(fs *flag.FlagSet, lang string) {
 		},
 		"by_lesson": rows,
 	})
-}
-
-// jpLen 日语句子的长度：去掉半角/全角空格再数字数，作为难度代理。
-func jpLen(s string) int {
-	s = strings.NewReplacer(" ", "", "\u3000", "", "\t", "").Replace(s)
-	return len([]rune(s))
 }
 
 // ---------- 回炉句库读写（2026-11-03 补） ----------
@@ -567,7 +375,7 @@ func runSentenceReviewBank(fs *flag.FlagSet, lang string) {
 		return
 
 	case *file != "":
-		nb, err := loadReviewFile(*file)
+		nb, err := sentencereview.LoadReviewFile(*file)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: 读取本地文件失败：%v\n", err)
 			os.Exit(1)
@@ -604,7 +412,7 @@ func runSentenceReviewBank(fs *flag.FlagSet, lang string) {
 			fmt.Fprintf(os.Stderr, "Error: 读取回炉句库失败：%v\n", err)
 			os.Exit(1)
 		}
-		add, err := loadReviewFile(*merge)
+		add, err := sentencereview.LoadReviewFile(*merge)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: 读取本地文件失败：%v\n", err)
 			os.Exit(1)
@@ -625,7 +433,7 @@ func runSentenceReviewBank(fs *flag.FlagSet, lang string) {
 			fmt.Fprintln(os.Stderr, "Error: 校验没过，没有上传（改完再来）")
 			os.Exit(1)
 		}
-		nextN := nextReviewIDNum(cur.Sentences)
+		nextN := sentencereview.NextReviewIDNum(cur.Sentences)
 		var added []ReviewSentence
 		var skipped []string
 		for _, s := range add.Sentences {
@@ -719,24 +527,6 @@ func runSentenceReviewBank(fs *flag.FlagSet, lang string) {
 			"bank_key":  storage.reviewBankKey(),
 		})
 	}
-}
-
-// loadReviewFile 读本地回炉句文件。两种格式都收：
-// {"sentences": [...]}（整库，--file 用）和裸数组 [...](补批，--merge 用)。
-func loadReviewFile(path string) (*ReviewBank, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var b ReviewBank
-	if err := json.Unmarshal(data, &b); err == nil && len(b.Sentences) > 0 {
-		return &b, nil
-	}
-	var ss []ReviewSentence
-	if err := json.Unmarshal(data, &ss); err != nil {
-		return nil, err
-	}
-	return &ReviewBank{Sentences: ss}, nil
 }
 
 // checkReviewSentences 上传前的体检，返回致命问题和提醒。
@@ -850,22 +640,4 @@ func reportReviewCheck(fatal, warn []string) {
 			fmt.Fprintf(os.Stderr, "  - %s\n", f)
 		}
 	}
-}
-
-// nextReviewIDNum 现有 id 里最大的序号（R308 → 308），补批时从它往后编。
-// 取 max(现有最大序号, 条数) —— id 有空洞（比如删过中间几条）时也不会撞号。
-func nextReviewIDNum(ss []ReviewSentence) int {
-	max := len(ss)
-	re := regexp.MustCompile(`^R(\d+)$`)
-	for _, s := range ss {
-		m := re.FindStringSubmatch(strings.TrimSpace(s.ID))
-		if len(m) != 2 {
-			continue
-		}
-		n, err := strconv.Atoi(m[1])
-		if err == nil && n > max {
-			max = n
-		}
-	}
-	return max
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
+	"github.com/zhangyf/jrp/internal/sentencereview"
 )
 
 // handlePlan 返回某天的练习计划。
@@ -231,8 +232,8 @@ func (s *server) buildSentencePlan(st *Storage, targetDate time.Time, upload boo
 		for _, p := range sentences {
 			exclude[sentence.Norm(p.Answer)] = true
 		}
-		extra := BuildReviewSentences(rb, hist, arc, targetDate,
-			cfg.SentenceReviewCount, exclude, DefaultReviewIdleDays,
+		extra := sentencereview.BuildReviewSentences(rb, hist, arc, targetDate,
+			cfg.SentenceReviewCount, exclude, sentencereview.DefaultReviewIdleDays,
 			reviewCircle(ctx, st), planCircleRatio(cfg))
 		for _, e := range extra {
 			sentences = append(sentences, PlanSentence{
