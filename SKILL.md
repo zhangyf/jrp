@@ -977,7 +977,7 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
    - **模型自动切换（2026-10-15 老师要求，见 `llm_failover.go`）**：
      `JRP_LLM_MODEL` 主模型 + `JRP_LLM_FALLBACK` 备用（逗号分隔，去空去重、自动排除主模型）。
      - 什么算失败：网络错、非 2xx、空内容、超时、**模型回废话解析不出 JSON** —— 都换下一个。
-     - 冷却：连续失败 2 次 → 5 分钟内跳过它（少了这条，每句都要干等超时）。
+     - 冷却：连续失败 2 次 → 2 分钟内跳过它（少了这条，每句都要干等超时）；共享状态在 `internal/llm/health.go`。
      - 全挂 → 维持原行为：返回 `by:"literal"` 退回字面判定，不返回 5xx。
      - 响应带 `model` 字段（实际判这句的是谁），排查「现在用的哪个模型」看它。
      - 改链条只改 env + restart，**不用编译**。
@@ -1404,10 +1404,18 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 - `internal/llm/config.go`：`Config`、`LoadConfig`、`ParseFallbackModels`；配置来源仍为 `JRP_LLM_*`，内置文本默认模型、8秒默认超时及1至60秒有效范围不变，不覆盖服务器显式配置。
 - `internal/llm/client.go`：`Call` 构造单次文本请求，私有 `buildRequest` 保留 `temperature:0`、`stream:false`；`Post` 是文本与视觉共用的单次HTTP发送路径，body原样发送，成功返回原始content。仍用原默认HTTP客户端、单次超时和1MiB限读，没有新增重试或严格超限校验。
 - 两个对应的 `_test.go` 承接配置、备用列表解析和请求体原测试，补充请求头、错误响应、空内容、超时、读取上限及body关闭测试；单包验证：`go test ./internal/llm`。测试只用本地假传输，不访问真实网关或COS。
-- `api_judge.go` 保留提示词、领域结果解析、COS模板与结果缓存、HTTP入口；`llm_failover.go` 保留进程级共享冷却状态与两种切换循环。只更新包调用，不改变失败判据。
+- `api_judge.go` 保留提示词、领域结果解析、COS模板与结果缓存、HTTP入口；`llm_failover.go` 保留两种切换循环，共享冷却状态已在后续B批迁入 `internal/llm/health.go`。只更新包调用，不改变失败判据。
 - `api_vision.go` 保留视觉配置、内联图片请求体、并发、重试及总时间预算；`api_worddef.go` 保留档案优先和词义解析。视觉不能被改成文本请求，两者只共用 `Post`。
-- 判句的JSON解析失败仍触发切换；词义/视觉仍按原流程在领域解析前记录请求成功，本批不统一这两类行为。冷却逻辑未迁移或改动；原 `llmCooldown` 常量仍为2分钟，不按旧注释改为5分钟。
+- 判句的JSON解析失败仍触发切换；词义/视觉仍按原流程在领域解析前记录请求成功，不统一这两类行为。冷却常量在后续B批移入 `internal/llm/health.go`，实际始终为2分钟，不能按旧注释改为5分钟。
 - 本批无新依赖、无额外模型/COS请求、不迁移数据；仅改源码不代表上线，提交推送和部署按老师确认执行。
+
+### 大模型共享冷却状态包边界（2026-11-03，B批最小范围）
+
+- `internal/llm/health.go` 只公开 `SkipModel` / `MarkResult`；失败阈值、冷却时间、map与互斥锁均为包内私有。状态仍按模型名在进程内共享，判句、词义、视觉以及不同网关使用同一份，不能改成每调用方独立实例。
+- 连续失败2次后冷却2分钟；成功清零，冷却精确到期允许试探但不清失败计数，再失败立即重新冷却。查询未知模型不创建状态；时间点仍由调用方按原位置传入，不改为请求结束时重新取时。
+- `llm_failover.go` 与 `api_vision.go` 只替换状态函数调用；不搬或统一切换循环、不改日志、领域成功判据、视觉请求体、整链重试、并发和总预算。`visionChat` 没有强制忽略冷却的分支，全链冷却时零请求并返回原错误。
+- `health_test.go` 承接原冷却测试并补时间边界、成功清零、模型隔离和并发计数；根测试保留业务切换，并保护三类调用跨网关共享及解析时机差异。根测试使用独立模型名和公开成功记录清理，不为测试暴露全局Reset。
+- 本批不新增依赖、不持久化健康状态、不更改学习数据或鉴权；提交推送、合并与部署继续分别确认。
 
 ## Command Reference
 
