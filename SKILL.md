@@ -1642,6 +1642,7 @@ location /api/                                 { auth_basic off; proxy_pass http
 | 统计 | `pages/stats` | `/api/stats?days=7\|30\|90` | 只读 |
 | 词汇总表 | `pages/lexicon` | `/api/lexicon`（全量拉一次，本地搜） | 只读 |
 | 录入新词 | `pages/addword` | `/api/vision`（取词）→ `/api/word-def`（查中文）→ `/api/words`（写入） | **落**，写新档案 |
+| 知识点 | `pages/knowledge` | `/api/knowledge`（课号列表）/ `?lesson=N`（分块正文） | 只读 |
 
 tabBar 三项：**练习 / 统计 / 录入**。
 ⚠️ 「录入」是工具不是练习 —— 老师 2026-10-21 明确要求不放首页色块，跟练习、统计并列在底部。
@@ -1654,6 +1655,27 @@ tabBar 三项：**练习 / 统计 / 录入**。
 ② 每个 tab 页有**各自的实例**，`onShow` 里必须 `this.getTabBar().setData({selected:n})`，
    否则从别的页切回来高亮还停在上一个。`app.json` 里 `tabBar.list` 仍要写全，
    `wx.switchTab` 靠它校验合法页面。
+
+**知识点板块「新标日III知识点」（2026-11-03 老师要求）**：首页色块入口（`data-mode="knowledge"`），
+页面 `pages/knowledge/knowledge`。⚠️ **不在 tabBar 里** —— 老师选的是首页卡片，tabBar 保持三项。
+
+- **markdown 在服务端拆块**（`api_knowledge.go` 的 `parseKnowledgeMarkdown`）：小程序没有
+  markdown 渲染能力，而且「哪几块模糊」必须按块切。块类型只有 h1/h2/h3/p/quote/list/table，
+  行内拆成 spans（bold / code）。**不认识的行一律当段落** —— 丢内容比样式难看严重得多。
+- **只认「第N课知识点」命名**：knowledge 目录里还混着 `课本原文汇编_第N单元（…）.md` 和
+  `造句易错语法速查（第12-13课）.md`，它们不是按课的知识点，不能进列表。课号按**数字**排
+  （字符串排序会把第 10 课排到第 1 课前面）。
+- **接口 ⛔ 不走 withUser**（唯一一条对匿名放行的读接口）：知识点是教材内容，不属于任何人的
+  个人数据；withUser 在鉴权打开后对匿名直接 401，那样未登录/体验版进来就是白屏。
+  自己在 `knowledgeFullAccess` 里认会话：真登录给全文，匿名和 **体验版**给
+  `locked:true` + `visible`（体验版凭证是公开的，等于匿名）。
+- **模糊是展示层软限制，不是加密**：全文照样下发，前端把下标 >= `visible` 的块盖
+  `filter: blur()`；抓包能拿全文 —— 这是有意的取舍，老师要的是「被挡住」的视觉。
+  ⚠️ 部分安卓 WebView 不支持 CSS filter → 兜底 `color: transparent + text-shadow`。
+- **可见块数** = min(文本量三成, 块数三成)，至少 3 块、**且至少留一块被挡**
+  （实测第21课 13/44、第1课 8/27）。只按文本量算的话标题块太"便宜"，会放出 41% 的块。
+- 登录后当场解开：页面挂 `syncTrial()`（app 广播会叫到）→ 重拉当前课；
+  浮层里的「微信登录」走 `utils/trial.js` 的 `goLogin`，登录成功自动调 `load()`。
 
 **判分只有一份实现**：新增 `POST /api/grade`（`api_grade.go`），复用 Go 的 `GradeAnswer`，
 小程序「对答案」整屏一次请求拿回 `results:[bool]`；web 端仍在浏览器本地用 `web/grade.js` 判。

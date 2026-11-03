@@ -1,0 +1,237 @@
+.wrap {
+  padding: 20rpx 24rpx 80rpx;
+}
+
+/* 顶部标题 + 课号横条。chips 横向滚，21 个 chip 一行放不下。 */
+.hd {
+  margin-bottom: 18rpx;
+}
+.hd-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.hd-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #23231f;
+}
+.hd-sub {
+  font-size: 24rpx;
+  color: #8a8a80;
+}
+.chips {
+  margin-top: 16rpx;
+  white-space: nowrap;
+}
+.chip {
+  display: inline-block;
+  min-width: 68rpx;
+  padding: 10rpx 18rpx;
+  margin-right: 12rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #5a5a52;
+  background: #ffffff;
+  border: 1rpx solid #e6e4da;
+  border-radius: 999rpx;
+}
+.chip.on {
+  color: #ffffff;
+  background: #2f6f4f;
+  border-color: #2f6f4f;
+  font-weight: 600;
+}
+
+.loading, .err {
+  padding: 40rpx 0;
+  text-align: center;
+  font-size: 26rpx;
+  color: #8a8a80;
+}
+.err { color: #b4392f; }
+
+/* 未登录提示条：放在最上面，一眼知道为什么下面糊了 */
+.lockbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18rpx 20rpx;
+  margin-bottom: 18rpx;
+  background: #fff8e6;
+  border: 1rpx solid #f0e2bd;
+  border-radius: 12rpx;
+}
+.locktxt {
+  font-size: 24rpx;
+  color: #8a6b23;
+}
+.lockbtn {
+  padding: 10rpx 20rpx;
+  font-size: 24rpx;
+  color: #ffffff;
+  background: #2f6f4f;
+  border-radius: 999rpx;
+}
+.lockbtn.wide {
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  padding: 22rpx 0;
+  font-size: 28rpx;
+  margin-top: 8rpx;
+}
+
+/* 正文块 */
+.doc {
+  background: #ffffff;
+  border: 1rpx solid #e6e4da;
+  border-radius: 12rpx;
+  padding: 24rpx 24rpx 8rpx;
+}
+.blk {
+  margin-bottom: 22rpx;
+}
+.sp { font-size: 28rpx; color: #23231f; }
+.sp.b { font-weight: 700; }
+.sp.code {
+  font-family: monospace;
+  background: #f2f1ea;
+  padding: 0 6rpx;
+  border-radius: 6rpx;
+}
+
+.h1 {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #23231f;
+  margin-bottom: 8rpx;
+}
+.h2 {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #2f6f4f;
+  padding-left: 16rpx;
+  border-left: 6rpx solid #2f6f4f;
+  margin-bottom: 10rpx;
+}
+.h3 {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #3d5c4c;
+  margin-bottom: 8rpx;
+}
+.p {
+  font-size: 28rpx;
+  line-height: 1.75;
+  color: #23231f;
+}
+.quote {
+  padding: 16rpx 18rpx;
+  margin: 6rpx 0;
+  background: #f5f4ee;
+  border-left: 6rpx solid #c9c6b6;
+  border-radius: 8rpx;
+  font-size: 27rpx;
+  line-height: 1.7;
+  color: #4a4a42;
+}
+
+.list { margin: 4rpx 0; }
+.li {
+  display: flex;
+  margin-bottom: 10rpx;
+}
+.bullet {
+  width: 44rpx;
+  flex: 0 0 44rpx;
+  font-size: 26rpx;
+  color: #8a8a80;
+}
+.litxt {
+  flex: 1;
+  font-size: 27rpx;
+  line-height: 1.7;
+  color: #23231f;
+}
+
+/* 表格：列宽不固定，横向滚。⚠️ 别用 flex-basis + calc()，部分机型不认 */
+.tbl {
+  white-space: nowrap;
+  border: 1rpx solid #e6e4da;
+  border-radius: 8rpx;
+}
+.tr {
+  display: flex;
+  border-bottom: 1rpx solid #eeebe0;
+}
+.tr:last-child { border-bottom: none; }
+.th, .td {
+  min-width: 200rpx;
+  padding: 14rpx 16rpx;
+  font-size: 25rpx;
+  line-height: 1.55;
+  border-right: 1rpx solid #eeebe0;
+  white-space: normal;
+}
+.th {
+  font-weight: 700;
+  color: #23231f;
+  background: #f5f4ee;
+}
+.td { color: #33332d; }
+
+/* 被挡的块：blur 是主效果，color:transparent + text-shadow 是 filter 不生效时的兜底
+   （部分安卓 WebView 不支持 CSS filter，只糊一层也看得出「被挡了」） */
+.blk.blur {
+  filter: blur(10rpx);
+  opacity: 0.62;
+  color: transparent;
+  text-shadow: 0 0 16rpx rgba(35, 35, 31, 0.85);
+  user-select: none;
+}
+.blk.blur .sp,
+.blk.blur .h1,
+.blk.blur .h2,
+.blk.blur .h3,
+.blk.blur .th,
+.blk.blur .td,
+.blk.blur .litxt {
+  color: transparent;
+  text-shadow: 0 0 16rpx rgba(35, 35, 31, 0.85);
+}
+
+.cutline {
+  padding: 18rpx 0 26rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #a09c8c;
+}
+
+.foot {
+  margin: 20rpx 0 10rpx;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 24rpx;
+}
+.pgbtn {
+  padding: 14rpx 28rpx;
+  font-size: 26rpx;
+  color: #2f6f4f;
+  background: #ffffff;
+  border: 1rpx solid #cfd8d0;
+  border-radius: 999rpx;
+}
+.pgbtn.off {
+  color: #b6b6ac;
+  border-color: #eceade;
+  background: #f7f7f5;
+}
+.pgcur {
+  font-size: 26rpx;
+  color: #8a8a80;
+}

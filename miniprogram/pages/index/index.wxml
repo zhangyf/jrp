@@ -33,6 +33,11 @@
         <view class="tile-title">词汇总表</view>
         <view class="tile-desc">10 个词</view>
       </view>
+      <!-- 知识点是查不是练；体验版也能进，只是每课只看得到开头一部分（页面里盖模糊） -->
+      <view class="tile t-kno" data-mode="knowledge" bindtap="go" hover-class="tile-press">
+        <view class="tile-title">知识点</view>
+        <view class="tile-desc">每课只看一部分</view>
+      </view>
     </view>
     <view class="foot-link" bindtap="onWxLogin">{{busy ? '登录中…' : '微信登录后可保存进度'}}</view>
   </block>
@@ -66,6 +71,11 @@
     <view class="tile t-lex" data-mode="lexicon" bindtap="go" hover-class="tile-press">
       <view class="tile-title">词汇总表</view>
       <view class="tile-desc">查词 · 看掌握情况</view>
+    </view>
+    <!-- 新标日III知识点：按课看知识点总结（2026-11-03）。未登录每课只看开头一部分 -->
+    <view class="tile t-kno" data-mode="knowledge" bindtap="go" hover-class="tile-press">
+      <view class="tile-title">知识点</view>
+      <view class="tile-desc">新标日III · 按课查</view>
     </view>
   </view>
 

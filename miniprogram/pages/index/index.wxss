@@ -107,6 +107,11 @@
   background: #3f5a70;
 }
 
+/* 知识点：也是查不是练，但跟词汇总表要分得开 —— 用暖褐（书本/讲义的感觉） */
+.t-kno {
+  background: #8a6b3f;
+}
+
 .err {
   margin-bottom: 18rpx;
   font-size: 26rpx;

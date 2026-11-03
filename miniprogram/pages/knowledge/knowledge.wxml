@@ -1,0 +1,81 @@
+<view class="wrap">
+  <view class="hd">
+    <view class="hd-row">
+      <text class="hd-title">新标日III知识点</text>
+      <text class="hd-sub" wx:if="{{lessons.length}}">共 {{lessons.length}} 课</text>
+    </view>
+    <!-- 课号横条：21 个 chip 一行放不下，横向滚 -->
+    <scroll-view class="chips" scroll-x enable-flex>
+      <view class="chip {{item === cur ? 'on' : ''}}"
+            wx:for="{{lessons}}" wx:key="*this"
+            data-l="{{item}}" bindtap="pick">{{item}}</view>
+    </scroll-view>
+  </view>
+
+  <view class="loading" wx:if="{{loading}}">正在加载…</view>
+  <view class="err" wx:if="{{err}}">{{err}}</view>
+
+  <block wx:if="{{!loading && !err}}">
+    <!-- 未登录：顶部一句说明 + 一键登录（弹浮层，不跳页） -->
+    <view class="lockbar" wx:if="{{locked}}">
+      <text class="locktxt">未登录 · 本课只展示开头一部分</text>
+      <view class="lockbtn" bindtap="goLogin">微信登录看完整版</view>
+    </view>
+
+    <view class="doc">
+      <block wx:for="{{blocks}}" wx:for-item="b" wx:key="index">
+        <!-- 被挡的块：filter 撑不住的机型靠 color:transparent + text-shadow 兜底 -->
+        <view class="blk {{index >= visible ? 'blur' : ''}}">
+          <view class="h1" wx:if="{{b.type === 'h1'}}">
+            <block wx:for="{{b.spans}}" wx:for-item="sp" wx:key="index"><text class="sp {{sp.b ? 'b' : ''}} {{sp.c ? 'code' : ''}}">{{sp.t}}</text></block>
+          </view>
+          <view class="h2" wx:elif="{{b.type === 'h2'}}">
+            <block wx:for="{{b.spans}}" wx:for-item="sp" wx:key="index"><text class="sp {{sp.b ? 'b' : ''}} {{sp.c ? 'code' : ''}}">{{sp.t}}</text></block>
+          </view>
+          <view class="h3" wx:elif="{{b.type === 'h3'}}">
+            <block wx:for="{{b.spans}}" wx:for-item="sp" wx:key="index"><text class="sp {{sp.b ? 'b' : ''}} {{sp.c ? 'code' : ''}}">{{sp.t}}</text></block>
+          </view>
+          <view class="quote" wx:elif="{{b.type === 'quote'}}">
+            <block wx:for="{{b.spans}}" wx:for-item="sp" wx:key="index"><text class="sp {{sp.b ? 'b' : ''}} {{sp.c ? 'code' : ''}}">{{sp.t}}</text></block>
+          </view>
+          <view class="p" wx:elif="{{b.type === 'p'}}">
+            <block wx:for="{{b.spans}}" wx:for-item="sp" wx:key="index"><text class="sp {{sp.b ? 'b' : ''}} {{sp.c ? 'code' : ''}}">{{sp.t}}</text></block>
+          </view>
+          <view class="list" wx:elif="{{b.type === 'list'}}">
+            <view class="li" wx:for="{{b.items}}" wx:for-item="it" wx:key="index">
+              <text class="bullet">{{b.ordered ? it.no : '·'}}</text>
+              <view class="litxt">
+                <block wx:for="{{it.spans}}" wx:for-item="sp" wx:key="index"><text class="sp {{sp.b ? 'b' : ''}} {{sp.c ? 'code' : ''}}">{{sp.t}}</text></block>
+              </view>
+            </view>
+          </view>
+          <scroll-view class="tbl" scroll-x wx:elif="{{b.type === 'table'}}">
+            <view class="tr">
+              <view class="th" wx:for="{{b.header}}" wx:for-item="c" wx:key="index">{{c}}</view>
+            </view>
+            <view class="tr" wx:for="{{b.rows}}" wx:for-item="row" wx:key="index">
+              <view class="td" wx:for="{{row}}" wx:for-item="c" wx:key="index">{{c}}</view>
+            </view>
+          </scroll-view>
+        </view>
+
+        <!-- 第一条被挡的块前面插一句，别让人以为页面坏了 -->
+        <view class="cutline" wx:if="{{locked && index === visible}}">
+          <text>—— 以下为完整版内容，登录后可见 ——</text>
+        </view>
+      </block>
+    </view>
+
+    <view class="foot" wx:if="{{locked}}">
+      <view class="lockbtn wide" bindtap="goLogin">微信登录看完整版</view>
+    </view>
+
+    <view class="pager">
+      <view class="pgbtn {{lessons[0] === cur ? 'off' : ''}}" bindtap="prev">上一课</view>
+      <text class="pgcur">第 {{cur}} 课</text>
+      <view class="pgbtn {{lessons[lessons.length - 1] === cur ? 'off' : ''}}" bindtap="next">下一课</view>
+    </view>
+  </block>
+
+  <include src="../../trial-sheet.wxml" />
+</view>

@@ -111,6 +111,8 @@ Page({
       wx.navigateTo({ url: '/pages/conj/conj' });
     } else if (mode === 'lexicon') {
       wx.navigateTo({ url: '/pages/lexicon/lexicon' });
+    } else if (mode === 'knowledge') {
+      wx.navigateTo({ url: '/pages/knowledge/knowledge' });
     } else {
       wx.navigateTo({ url: '/pages/practice/practice?mode=' + (mode || 'words') });
     }

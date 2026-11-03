@@ -91,6 +91,9 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 	mux.HandleFunc("/api/grade", srv.withUser(srv.handleGrade)) // 小程序端判分（web 端仍在浏览器本地判）
 	mux.HandleFunc("/api/judge-sentence", srv.withUser(srv.handleJudgeSentence))
 	mux.HandleFunc("/api/judge-prompt", srv.withUser(srv.handleJudgePrompt))
+	// 知识点是教材内容，不属于任何人的个人数据 —— 匿名/体验版也放行（只读到一部分），
+	// 所以 ⛔ 不走 withUser（它鉴权打开后对匿名直接 401）。见 api_knowledge.go。
+	mux.HandleFunc("/api/knowledge", srv.handleKnowledge)
 
 	// 登录：小程序码确认登录。这几个都不走 withUser —— 它们自己就是登录入口。
 	mux.HandleFunc("/api/mini-qr", srv.withUser(srv.handleMiniQR)) // 常驻小程序码（进小程序，不是登录码）
