@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"sort"
+
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 // runDumpLexicon 导出词汇总表（跟 GET /api/lexicon 同一份数据、同一个拼装函数），
@@ -70,7 +72,7 @@ func runDumpLexicon(fs *flag.FlagSet, lang string) {
 // buildLexicon 把档案 + 词性表拼成词汇总表的行。
 // /api/lexicon 和 CLI dump-lexicon 共用这一份，两边不会对不上。
 func buildLexicon(arc *Archive, meta *WordMeta) ([]LexiconItem, map[string]int, []string) {
-	words := AllWords(arc.Groups)
+	words := review.AllWords(arc.Groups)
 	items := make([]LexiconItem, 0, len(words))
 	posSummary := map[string]int{}
 	groupSet := map[string]bool{}

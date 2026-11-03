@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/zhangyf/jrp/internal/llm"
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 // 查中文意思 + 补汉字写法：录入新词时只用打假名，剩下的服务端补齐。
@@ -103,7 +104,7 @@ func (s *server) lookupWordDefs(st *Storage, words []string) ([]WordDefItem, str
 	if data, _, err := st.DownloadLatestArchive(s.ctx()); err == nil {
 		if arc, err := ParseArchive(string(data), st.lang); err == nil {
 			for _, w := range words {
-				if existing, _ := FindWord(arc.Groups, w); existing != nil &&
+				if existing, _ := review.FindWord(arc.Groups, w); existing != nil &&
 					strings.TrimSpace(existing.Definition) != "" {
 					items = append(items, WordDefItem{Input: w, Word: existing.Word, Def: strings.TrimSpace(existing.Definition)})
 					continue

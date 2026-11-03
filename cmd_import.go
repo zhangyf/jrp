@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 func runImport(fs *flag.FlagSet, lang string) {
@@ -61,7 +63,7 @@ func runImport(fs *flag.FlagSet, lang string) {
 		os.Exit(1)
 	}
 
-	totalWords := CountAllWords(arc.Groups)
+	totalWords := review.CountAllWords(arc.Groups)
 	outputResult(map[string]interface{}{
 		"success":    true,
 		"command":    "import",

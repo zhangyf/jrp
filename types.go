@@ -1,5 +1,7 @@
 package main
 
+import "github.com/zhangyf/jrp/internal/review"
+
 // LangConfig holds language-specific configuration.
 type LangConfig struct {
 	Code       string // "ja", "en", "fr"
@@ -15,23 +17,9 @@ var LangConfigs = map[string]LangConfig{
 	"fr": {Code: "fr", Name: "法语", WordColumn: "法语单词", FilePrefix: "法语学习进度档案", COSPrefix: "language-review/fr"},
 }
 
-// Word represents a single vocabulary entry.
-type Word struct {
-	Word               string // target language word (e.g. すし)
-	Definition         string // Chinese definition (e.g. 寿司)
-	ReviewCount        int    // total review attempts
-	ErrorCount         int    // total wrong answers
-	ConsecutiveCorrect int    // consecutive correct since last error
-	LastReview         string // last review date MM/DD
-	Status             string // 🟢已掌握 / 🟡基本掌握 / 🔴待巩固 / 🔄待测试
-	Group              string // group title (e.g. "第1课01 基础词（5/25）")
-}
-
-// WordGroup is a titled section of words in the archive.
-type WordGroup struct {
-	Title string
-	Words []Word
-}
+// Word 和 WordGroup 复用 review 包类型，保留根包调用方的类型名称。
+type Word = review.Word
+type WordGroup = review.WordGroup
 
 // ChangelogEntry is one row in the version history table.
 type ChangelogEntry struct {
@@ -202,11 +190,11 @@ type LessonCount struct {
 // N4 约 1500 词、语法到标日初级下册第 48 课。放在后端算，是为了让 CLI 和网站
 // 共用同一个口径，改门槛只改一处。
 type JlptProgress struct {
-	VocabTotal int        `json:"vocab_total"` // 词库总量
-	VocabFirm  int        `json:"vocab_firm"`  // 熟练词：正确率 ≥80% 且复习过
-	Lesson     int        `json:"lesson"`      // 当前课次，从分组名里解析出的最大课号
-	N5         JlptLevel  `json:"n5"`
-	N4         JlptLevel  `json:"n4"`
+	VocabTotal int       `json:"vocab_total"` // 词库总量
+	VocabFirm  int       `json:"vocab_firm"`  // 熟练词：正确率 ≥80% 且复习过
+	Lesson     int       `json:"lesson"`      // 当前课次，从分组名里解析出的最大课号
+	N5         JlptLevel `json:"n5"`
+	N4         JlptLevel `json:"n4"`
 }
 
 type JlptLevel struct {

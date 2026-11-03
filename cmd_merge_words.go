@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 // runMergeWords merges two archive entries that are the same word stored under
@@ -138,7 +140,7 @@ func runMergeWords(fs *flag.FlagSet, lang string) {
 			iw.ConsecutiveCorrect = fw.ConsecutiveCorrect
 		}
 		iw.LastReview = laterMMDD(iw.LastReview, fw.LastReview)
-		iw.Status = DetermineStatus(*iw)
+		iw.Status = review.DetermineStatus(*iw)
 
 		mergedRow := fmt.Sprintf("%s | 复习%d 错%d 连%d | %s | %s",
 			iw.Word, iw.ReviewCount, iw.ErrorCount, iw.ConsecutiveCorrect, iw.LastReview, iw.Status)
@@ -147,7 +149,7 @@ func runMergeWords(fs *flag.FlagSet, lang string) {
 		reports = append(reports, mergeReport{
 			From: m.From, Into: m.Into, FromRow: fromRow, IntoRow: intoRow,
 			Merged: mergedRow, Group: iGroup, FromGrp: fGroup,
-			Interval: GetWordInterval(*iw),
+			Interval: review.GetWordInterval(*iw),
 		})
 	}
 

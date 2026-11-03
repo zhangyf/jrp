@@ -164,7 +164,7 @@ accuracy — e.g. `こんにちは` (28 reviews, 3 errors, 89%) was flagged whil
 The `minReviews >= 3` guard prevents a brand-new word answered wrong once (1/1 = 0%)
 from being flagged on its first miss.
 
-Note: `CountNailHouseholds` in `ebbinghaus.go` keeps a separate, error-count-based
+Note: `CountNailHouseholds` in `internal/review/ebbinghaus.go` keeps a separate, error-count-based
 formula on purpose — it feeds the changelog's 钉子户 column, and changing it would make
 historical version rows incomparable.
 
@@ -1382,6 +1382,15 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 - `api_conjugation.go` 保留 DTO、取词、抽题和 HTTP 入口；`api_knowledge.go` 保留 HTTP、鉴权和兼容类型别名。知识点 HTTP/权限测试仍在 `api_knowledge_test.go`，不迁移根包的内存存储夹具。
 - 根目录仍是 `package main`，继续从根目录 `go build .`；`serve.go` 保留 `//go:embed web`，前端和部署方式不变。
 - 目录重构不等于上线。后续模块仍须逐批确认范围，部署单独确认；不迁移或回滚学习数据。
+
+### 单词复习核心包边界（2026-11-03）
+
+- `internal/review/types.go` 定义 `Word`、`WordGroup`；根 `types.go` 只保留类型别名，不创建新类型，不做转换。字段、顺序和序列化形态保持不变；`Archive`、`ReviewPlan`、`PlanWord`、回写输入及统计 DTO 仍在根包。
+- `internal/review/ebbinghaus.go` 是原复习规则的唯一实现，公开17个函数及 `DefaultHardMinAccuracy` / `DefaultHardMinReviews`。只依赖标准库 `fmt`、`time`，不读写存储、不访问网络；根调用方使用 `review.X`，不保留函数包装或第二份规则。
+- `ebbinghaus_test.go` 的18个测试、214个子用例原样随包迁移。保护间隔、状态阈值、跨年日期、答对答错更新、分组顺序、`FindWord` 返回原对象指针和 `AllWords` 值拷贝；单包验证：`go test ./internal/review`。
+- `CountByStatus` 按已存状态和原优先级计数，不能替换成 `DetermineStatus`；`CountNailHouseholds` 是历史统计口径，不能统一为当前 `IsHardWord`。既有异常输入兼容行为保留，纯迁包不顺手修规则。
+- 根 `archive_test.go` 验证类型别名/JSON形态及七列档案往返；`api_record_test.go` 用内存存储验证每日/钉子户计划编号映射、回写日期、未提交词不变及历史统计，不触真实COS。
+- 本批仅调整包归属和调用引用；HTTP/CLI流程、档案/计划格式、鉴权、COS key、`go:embed web` 和部署方式不变。无新增依赖或数据迁移；提交推送、合并、部署继续分别确认。
 
 ### 单词判分包边界（2026-11-03，后续批次）
 

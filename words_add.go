@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 // 加词的唯一实现。
@@ -78,7 +80,7 @@ func addWordsToArchive(ctx context.Context, st *Storage, group string, words []W
 	var dupDefs, dupCores []string
 	added, duplicates := 0, 0
 	for _, w := range deduped {
-		if existing, _ := FindWord(arc.Groups, w.Word); existing != nil {
+		if existing, _ := review.FindWord(arc.Groups, w.Word); existing != nil {
 			duplicates++
 			continue
 		}
@@ -101,7 +103,7 @@ func addWordsToArchive(ctx context.Context, st *Storage, group string, words []W
 	if added == 0 {
 		return &AddWordsOutcome{
 			Added: 0, Duplicates: duplicates, OldFilename: oldFilename,
-			NewFilename: oldFilename, TotalWords: CountAllWords(arc.Groups),
+			NewFilename: oldFilename, TotalWords: review.CountAllWords(arc.Groups),
 		}, nil
 	}
 
@@ -127,7 +129,7 @@ func addWordsToArchive(ctx context.Context, st *Storage, group string, words []W
 	return &AddWordsOutcome{
 		Added: added, Duplicates: duplicates, OldFilename: oldFilename,
 		NewFilename: newFilename, Version: fmt.Sprintf("v%d.%d", newMajor, newMinor),
-		MajorBump: needMajorBump, TotalWords: CountAllWords(arc.Groups),
+		MajorBump: needMajorBump, TotalWords: review.CountAllWords(arc.Groups),
 		DupDefs: dupDefs, DupCores: dupCores,
 	}, nil
 }

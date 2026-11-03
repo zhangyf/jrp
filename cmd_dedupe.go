@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 type dupInfo struct {
@@ -98,7 +100,7 @@ func runDedupe(fs *flag.FlagSet, lang string) {
 		dupGroups = append(dupGroups, dg)
 	}
 
-	totalBefore := len(AllWords(arc.Groups))
+	totalBefore := len(review.AllWords(arc.Groups))
 
 	if *dryRun {
 		outputResult(map[string]interface{}{
@@ -170,7 +172,7 @@ func runDedupe(fs *flag.FlagSet, lang string) {
 	}
 	arc.Groups = cleanedGroups
 
-	totalAfter := len(AllWords(arc.Groups))
+	totalAfter := len(review.AllWords(arc.Groups))
 	expectedAfter := totalBefore - sumRemovals(dupGroups)
 	if totalAfter != expectedAfter {
 		fmt.Fprintf(os.Stderr,

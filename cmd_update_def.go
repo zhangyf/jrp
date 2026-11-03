@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 func runUpdateDef(fs *flag.FlagSet, lang string) {
@@ -53,7 +55,7 @@ func runUpdateDef(fs *flag.FlagSet, lang string) {
 	}
 
 	// Find the word and update
-	w, _ := FindWord(arc.Groups, input.Word)
+	w, _ := review.FindWord(arc.Groups, input.Word)
 	if w == nil {
 		fmt.Fprintf(os.Stderr, "Word not found: %s\n", input.Word)
 		os.Exit(1)

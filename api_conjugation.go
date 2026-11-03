@@ -20,6 +20,7 @@ import (
 	"strconv"
 
 	"github.com/zhangyf/jrp/internal/conjugation"
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 // ConjTask 是一张卡上的一道填空：label（原形/て形/过去式…）+ 可接受写法列表。
@@ -85,7 +86,7 @@ func (s *server) handleConjugation(w http.ResponseWriter, r *http.Request, st *S
 
 	pool := make([]ConjItem, 0, 128)
 	seenKana := map[string]bool{}
-	for _, w := range AllWords(arc.Groups) {
+	for _, w := range review.AllWords(arc.Groups) {
 		pos, has := meta.Items[w.Word]
 		if !has {
 			continue

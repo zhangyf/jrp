@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/review"
 )
 
 // ============================================================================
@@ -174,7 +176,7 @@ func applyCircle(ctx context.Context, st *Storage, in *CircleInput, hold bool) (
 		if word == "" {
 			continue
 		}
-		_, gi := FindWord(arc.Groups, word)
+		_, gi := review.FindWord(arc.Groups, word)
 		if gi >= 0 {
 			// 已存在：不重复加，只打标
 			out.Duplicates++
@@ -263,7 +265,7 @@ func applyCircle(ctx context.Context, st *Storage, in *CircleInput, hold bool) (
 
 	out.NewFilename = newFilename
 	out.Version = fmt.Sprintf("v%d.%d", newMajor, newMinor)
-	out.TotalWords = CountAllWords(arc.Groups)
+	out.TotalWords = review.CountAllWords(arc.Groups)
 	return out, nil
 }
 
