@@ -4,6 +4,7 @@ import (
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
+	"github.com/zhangyf/jrp/internal/sentencereview"
 )
 
 // LangConfig holds language-specific configuration.
@@ -29,6 +30,12 @@ type WordGroup = review.WordGroup
 // Archive / ChangelogEntry 这两个名字，不用跟着改。
 type Archive = archive.Archive
 type ChangelogEntry = archive.ChangelogEntry
+
+// 回炉变形句库类型已迁 internal/sentencereview，根包只保留别名 ——
+// sentence_review.go 的 *Storage 方法与 cmd_sentence_review.go 的编排
+// 继续用 ReviewBank / ReviewSentence 这两个名字，不用跟着改。
+type ReviewBank = sentencereview.ReviewBank
+type ReviewSentence = sentencereview.ReviewSentence
 
 // PlanWord is a word entry in a review plan.
 //

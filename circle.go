@@ -112,21 +112,8 @@ func circleMap(meta *WordMeta) map[string]string {
 	return out
 }
 
-// circleRank 圆级分档，数字小的先出：三圆 0、二圆 1、一圆 2、没标 3。
-//
-// ⚠️ 只认 word_meta 里存的这三个中文值 —— 手册就是这么标的手写分级，
-// 写成别的（"3圆"/"三星"）一律落「没标」档，不参与优先。
-func circleRank(circle map[string]string, word string) int {
-	switch circle[word] {
-	case "三圆":
-		return 0
-	case "二圆":
-		return 1
-	case "一圆":
-		return 2
-	}
-	return 3
-}
+// 圆级分档已迁 internal/sentencereview.CircleRank（纯函数）。
+// circleMap 依赖根包 WordMeta 类型，留在这里；分档只吃摊好的 map，归纯规则层。
 
 // applyCircle 是批量导入/打标的唯一实现。
 //

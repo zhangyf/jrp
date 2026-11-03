@@ -14,6 +14,7 @@ import (
 	"github.com/zhangyf/jrp/internal/lessonimport"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
+	"github.com/zhangyf/jrp/internal/sentencereview"
 )
 
 // runLessonStatus 一次查清某一课的「四件套」齐不齐：
@@ -155,7 +156,7 @@ func newLessonStatusSource(ctx context.Context, storage *Storage, lang string) (
 	if data, _, err := storage.DownloadLatestArchive(ctx); err == nil {
 		if arc, err := archive.ParseArchive(string(data), lang); err == nil {
 			for _, w := range review.AllWords(arc.Groups) {
-				if n := groupLesson(w.Group); n > 0 {
+				if n := sentencereview.GroupLesson(w.Group); n > 0 {
 					s.words[n]++
 				}
 			}
@@ -198,7 +199,7 @@ func (s *lessonStatusSource) maxKnownLesson() int {
 		}
 	}
 	for _, sen := range s.bank.Sentences {
-		if v := groupLesson(sen.Lesson); v > max {
+		if v := sentencereview.GroupLesson(sen.Lesson); v > max {
 			max = v
 		}
 	}

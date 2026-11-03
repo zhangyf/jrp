@@ -1453,6 +1453,16 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 - `health_test.go` 承接原冷却测试并补时间边界、成功清零、模型隔离和并发计数；根测试保留业务切换，并保护三类调用跨网关共享及解析时机差异。根测试使用独立模型名和公开成功记录清理，不为测试暴露全局Reset。
 - 本批不新增依赖、不持久化健康状态、不更改学习数据或鉴权；提交推送、合并与部署继续分别确认。
 
+### 回炉变形句规则层包边界（2026-11-03）
+
+- `internal/sentencereview/types.go`：`ReviewBank`、`ReviewSentence`、`ProtoSuggest`（原私有 `protoSuggest`）；根 `types.go` 只保留 `ReviewBank` / `ReviewSentence` 两个类型别名，字段、顺序、JSON tag 与序列化形态逐字不变，不留转发 wrapper。
+- `internal/sentencereview/review.go`：回炉挑句纯规则——`DefaultReviewIdleDays`、`CircleRank`（原 `circle.go` 的 `circleRank`）、`WordIdleDays`（原 `wordIdleDays`）、`wordIdleMap`、`BuildReviewSentences`。五条筛选（exclude / 原型句 exclude / 闲置过滤 / 最久没出过排序 / 同原型去重）+ 圆级分层逐字保留；`arc=nil` 跳过闲置过滤，`circle=nil` 或 `circleRatio<=0` 退回旧行为。只依赖 `internal/archive`、`internal/review`、`internal/sentence`，不碰 Storage/COS。
+- `internal/sentencereview/prototype.go`：原型句挑选纯规则——`GroupLesson`、`LessonLabel`、`RoundAcc`、`JpLen`、`GroupProtosByLesson`、`ProtoScore`、`PickPrototypes`、`ProtoList`、`LoadReviewFile`、`NextReviewIDNum`。「长句优先 / 14-26 字 +15 / <10 字重扣」「跨课先往高课扩」「基本课文优先」等既有打分与排序规则原样保留。
+- 根包只留 I/O 与编排：`sentence_review.go` 的 `DownloadReviewBank` / `UploadReviewBank` / `reviewCircle`，`circle.go` 的 `circleMap` / `applyCircle` / `unholdLesson`，`cmd_sentence_review.go` 的 `run*` / `checkReviewSentences` / `reportReviewCheck`。消费方（`api_plan.go` / `api_offline.go` / `cmd_sentence.go` / `cmd_lesson_status.go`）只改符号引用。
+- 测试：`internal/sentencereview/review_test.go`、`prototype_test.go` 覆盖闲置天数跨年/非法值/边界、挑句各条筛选与圆级配额、长度三档打分、跨课扩展、两格式文件读取与序号推进；固定 `testToday`，不 sleep、不连 COS/模型。根 `sentence_review_test.go` 保留 `circleMap` 等根边界测试。单包验证：`go test ./internal/sentencereview`。
+- 等价核对：14 个迁出函数与基线块级逐行等价（`ALL EQUIVALENT`）；`cmd_sentence_review.go` 编排代码去空白+还原前缀后按序匹配基线，0 行漂移（8 行差异仅为 `[]sentencereview.ProtoSuggest` 拉宽后的 gofmt 字段列对齐）。
+- 本批纯目录重构，线上行为不变；不改 JSON / COS key / 数据格式，提交推送与部署继续分别确认。
+
 ## Command Reference
 
 | Command | Flags | Description |
