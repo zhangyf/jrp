@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
 )
 
@@ -113,7 +114,7 @@ func runNormalizeWords(fs *flag.FlagSet, lang string) {
 		os.Exit(1)
 	}
 
-	arc, err := ParseArchive(string(data), lang)
+	arc, err := archive.ParseArchive(string(data), lang)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing archive: %v\n", err)
 		os.Exit(1)
@@ -175,17 +176,18 @@ func runNormalizeWords(fs *flag.FlagSet, lang string) {
 		os.Exit(1)
 	}
 
-	oldDate, oldMajor, oldMinor, _ := ParseFilename(oldFilename)
+	oldDate, oldMajor, oldMinor, _ := archive.ParseFilename(oldFilename)
 	today := time.Now()
 	//20+ entries changed is a structural rewrite → major bump
 	majorBump := len(changes) >= 20
-	newMajor, newMinor := NextVersion(oldDate, oldMajor, oldMinor, today, majorBump)
+	newMajor, newMinor := archive.NextVersion(oldDate, oldMajor, oldMinor, today, majorBump)
 
 	description := fmt.Sprintf("规范化词形：假名在外汉字在括号内（%d词）", len(changes))
-	AddChangelogEntry(arc, today, newMajor, newMinor, description)
+	archive.AddChangelogEntry(arc, today, newMajor, newMinor, description)
 
-	newContent := WriteArchive(arc)
-	newFilename := ArchiveFilename(lang, today, newMajor, newMinor)
+	cfg := LangConfigs[lang]
+	newContent := archive.WriteArchive(arc, cfg.Name, cfg.WordColumn)
+	newFilename := archive.Filename(LangConfigs[lang].FilePrefix, today, newMajor, newMinor)
 
 	// Sanity check: word count must not change
 	newTotal := len(review.AllWords(arc.Groups))

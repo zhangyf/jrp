@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
 )
 
@@ -95,7 +96,7 @@ func ApplyRecord(ctx context.Context, storage *Storage, lang string, input Recor
 	}
 
 	// Parse archive
-	arc, err := ParseArchive(string(data), lang)
+	arc, err := archive.ParseArchive(string(data), lang)
 	if err != nil {
 		return nil, fmt.Errorf("parsing archive: %w", err)
 	}
@@ -147,8 +148,8 @@ func ApplyRecord(ctx context.Context, storage *Storage, lang string, input Recor
 	}
 
 	// Calculate version
-	oldDate, oldMajor, oldMinor, _ := ParseFilename(oldFilename)
-	newMajor, newMinor := NextVersion(oldDate, oldMajor, oldMinor, today, false)
+	oldDate, oldMajor, oldMinor, _ := archive.ParseFilename(oldFilename)
+	newMajor, newMinor := archive.NextVersion(oldDate, oldMajor, oldMinor, today, false)
 
 	// Add changelog entry
 	description := fmt.Sprintf("复习结果：%d词写对，%d词写错", correctCount, wrongCount)
@@ -158,11 +159,12 @@ func ApplyRecord(ctx context.Context, storage *Storage, lang string, input Recor
 	if notFound > 0 {
 		description += fmt.Sprintf("（%d词未找到）", notFound)
 	}
-	AddChangelogEntry(arc, today, newMajor, newMinor, description)
+	archive.AddChangelogEntry(arc, today, newMajor, newMinor, description)
 
 	// Write and upload archive
-	newContent := WriteArchive(arc)
-	newFilename := ArchiveFilename(lang, today, newMajor, newMinor)
+	cfg := LangConfigs[lang]
+	newContent := archive.WriteArchive(arc, cfg.Name, cfg.WordColumn)
+	newFilename := archive.Filename(LangConfigs[lang].FilePrefix, today, newMajor, newMinor)
 
 	if err := storage.UploadArchive(ctx, newFilename, []byte(newContent)); err != nil {
 		return nil, fmt.Errorf("uploading archive: %w", err)

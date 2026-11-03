@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/llm"
 	"github.com/zhangyf/jrp/internal/review"
 )
@@ -102,7 +103,7 @@ func (s *server) lookupWordDefs(st *Storage, words []string) ([]WordDefItem, str
 
 	// ① 档案优先：精确命中 → 按假名命中（顺带把汉字补上）
 	if data, _, err := st.DownloadLatestArchive(s.ctx()); err == nil {
-		if arc, err := ParseArchive(string(data), st.lang); err == nil {
+		if arc, err := archive.ParseArchive(string(data), st.lang); err == nil {
 			for _, w := range words {
 				if existing, _ := review.FindWord(arc.Groups, w); existing != nil &&
 					strings.TrimSpace(existing.Definition) != "" {

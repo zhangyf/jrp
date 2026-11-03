@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
 )
 
@@ -51,7 +52,7 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 	// Parse version and date from archive filename (e.g. 日语学习进度档案_260717_v1.6.md → v1.6)
 	var arcMajor, arcMinor int
 	var arcDate time.Time
-	if d, maj, min, perr := ParseFilename(archiveFilename); perr == nil {
+	if d, maj, min, perr := archive.ParseFilename(archiveFilename); perr == nil {
 		arcMajor, arcMinor = maj, min
 		arcDate = d
 	} else {
@@ -61,7 +62,7 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 	}
 
 	// Parse archive
-	arc, err := ParseArchive(string(data), lang)
+	arc, err := archive.ParseArchive(string(data), lang)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing archive: %v\n", err)
 		os.Exit(1)
@@ -71,11 +72,12 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 	// target date yet), initialize today's v1.0 archive so that the review plan
 	// uses v1.0 instead of inheriting the previous day's version number. A
 	// subsequent `record` will then bump to v1.1 on the same day.
-	if !sameDay(arcDate, targetDate) {
+	if !archive.SameDay(arcDate, targetDate) {
 		arcMajor, arcMinor = 1, 0
-		AddChangelogEntry(arc, targetDate, arcMajor, arcMinor, "新日初始化（gen-plan）")
-		newContent := WriteArchive(arc)
-		newFilename := ArchiveFilename(lang, targetDate, arcMajor, arcMinor)
+		archive.AddChangelogEntry(arc, targetDate, arcMajor, arcMinor, "新日初始化（gen-plan）")
+		cfg := LangConfigs[lang]
+		newContent := archive.WriteArchive(arc, cfg.Name, cfg.WordColumn)
+		newFilename := archive.Filename(LangConfigs[lang].FilePrefix, targetDate, arcMajor, arcMinor)
 		if err := storage.UploadArchive(ctx, newFilename, []byte(newContent)); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to initialize today's archive: %v\n", err)
 		} else {
@@ -158,9 +160,10 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 			desc = fmt.Sprintf("生成纯句子复习文件（共%d句）", len(plan.Sentences))
 		}
 
-		AddChangelogEntry(arc, targetDate, arcMajor, arcMinor, desc)
-		newContent := WriteArchive(arc)
-		newFilename := ArchiveFilename(lang, targetDate, arcMajor, arcMinor)
+		archive.AddChangelogEntry(arc, targetDate, arcMajor, arcMinor, desc)
+		cfg := LangConfigs[lang]
+		newContent := archive.WriteArchive(arc, cfg.Name, cfg.WordColumn)
+		newFilename := archive.Filename(LangConfigs[lang].FilePrefix, targetDate, arcMajor, arcMinor)
 		if err := storage.UploadArchive(ctx, newFilename, []byte(newContent)); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to record sentence generation: %v\n", err)
 		} else {

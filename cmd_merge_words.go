@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
 )
 
@@ -76,7 +77,7 @@ func runMergeWords(fs *flag.FlagSet, lang string) {
 		os.Exit(1)
 	}
 
-	arc, err := ParseArchive(string(data), lang)
+	arc, err := archive.ParseArchive(string(data), lang)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing archive: %v\n", err)
 		os.Exit(1)
@@ -192,9 +193,9 @@ func runMergeWords(fs *flag.FlagSet, lang string) {
 		os.Exit(1)
 	}
 
-	oldDate, oldMajor, oldMinor, _ := ParseFilename(oldFilename)
+	oldDate, oldMajor, oldMinor, _ := archive.ParseFilename(oldFilename)
 	today := time.Now()
-	newMajor, newMinor := NextVersion(oldDate, oldMajor, oldMinor, today, false)
+	newMajor, newMinor := archive.NextVersion(oldDate, oldMajor, oldMinor, today, false)
 
 	names := make([]string, 0, len(reports))
 	for _, r := range reports {
@@ -203,10 +204,11 @@ func runMergeWords(fs *flag.FlagSet, lang string) {
 	sort.Strings(names)
 	description := fmt.Sprintf("合并同词异形 %d 组（%s）：复习次数与错误数累加，删除冗余条目",
 		len(reports), strings.Join(names, "、"))
-	AddChangelogEntry(arc, today, newMajor, newMinor, description)
+	archive.AddChangelogEntry(arc, today, newMajor, newMinor, description)
 
-	newContent := WriteArchive(arc)
-	newFilename := ArchiveFilename(lang, today, newMajor, newMinor)
+	cfg := LangConfigs[lang]
+	newContent := archive.WriteArchive(arc, cfg.Name, cfg.WordColumn)
+	newFilename := archive.Filename(LangConfigs[lang].FilePrefix, today, newMajor, newMinor)
 	if err := storage.UploadArchive(ctx, newFilename, []byte(newContent)); err != nil {
 		fmt.Fprintf(os.Stderr, "Error uploading archive: %v\n", err)
 		os.Exit(1)

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
 )
 
@@ -44,7 +45,7 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request, st *Storage)
 	}
 
 	today := time.Now()
-	readOnly := !sameDay(targetDate, today) && targetDate.After(today)
+	readOnly := !archive.SameDay(targetDate, today) && targetDate.After(today)
 
 	// EnsureArchive：新账号第一次进来目录里什么都没有，造一份空档案。
 	// 不然 /api/plan 500「no archives found」，首页直接白屏（2026-11-02 审核被拒）。
@@ -57,15 +58,16 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request, st *Storage)
 	}
 
 	// 只有「今天」才会建当天档案；过去补做、未来预告都不动档案。
-	if sameDay(targetDate, today) {
+	if archive.SameDay(targetDate, today) {
 		arcDate := targetDate
-		if d, _, _, perr := ParseFilename(archiveFilename); perr == nil {
+		if d, _, _, perr := archive.ParseFilename(archiveFilename); perr == nil {
 			arcDate = d
 		}
-		if !sameDay(arcDate, targetDate) {
-			AddChangelogEntry(arc, targetDate, 1, 0, "新日初始化（serve）")
-			newFilename := ArchiveFilename(s.lang, targetDate, 1, 0)
-			if err := st.UploadArchive(ctx, newFilename, []byte(WriteArchive(arc))); err != nil {
+		if !archive.SameDay(arcDate, targetDate) {
+			archive.AddChangelogEntry(arc, targetDate, 1, 0, "新日初始化（serve）")
+			cfg := LangConfigs[s.lang]
+			newFilename := archive.Filename(LangConfigs[s.lang].FilePrefix, targetDate, 1, 0)
+			if err := st.UploadArchive(ctx, newFilename, []byte(archive.WriteArchive(arc, cfg.Name, cfg.WordColumn))); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 					"success": false, "error": fmt.Sprintf("init today archive: %v", err),
 				})

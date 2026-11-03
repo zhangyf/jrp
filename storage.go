@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/objstore"
 )
 
@@ -629,7 +630,7 @@ func (s *Storage) FindLatestArchiveBeforeDate(ctx context.Context, before time.T
 
 	for _, obj := range objs {
 		filename := filepath.Base(obj.Key)
-		fnameDate, _, _, err := ParseFilename(filename)
+		fnameDate, _, _, err := archive.ParseFilename(filename)
 		if err != nil {
 			continue
 		}

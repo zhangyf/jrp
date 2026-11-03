@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/archive"
 )
 
 // 造句部分提交：没交的句子必须留在 plan 里（刷新后还在），
@@ -174,7 +176,7 @@ func TestApplyRecordReviewBoundary(t *testing.T) {
 					t.Errorf("原档案或计划被修改：%s", key)
 				}
 			}
-			arc, err := ParseArchive(string(data), "ja")
+			arc, err := archive.ParseArchive(string(data), "ja")
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
 )
 
@@ -37,7 +38,7 @@ func runImport(fs *flag.FlagSet, lang string) {
 	// Try to extract filename from content or use a default
 	// The archive content might have a title we can use
 	content := string(data)
-	arc, err := ParseArchive(content, lang)
+	arc, err := archive.ParseArchive(content, lang)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing archive: %v\n", err)
 		os.Exit(1)

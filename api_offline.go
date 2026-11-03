@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/grading"
 	"github.com/zhangyf/jrp/internal/review"
 )
@@ -44,7 +45,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request, st *Storag
 		})
 		return
 	}
-	arc, err := ParseArchive(string(data), s.lang)
+	arc, err := archive.ParseArchive(string(data), s.lang)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 			"success": false, "error": fmt.Sprintf("parse archive: %v", err),

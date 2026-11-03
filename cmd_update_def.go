@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
 )
 
@@ -48,7 +49,7 @@ func runUpdateDef(fs *flag.FlagSet, lang string) {
 	}
 
 	// Parse archive
-	arc, err := ParseArchive(string(data), lang)
+	arc, err := archive.ParseArchive(string(data), lang)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing archive: %v\n", err)
 		os.Exit(1)
@@ -70,17 +71,18 @@ func runUpdateDef(fs *flag.FlagSet, lang string) {
 	sameCoreAs := sameCoreWords(arc.Groups, input.Definition, w.Word)
 
 	// Calculate version
-	oldDate, oldMajor, oldMinor, _ := ParseFilename(oldFilename)
+	oldDate, oldMajor, oldMinor, _ := archive.ParseFilename(oldFilename)
 	today := time.Now()
-	newMajor, newMinor := NextVersion(oldDate, oldMajor, oldMinor, today, false)
+	newMajor, newMinor := archive.NextVersion(oldDate, oldMajor, oldMinor, today, false)
 
 	// Add changelog entry
 	description := fmt.Sprintf("更新释义：%s（%s → %s）", input.Word, oldDef, input.Definition)
-	AddChangelogEntry(arc, today, newMajor, newMinor, description)
+	archive.AddChangelogEntry(arc, today, newMajor, newMinor, description)
 
 	// Write and upload
-	newContent := WriteArchive(arc)
-	newFilename := ArchiveFilename(lang, today, newMajor, newMinor)
+	cfg := LangConfigs[lang]
+	newContent := archive.WriteArchive(arc, cfg.Name, cfg.WordColumn)
+	newFilename := archive.Filename(LangConfigs[lang].FilePrefix, today, newMajor, newMinor)
 
 	if err := storage.UploadArchive(ctx, newFilename, []byte(newContent)); err != nil {
 		fmt.Fprintf(os.Stderr, "Error uploading archive: %v\n", err)

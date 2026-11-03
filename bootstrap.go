@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/objstore"
 )
 
@@ -36,7 +37,7 @@ func (s *Storage) hasArchive(ctx context.Context) bool {
 func (s *Storage) EnsureArchive(ctx context.Context, lang string) (*Archive, string, error) {
 	data, filename, err := s.DownloadLatestArchive(ctx)
 	if err == nil {
-		arc, perr := ParseArchive(string(data), lang)
+		arc, perr := archive.ParseArchive(string(data), lang)
 		if perr != nil {
 			return nil, "", fmt.Errorf("解析档案失败：%w", perr)
 		}
@@ -47,9 +48,10 @@ func (s *Storage) EnsureArchive(ctx context.Context, lang string) (*Archive, str
 		return nil, "", fmt.Errorf("读取档案失败：%w", err)
 	}
 	arc := &Archive{Language: lang}
-	fname := ArchiveFilename(lang, time.Now(), 1, 0)
+	cfg := LangConfigs[lang]
+	fname := archive.Filename(LangConfigs[lang].FilePrefix, time.Now(), 1, 0)
 	if !s.dryRun {
-		if uerr := s.UploadArchive(ctx, fname, []byte(WriteArchive(arc))); uerr != nil {
+		if uerr := s.UploadArchive(ctx, fname, []byte(archive.WriteArchive(arc, cfg.Name, cfg.WordColumn))); uerr != nil {
 			return nil, "", fmt.Errorf("初始化档案失败：%w", uerr)
 		}
 	}
@@ -61,7 +63,7 @@ func (s *Storage) EnsureArchive(ctx context.Context, lang string) (*Archive, str
 func (s *Storage) LoadArchiveForRead(ctx context.Context, lang string) (*Archive, error) {
 	data, _, err := s.DownloadLatestArchive(ctx)
 	if err == nil {
-		return ParseArchive(string(data), lang)
+		return archive.ParseArchive(string(data), lang)
 	}
 	if s.hasArchive(ctx) {
 		return nil, fmt.Errorf("读取档案失败：%w", err)
