@@ -16,6 +16,8 @@ const app = getApp();
 const trial = require('../../utils/trial.js');
 // 手册分级（三圆/二圆/一圆）的显示名与配色，跟词汇总表共用一份
 const { splitCircle } = require('../../utils/circle.js');
+// 词性符号（N / V1 / Aい…），跟词汇总表共用一份
+const { posSymbol } = require('../../utils/pos.js');
 
 Page({
   data: {
@@ -103,6 +105,7 @@ Page({
             status: w.status || '',
             pos: w.pos || '',
             sub: w.sub || '',
+            posSym: posSymbol(w),
             note: w.note || '',
             circleDots: ci.dots,
             answer: '',
@@ -155,6 +158,7 @@ Page({
       status: it.status,
       pos: it.pos,
       sub: it.sub,
+      posSym: it.posSym || '',
       note: it.note,
       circleDots: it.circleDots || [],
       answer: '',
@@ -186,6 +190,7 @@ Page({
         status: x.status || '',
         pos: x.pos || '',
         sub: x.sub || '',
+        posSym: posSymbol(x),
         note: x.note || '',
         circleDots: ci.dots,
         answer: x.answer || '',

@@ -145,14 +145,18 @@ var lexicon = {
     }).join('');
 
     var tr = rows.map(function (it) {
+      // 词性列显示符号（N / V1 / Aい…），中文进 title —— 跟复习卡片同一套口径。
+      // 表头筛选用的还是 it.pos 原文，不动。
       var posText = it.pos || '';
       if (it.sub) posText += '·' + it.sub;
+      var posSym = app.posSymbol(it);
       return '<tr>' +
         '<td class="num">' + it.number + '</td>' +
         '<td class="kana">' + esc(it.kana) + '</td>' +
         '<td class="kanji">' + esc(it.kanji || '—') + '</td>' +
         '<td class="def">' + esc(it.def) + (it.note ? ' <span class="muted">（' + esc(it.note) + '）</span>' : '') + '</td>' +
-        '<td class="pos' + (it.sub ? ' has-sub' : '') + '">' + esc(posText || '—') + '</td>' +
+        '<td class="pos' + (it.sub ? ' has-sub' : '') + '" title="' + esc(posText || '') + '">' +
+          esc(posSym || '—') + '</td>' +
         '<td class="circle">' + circleCell(it) + '</td>' +
         '<td class="st">' + esc(it.status || '') + '</td>' +
         '<td class="num">' + it.reviews + '</td>' +

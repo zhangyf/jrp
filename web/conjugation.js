@@ -74,10 +74,11 @@ var conj = {
       return '<div class="conj-card" id="conjcard-' + i + '">' +
         '<div class="conj-head">' +
           '<span class="conj-word">' + esc(it.word) + '</span>' +
-          // 答题前只给大类（动词/形容词），小类（一类・二类…）先藏着，
+          // 答题前只给大类（V/A），小类（V1/V2…）先藏着，
           // 点「对答案」时才补出来 —— 见 grade()。
+          // ⚠️ title 也只能给大类：符号本身不泄题，中文悬停漏出「一类」就白藏了。
           '<span class="tag" id="conjpos-' + i + '" title="对答案后显示分类">' +
-            esc(app.posText(it, true)) + '</span>' +
+            esc(app.posSymbol(it, true)) + '</span>' +
           '<span class="muted">' + esc(app.defParts(it.definition).main) + '</span>' +
         '</div>' +
         '<div class="conj-tasks">' + tasks + '</div>' +
@@ -147,7 +148,7 @@ var conj = {
       el('conjcard-' + i).className = cardClass;
       // 对完答案才把小类显示出来（动词一类/二类/三类、形容词い形/な形）
       var tg = el('conjpos-' + i);
-      if (tg) { tg.textContent = app.posText(it); tg.title = ''; }
+      if (tg) { tg.textContent = app.posSymbol(it); tg.title = app.posText(it); }
       var box = el('conjfb-' + i);
       box.className = 'conj-feedback feedback ' + (fb.some(function (s) { return s.indexOf('conj-no') >= 0; }) ? 'no' : 'ok');
       box.innerHTML = fb.join('　');
@@ -171,7 +172,7 @@ var conj = {
       // 清空重做 = 回到没看答案的状态，小类重新藏起来
       var tg = el('conjpos-' + i);
       if (tg) {
-        tg.textContent = app.posText(self.items[i], true);
+        tg.textContent = app.posSymbol(self.items[i], true);
         tg.title = '对答案后显示分类';
       }
       var box = el('conjfb-' + i);

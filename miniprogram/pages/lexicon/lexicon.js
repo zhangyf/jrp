@@ -9,6 +9,8 @@ const app = getApp();
 const trial = require('../../utils/trial.js');
 // 手册分级（三圆/二圆/一圆）的显示名与配色，跟练习页共用一份
 const { splitCircle } = require('../../utils/circle.js');
+// 词性符号（N / V1 / Aい…），中文留在详情行
+const { posSymbol, posText } = require('../../utils/pos.js');
 const PAGE = 60;
 
 // 档案里的 status 带 emoji（🟢已掌握），列表里只留文字 + 一个色点，
@@ -80,6 +82,8 @@ Page({
             circleText: ci.text,
             circleDots: ci.dots,
             // 挂起 = 手册里有但还没学到，不进每日练习（词汇总表里照常看到）
+            posSym: posSymbol(it),
+            posFull: posText(it),
             hold: !!it.hold,
             rate: rate(it),
             // 服务端叫 word_note，页面里统一读 wordNote

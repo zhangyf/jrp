@@ -48,7 +48,7 @@
       <text class="word">{{it.word}}</text>
       <text class="def">{{it.definition}}</text>
     </view>
-    <view class="meta" wx:if="{{it.pos}}">{{it.pos}}<text wx:if="{{it.sub}}"> · {{it.sub}}</text></view>
+    <view class="meta" wx:if="{{it.posSym}}">{{it.posSym}}</view>
 
     <view class="task" wx:for="{{it.tasks}}" wx:for-item="t" wx:for-index="j" wx:key="label">
       <text class="label">{{t.label}}</text>

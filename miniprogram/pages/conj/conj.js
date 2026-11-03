@@ -5,6 +5,7 @@
 // 写任意一个就算对（如 じゃありません/ではありません）。
 
 const app = getApp();
+const { posSymbol } = require('../../utils/pos.js');
 const trial = require('../../utils/trial.js');
 
 const TYPES = [
@@ -87,6 +88,7 @@ Page({
           word: it.word || '',
           definition: it.definition || '',
           pos: it.pos || '',
+          posSym: posSymbol(it),
           sub: it.sub || '',
           tasks: (it.tasks || []).map((t) => ({
             label: t.label || '',

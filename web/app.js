@@ -211,6 +211,57 @@ var app = {
   VERB_SUB: { '1': '一类', '2': '二类', '3': '三类' },
   ADJ_SUB: { '1': 'い形', '2': 'な形' },
 
+  // 词性符号化（2026-11-03 老师要的：卡片上别写「名词」「动词·一类」这种中文，
+  // 用 N / V1 / Aい 这类符号，一眼扫过去更快）。
+  //
+  // ⚠️ 这是**穷举表**，不是「匹配不上的就用原文兜底」—— 词性表里现在一共
+  // 25 种取值（2026-11-03 从 COS 拉的统计），每个都有确定符号：
+  //   名/名词 → N      专/专有名词/专有名词·人名/地名 → N.pr
+  //   代词 → Pron      疑问词 → Q       副词/副 → Adv     助词 → P
+  //   连体词 → Adn     连词 → Conj      感叹词/叹 → Int   寒暄语 → Expr
+  //   表达 → Phr       慣用 → Idm       未标注 → —
+  //   动词：一类 V1（五段）/ 二类 V2（一段）/ 三类 V3（カ変・サ変）
+  //   形容词：い形 Aい / な形 Aな
+  // 词性表混着两套写法（老数据「动/1」、新数据「动词/一类」），两边都认。
+  //
+  // ⚠️ 中文没删，只是挪地方：符号是显示层，中文进 title（悬停）和词汇总表详情行
+  // —— 老师选的「悬停+详情」。活页答题前 title 也只给大类（见 hideSub）。
+  POS_SYMBOL: {
+    '名词': 'N', '名': 'N',
+    '专有名词': 'N.pr', '专': 'N.pr',
+    '代词': 'Pron', '疑问词': 'Q',
+    '副词': 'Adv', '副': 'Adv',
+    '助词': 'P', '连体词': 'Adn', '连词': 'Conj',
+    '感叹词': 'Int', '叹': 'Int',
+    '寒暄语': 'Expr', '表达': 'Phr', '慣用': 'Idm',
+    '未标注': '—'
+  },
+  // 动词/形容词：小类 -> 符号（数字体系，跟标日「一类/二类/三类」对得上）
+  VERB_SYMBOL: { '一类': 'V1', '1': 'V1', '二类': 'V2', '2': 'V2', '三类': 'V3', '3': 'V3' },
+  ADJ_SYMBOL: { 'い形': 'Aい', '1': 'Aい', 'な形': 'Aな', '2': 'Aな' },
+
+  // 大类归一：老写法（动/形/名/副）跟新写法（动词/形容词...）都归到同一把钥匙
+  posKey: function (w) {
+    if (!w) return '';
+    var p = String(w.pos || '').trim();
+    return this.POS_ALIAS[p] || p;
+  },
+
+  // 符号。hideSub=true 时动词只给 V、形容词只给 A —— 活用专项答题前不能露小类。
+  posSymbol: function (w, hideSub) {
+    var k = this.posKey(w);
+    if (!k) return '';
+    if (k === '动词') {
+      if (hideSub) return 'V';
+      return this.VERB_SYMBOL[String((w && w.sub) || '').trim()] || 'V';
+    }
+    if (k === '形容词') {
+      if (hideSub) return 'A';
+      return this.ADJ_SYMBOL[String((w && w.sub) || '').trim()] || 'A';
+    }
+    return this.POS_SYMBOL[k] || k; // 表里没有的（新词性）原样显示，别吞掉
+  },
+
   posText: function (w, hideSub) {
     if (!w) return '';
     var t = this.POS_ALIAS[String(w.pos || '')] || String(w.pos || '');
@@ -252,12 +303,15 @@ var app = {
   //             手写的为准（那是老师亲自校准过的区分点）。
   factsHtml: function (w, extraNote) {
     w = w || {};
-    var pos = this.posText(w);
+    // 显示符号，中文进 title（悬停）—— 老师 2026-11-03 选的「悬停+详情」。
+    var sym = this.posSymbol(w);
+    var full = this.posText(w);
     var note = String(w.note || '').trim() || String(extraNote || '').trim();
     return '<dl class="facts">' +
       '<div class="f-cell f-circle"><dt>圆级</dt><dd>' + this.circleHtml(w) + '</dd></div>' +
       '<div class="f-cell f-pos"><dt>词性</dt><dd>' +
-        (pos ? '<span class="pos-chip">' + esc(pos) + '</span>'
+        (sym ? '<span class="pos-chip" title="' + esc(full || sym) +
+               '" aria-label="' + esc(full || sym) + '">' + esc(sym) + '</span>'
              : '<span class="f-empty">—</span>') +
       '</dd></div>' +
       '<div class="f-cell f-note"><dt>备注</dt><dd>' +
