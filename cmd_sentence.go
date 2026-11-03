@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/planconfig"
 	"github.com/zhangyf/jrp/internal/sentence"
 	"github.com/zhangyf/jrp/internal/sentencereview"
 )
@@ -300,7 +301,7 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 		circle := reviewCircle(ctx, storage)
 		extra := sentencereview.BuildReviewSentences(rb, hist, nil, today,
 			cfg.SentenceReviewCount, exclude, sentencereview.DefaultReviewIdleDays,
-			circle, planCircleRatio(cfg))
+			circle, planconfig.PlanCircleRatio(cfg))
 		// 回炉句挑中了几句三圆 —— 圆级加权有没有生效，看这里。
 		// sentence.BankSentence 不带锚点词，只能拿 answer 反查回炉库。
 		wordOf := make(map[string]string, len(rb.Sentences))
@@ -378,7 +379,7 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 		"review_circle": map[string]interface{}{
 			"三圆": circleStat["三圆"], "二圆": circleStat["二圆"],
 			"一圆": circleStat["一圆"], "没标": circleStat["没标"],
-			"ratio": planCircleRatio(cfgNow),
+			"ratio": planconfig.PlanCircleRatio(cfgNow),
 		},
 		"self_check": map[string]interface{}{
 			"recent_7d_repeat": recentDup, // 应为 0（错句除外）

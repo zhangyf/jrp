@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/zhangyf/jrp/internal/planconfig"
 )
 
 // runPlanConfig 管理出题配额（存在 COS 上，改它不用重新编译部署）。
@@ -48,7 +50,7 @@ func runPlanConfig(fs *flag.FlagSet, lang string) {
 			"command":   "plan-config",
 			"reset":     true,
 			"dry_run":   *dryRun,
-			"effective": builtinPlanConfig(),
+			"effective": planconfig.BuiltinPlanConfig(),
 			"source":    "builtin",
 			"hint":      "COS 上的配置已删除，线上最多 60 秒后回退到内置默认",
 		})
@@ -62,7 +64,7 @@ func runPlanConfig(fs *flag.FlagSet, lang string) {
 			os.Exit(1)
 		}
 		if cur.SentenceBaseCount == 0 && cur.SentenceReviewCount == 0 {
-			cur = builtinPlanConfig() // 没配过：以内置默认当起点，只改指定的键
+			cur = planconfig.BuiltinPlanConfig() // 没配过：以内置默认当起点，只改指定的键
 		}
 		next := cur
 		for _, kv := range strings.Split(*set, ",") {
@@ -86,8 +88,8 @@ func runPlanConfig(fs *flag.FlagSet, lang string) {
 					fmt.Fprintf(os.Stderr, "Error: %s=%d 越界，允许 0-100（0=不按圆级分层）\n", key, v)
 					os.Exit(1)
 				}
-			} else if !validPlanCount(v) {
-				fmt.Fprintf(os.Stderr, "Error: %s=%d 越界，允许 0-%d\n", key, v, maxPlanCount)
+			} else if !planconfig.ValidPlanCount(v) {
+				fmt.Fprintf(os.Stderr, "Error: %s=%d 越界，允许 0-%d\n", key, v, planconfig.MaxPlanCount)
 				os.Exit(1)
 			}
 			switch key {
@@ -121,7 +123,7 @@ func runPlanConfig(fs *flag.FlagSet, lang string) {
 
 	// 默认：查看
 	cos, err := storage.DownloadPlanConfig(ctx)
-	eff, source := choosePlanConfig(cos, err)
+	eff, source := planconfig.ChoosePlanConfig(cos, err)
 	// hint 跟着 source 走 —— 写死一句「没配」的话，配好了也会显示这句，反而误导。
 	hint := "COS 上的配置正在生效（改完最多 60 秒后线上跟着变）"
 	if source == "builtin" {
@@ -133,7 +135,7 @@ func runPlanConfig(fs *flag.FlagSet, lang string) {
 		"cos_raw":   cos,
 		"effective": eff,
 		"source":    source,
-		"limits":    map[string]int{"min": 0, "max": maxPlanCount},
+		"limits":    map[string]int{"min": 0, "max": planconfig.MaxPlanCount},
 		"cos_key":   storage.planConfigKey(),
 		"hint":      hint,
 	})

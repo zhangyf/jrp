@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
+	"github.com/zhangyf/jrp/internal/planconfig"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
 	"github.com/zhangyf/jrp/internal/sentencereview"
@@ -234,7 +235,7 @@ func (s *server) buildSentencePlan(st *Storage, targetDate time.Time, upload boo
 		}
 		extra := sentencereview.BuildReviewSentences(rb, hist, arc, targetDate,
 			cfg.SentenceReviewCount, exclude, sentencereview.DefaultReviewIdleDays,
-			reviewCircle(ctx, st), planCircleRatio(cfg))
+			reviewCircle(ctx, st), planconfig.PlanCircleRatio(cfg))
 		for _, e := range extra {
 			sentences = append(sentences, PlanSentence{
 				Number:  len(sentences) + 1,

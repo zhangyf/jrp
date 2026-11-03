@@ -1445,6 +1445,15 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 - 判句的JSON解析失败仍触发切换；词义/视觉仍按原流程在领域解析前记录请求成功，不统一这两类行为。冷却常量在后续B批移入 `internal/llm/health.go`，实际始终为2分钟，不能按旧注释改为5分钟。
 - 本批无新依赖、无额外模型/COS请求、不迁移数据；仅改源码不代表上线，提交推送和部署按老师确认执行。
 
+### 出题配额外置规则层包边界（2026-11-04）
+
+- `internal/planconfig/config.go`：`PlanConfig` 类型、`DefaultSentenceBaseCount`/`DefaultSentenceReviewCount`/`DefaultCircleRatio`/`MaxPlanCount` 四个常量，以及 `ParsePlanConfig`、`BuiltinPlanConfig`、`PlanCircleRatio`、`ValidCircleRatio`、`ValidPlanCount`、`ChoosePlanConfig` 六个纯规则函数。只依赖标准库 `encoding/json`/`log`，不读写 COS、不碰 `Storage`。
+- 根 `types.go` 只保留 `type PlanConfig = planconfig.PlanConfig` 别名；`storage_planconfig.go` 留 COS key `configs/plan_config.json` 与 `DownloadPlanConfig`/`UploadPlanConfig`/`DeletePlanConfig` 三个方法；`plan_config.go` 留 60 秒缓存与 `resolvePlanConfig`；`cmd_planconfig.go` CLI 留根。消费方（`api_plan.go`/`api_offline.go`/`cmd_sentence.go`/`sentence_review_test.go`）只改符号前缀。
+- 行为逐字不变：内置默认 20+20、三圆占比 70、配额上限 50、0 合法 / 负数与越界回退内置、`ratio` 指针区分「没配(nil)」与「有意关掉(0)」、`omitempty` 序列化、60 秒缓存与 COS key 全部原样；无签名变更、无新依赖、无数据迁移。
+- 测试：`internal/planconfig/config_test.go` 随包迁移原 `plan_config_test.go`，新增 `rules_test.go` 补内置默认值、三个校验函数的边界、`ratio` 指针与 JSON 往返、`ratio` 越界回退；固定输入，不连 COS/模型。根 `sentence_review_test.go` 保留 `TestPlanCircleRatioDefaults` 等边界测试。单包验证：`go test ./internal/planconfig`。
+- 等价核对：6 个迁出函数与 `PlanConfig` struct 块级等价；8 个根文件还原前缀后按序匹配基线，仅 `storage_planconfig.go` 2 行、`types.go` 3 行为预期新增注释/别名，其余 0 漂移。
+- 本批纯目录重构，线上行为不变；提交推送与部署继续分别确认。
+
 ### 大模型共享冷却状态包边界（2026-11-03，B批最小范围）
 
 - `internal/llm/health.go` 只公开 `SkipModel` / `MarkResult`；失败阈值、冷却时间、map与互斥锁均为包内私有。状态仍按模型名在进程内共享，判句、词义、视觉以及不同网关使用同一份，不能改成每调用方独立实例。
