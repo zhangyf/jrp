@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
 )
 
@@ -233,9 +234,9 @@ func applyCircle(ctx context.Context, st *Storage, in *CircleInput, hold bool) (
 
 	// ---- 5：写回 ----
 	needMajor := out.Added >= 20
-	oldDate, oldMajor, oldMinor, _ := ParseFilename(oldFilename)
+	oldDate, oldMajor, oldMinor, _ := archive.ParseFilename(oldFilename)
 	today := time.Now()
-	newMajor, newMinor := NextVersion(oldDate, oldMajor, oldMinor, today, needMajor)
+	newMajor, newMinor := archive.NextVersion(oldDate, oldMajor, oldMinor, today, needMajor)
 
 	desc := fmt.Sprintf("三圆手册对齐：新增%d词/标%d词", out.Added, out.Tagged)
 	if out.DefFixed > 0 {
@@ -247,11 +248,12 @@ func applyCircle(ctx context.Context, st *Storage, in *CircleInput, hold bool) (
 	if needMajor {
 		desc += "；批量导入触发大版本"
 	}
-	AddChangelogEntry(arc, today, newMajor, newMinor, desc)
+	archive.AddChangelogEntry(arc, today, newMajor, newMinor, desc)
 
-	newFilename := ArchiveFilename(st.lang, today, newMajor, newMinor)
+	cfg := LangConfigs[st.lang]
+	newFilename := archive.Filename(LangConfigs[st.lang].FilePrefix, today, newMajor, newMinor)
 	if out.Added > 0 || out.DefFixed > 0 {
-		if err := st.UploadArchive(ctx, newFilename, []byte(WriteArchive(arc))); err != nil {
+		if err := st.UploadArchive(ctx, newFilename, []byte(archive.WriteArchive(arc, cfg.Name, cfg.WordColumn))); err != nil {
 			return nil, fmt.Errorf("上传新档案失败：%w", err)
 		}
 	} else {

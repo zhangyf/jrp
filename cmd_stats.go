@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
 )
 
@@ -131,7 +132,7 @@ func computeStats(ctx context.Context, storage *Storage, lang string, days int) 
 			fname = fname[idx+1:]
 		}
 
-		fdate, _, _, err := ParseFilename(fname)
+		fdate, _, _, err := archive.ParseFilename(fname)
 		if err != nil {
 			continue
 		}
@@ -170,7 +171,7 @@ func computeStats(ctx context.Context, storage *Storage, lang string, days int) 
 			continue
 		}
 
-		arc, err := ParseArchive(string(data), lang)
+		arc, err := archive.ParseArchive(string(data), lang)
 		if err != nil {
 			continue
 		}
@@ -180,7 +181,7 @@ func computeStats(ctx context.Context, storage *Storage, lang string, days int) 
 		mastered, basic, needsConsol, untested := review.CountByStatus(allWords)
 
 		// Get version from filename
-		_, major, minor, _ := ParseFilename(e.filename)
+		_, major, minor, _ := archive.ParseFilename(e.filename)
 
 		snapshots = append(snapshots, StatsSnapshot{
 			Date:        e.date.Format("01/02"),

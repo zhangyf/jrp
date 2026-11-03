@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/archive"
 )
 
 // runSentenceReviewTodo 只读体检：列出「够格回炉、但还没做变形句」的词，
@@ -61,7 +63,7 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 		fmt.Fprintf(os.Stderr, "Error: 读取档案失败：%v\n", err)
 		os.Exit(1)
 	}
-	arc, err := ParseArchive(string(data), lang)
+	arc, err := archive.ParseArchive(string(data), lang)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: 解析档案失败：%v\n", err)
 		os.Exit(1)
@@ -366,15 +368,18 @@ func protoList(ss []BankSentence) []protoSuggest {
 // runSentenceReviewStats —— 只读体检：回炉变形句库「覆盖到哪儿了、难不难」。
 //
 // 三个问题一次答完：
-//   1. 覆盖多少词：回炉库里有多少条、锚点词去重后多少个（跟 sentence-review-todo
-//      的 qualified / covered 对得上）。
-//   2. 覆盖多少课：变形句的 lesson 分布，旁边给主句库同课的句数做对照 ——
-//      某课主句库有 30 句、变形句只有 2 句，说明那课的旧词基本还没开始回炉。
-//   3. 难不难：变形句是「原型句换一个词」来的，长度跟原型句差不多，
-//      所以句长（去空格字符数）就是现成的难度代理。跟主句库同课的平均句长
-//      放一起比，就能看出变形句是不是集中在短句/低课次（= 偏简单）。
 //
-//	jrp --lang ja sentence-review-stats
+//  1. 覆盖多少词：回炉库里有多少条、锚点词去重后多少个（跟 sentence-review-todo
+//     的 qualified / covered 对得上）。
+//
+//  2. 覆盖多少课：变形句的 lesson 分布，旁边给主句库同课的句数做对照 ——
+//     某课主句库有 30 句、变形句只有 2 句，说明那课的旧词基本还没开始回炉。
+//
+//  3. 难不难：变形句是「原型句换一个词」来的，长度跟原型句差不多，
+//     所以句长（去空格字符数）就是现成的难度代理。跟主句库同课的平均句长
+//     放一起比，就能看出变形句是不是集中在短句/低课次（= 偏简单）。
+//
+//     jrp --lang ja sentence-review-stats
 func runSentenceReviewStats(fs *flag.FlagSet, lang string) {
 	_ = fs.Parse(cmdArgs)
 
@@ -758,7 +763,7 @@ func checkReviewSentences(ctx context.Context, st *Storage, ss []ReviewSentence,
 	}
 	arcWords := map[string]bool{}
 	if data, _, err := st.DownloadLatestArchive(ctx); err == nil {
-		if arc, err := ParseArchive(string(data), lang); err == nil {
+		if arc, err := archive.ParseArchive(string(data), lang); err == nil {
 			for _, g := range arc.Groups {
 				for _, w := range g.Words {
 					if w.Word != "" {

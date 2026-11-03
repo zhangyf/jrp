@@ -1392,6 +1392,17 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 - 根 `archive_test.go` 验证类型别名/JSON形态及七列档案往返；`api_record_test.go` 用内存存储验证每日/钉子户计划编号映射、回写日期、未提交词不变及历史统计，不触真实COS。
 - 本批仅调整包归属和调用引用；HTTP/CLI流程、档案/计划格式、鉴权、COS key、`go:embed web` 和部署方式不变。无新增依赖或数据迁移；提交推送、合并、部署继续分别确认。
 
+### 档案模块包边界（2026-11-03）
+
+- `internal/archive/types.go`：`Archive`、`ChangelogEntry` 及两个方法 `AppendWord`、`SetDefinition`；根 `types.go` 只保留类型别名，字段顺序与序列化形态不变，`Groups` 为 `[]review.WordGroup`。
+- `internal/archive/parse.go`：`ParseArchive` 与私有解析辅助（changelog 行、七列词行、非词行过滤、表格拆分）；状态机、表头行与全空行不进 footer、RawHeader/RawFooter 收集规则原样保留。
+- `internal/archive/write.go`：`WriteArchive(arc, langName, wordColumn)`。语言名与词表首列列名由调用方查 `LangConfigs` 后传入，输出（emoji、`01/02` 时间、七列表头、总体进度统计段）与迁包前逐字节一致。
+- `internal/archive/version.go`：`Filename(filePrefix, date, major, minor)`（原 `ArchiveFilename`，文件前缀改由调用方传入）、`ParseFilename`、`NextVersion`、`SameDay`（原私有 `sameDay` 导出）、`AddChangelogEntry`。文件名格式串与版本推进顺序不变。
+- 新包只依赖标准库 `fmt/regexp/strconv/strings/time` 与 `internal/review`，不依赖 `LangConfigs`、COS 或 `Storage`。根包 `archive.go` 已删除，不留第二份实现。
+- 测试：`internal/archive/version_test.go`、`parse_test.go` 覆盖文件名往返、非法文件名、版本推进（新日 / 同日 / 大版本）、`SameDay` 边界、解析各类场景、统计输出段、写出往返及两个方法返回值；单包验证：`go test ./internal/archive`。
+- ⚠️ `WriteArchive` 的两个语言参数都是字符串，没有编译器保护：调用点传入的 `cfg` 必须与 `arc` 同源（同一 `lang` 变量或 `arc.Language`）。另外 `Archive.Language` 现在只写不读。
+- 本批只改包归属与调用引用；档案格式、容错规则、COS key、鉴权、`go:embed web` 和部署方式不变，无新增依赖或数据迁移。
+
 ### 单词判分包边界（2026-11-03，后续批次）
 
 - `internal/grading/grade.go`：单词四档判分、答案归一化和多写法匹配；公开 `GradeMode`、档位常量、`ParseGradeMode`、`GradeAnswer`，只依赖标准库。

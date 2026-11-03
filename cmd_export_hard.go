@@ -9,6 +9,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
 )
 
@@ -148,11 +149,11 @@ func runExportHard(fs *flag.FlagSet, lang string) {
 	// the archive version. As a result the version here may still refer to the
 	// previous day's archive, so archive_filename is reported for traceability.
 	arcMajor, arcMinor := 1, 0
-	if _, maj, min, perr := ParseFilename(archiveFilename); perr == nil {
+	if _, maj, min, perr := archive.ParseFilename(archiveFilename); perr == nil {
 		arcMajor, arcMinor = maj, min
 	}
 
-	arc, err := ParseArchive(string(data), lang)
+	arc, err := archive.ParseArchive(string(data), lang)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing archive: %v\n", err)
 		os.Exit(1)

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
 )
 
@@ -108,9 +109,9 @@ func addWordsToArchive(ctx context.Context, st *Storage, group string, words []W
 	}
 
 	needMajorBump := forceMajor || added >= 20
-	oldDate, oldMajor, oldMinor, _ := ParseFilename(oldFilename)
+	oldDate, oldMajor, oldMinor, _ := archive.ParseFilename(oldFilename)
 	today := time.Now()
-	newMajor, newMinor := NextVersion(oldDate, oldMajor, oldMinor, today, needMajorBump)
+	newMajor, newMinor := archive.NextVersion(oldDate, oldMajor, oldMinor, today, needMajorBump)
 
 	description := fmt.Sprintf("添加%d词", added)
 	if duplicates > 0 {
@@ -119,10 +120,11 @@ func addWordsToArchive(ctx context.Context, st *Storage, group string, words []W
 	if needMajorBump && !forceMajor {
 		description += "；批量导入触发大版本"
 	}
-	AddChangelogEntry(arc, today, newMajor, newMinor, description)
+	archive.AddChangelogEntry(arc, today, newMajor, newMinor, description)
 
-	newFilename := ArchiveFilename(st.lang, today, newMajor, newMinor)
-	if err := st.UploadArchive(ctx, newFilename, []byte(WriteArchive(arc))); err != nil {
+	cfg := LangConfigs[st.lang]
+	newFilename := archive.Filename(LangConfigs[st.lang].FilePrefix, today, newMajor, newMinor)
+	if err := st.UploadArchive(ctx, newFilename, []byte(archive.WriteArchive(arc, cfg.Name, cfg.WordColumn))); err != nil {
 		return nil, fmt.Errorf("上传新档案失败：%w", err)
 	}
 

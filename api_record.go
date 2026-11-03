@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/archive"
 )
 
 // handleRecord 统一落库入口。
@@ -162,7 +164,7 @@ func (s *server) tomorrowPreview(st *Storage) map[string]interface{} {
 	if err != nil {
 		return map[string]interface{}{"error": err.Error()}
 	}
-	arc, err := ParseArchive(string(data), s.lang)
+	arc, err := archive.ParseArchive(string(data), s.lang)
 	if err != nil {
 		return map[string]interface{}{"error": err.Error()}
 	}

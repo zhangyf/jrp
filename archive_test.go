@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
 )
 
@@ -40,28 +41,30 @@ func TestParseArchiveGarbageFooterShrinks(t *testing.T) {
 	}
 
 	// 第一轮解析+写出
-	arc1, err := ParseArchive(mk(), "ja")
+	arc1, err := archive.ParseArchive(mk(), "ja")
 	if err != nil {
 		t.Fatalf("解析失败：%v", err)
 	}
 	if got := len(review.AllWords(arc1.Groups)); got != 2 {
 		t.Fatalf("第一轮词数 = %d, want 2", got)
 	}
-	out1 := WriteArchive(arc1)
+	cfg := LangConfigs["ja"]
+	out1 := archive.WriteArchive(arc1, cfg.Name, cfg.WordColumn)
 	if strings.Count(out1, "|日语单词|中文释义|") != 2 {
 		t.Fatalf("第一轮写出后表头行数 = %d, want 2（每个分组恰好一个）",
 			strings.Count(out1, "|日语单词|中文释义|"))
 	}
 
 	// 第二轮解析+写出：footer 必须稳定，不再增长
-	arc2, err := ParseArchive(out1, "ja")
+	arc2, err := archive.ParseArchive(out1, "ja")
 	if err != nil {
 		t.Fatalf("第二轮解析失败：%v", err)
 	}
 	if got := len(review.AllWords(arc2.Groups)); got != 2 {
 		t.Fatalf("第二轮词数 = %d, want 2（垃圾行不能被当词）", got)
 	}
-	out2 := WriteArchive(arc2)
+	cfg = LangConfigs["ja"]
+	out2 := archive.WriteArchive(arc2, cfg.Name, cfg.WordColumn)
 	if got := strings.Count(out2, "|日语单词|中文释义|"); got != 2 {
 		t.Fatalf("第二轮写出后表头行数 = %d, want 2（footer 不能每次写涨 2 行）", got)
 	}
@@ -132,7 +135,7 @@ func TestArchiveReviewRoundTrip(t *testing.T) {
 		"|日语单词|中文释义|复习总次数|答错次数|连续正确次数|最近复习日期|状态|\n" +
 		"|---|---|---|---|---|---|---|\n" +
 		"|はし(橋)|桥|3|1|2|12/31|\U0001f7e1基本掌握|\n"
-	arc, err := ParseArchive(source, "ja")
+	arc, err := archive.ParseArchive(source, "ja")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +174,8 @@ func TestArchiveReviewRoundTrip(t *testing.T) {
 	if !reflect.DeepEqual(arc.Groups, expectedAfter) {
 		t.Fatalf("原档案回写字段不符：got %+v，预期 %+v", arc.Groups, expectedAfter)
 	}
-	out := WriteArchive(arc)
+	cfg := LangConfigs["ja"]
+	out := archive.WriteArchive(arc, cfg.Name, cfg.WordColumn)
 	// 只比较词表，不把动态“最后更新”或非目标的空组切片形态锁死。
 	const expectedTables = "### 第2课 水与季节\n\n" +
 		"|日语单词|中文释义|复习总次数|答错次数|连续正确次数|最近复习日期|状态|\n" +
@@ -186,7 +190,7 @@ func TestArchiveReviewRoundTrip(t *testing.T) {
 	if !found || strings.TrimSpace(tables) != expectedTables {
 		t.Fatalf("写出的词表必须保持七列及原顺序：\n%s", tables)
 	}
-	roundTrip, err := ParseArchive(out, "ja")
+	roundTrip, err := archive.ParseArchive(out, "ja")
 	if err != nil {
 		t.Fatal(err)
 	}

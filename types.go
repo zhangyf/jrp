@@ -1,6 +1,9 @@
 package main
 
-import "github.com/zhangyf/jrp/internal/review"
+import (
+	"github.com/zhangyf/jrp/internal/archive"
+	"github.com/zhangyf/jrp/internal/review"
+)
 
 // LangConfig holds language-specific configuration.
 type LangConfig struct {
@@ -21,30 +24,10 @@ var LangConfigs = map[string]LangConfig{
 type Word = review.Word
 type WordGroup = review.WordGroup
 
-// ChangelogEntry is one row in the version history table.
-type ChangelogEntry struct {
-	Date        string
-	Version     string
-	Total       string
-	Mastered    string
-	Basic       string
-	NeedsConsol string
-	Untested    string
-	Errors      string
-	NailHouse   string
-	Description string
-}
-
-// Archive represents the full parsed markdown archive.
-type Archive struct {
-	Language   string
-	Changelog  []ChangelogEntry
-	Title      string
-	LastUpdate string
-	Groups     []WordGroup
-	RawHeader  string // unparsed header text for preservation
-	RawFooter  string // unparsed footer text for preservation
-}
+// 档案类型已迁 internal/archive，根包只保留别名 —— 调用方继续用
+// Archive / ChangelogEntry 这两个名字，不用跟着改。
+type Archive = archive.Archive
+type ChangelogEntry = archive.ChangelogEntry
 
 // PlanWord is a word entry in a review plan.
 //
