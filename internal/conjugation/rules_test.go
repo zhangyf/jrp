@@ -1,9 +1,13 @@
-package main
+package conjugation
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // 活用规则的回归测试。每条用例都对应一类变形陷阱，
 // 改活用逻辑前先想清楚会不会把这些打回原形。
+// 测试仅依赖本包纯规则，不依赖根包的 HTTP、存储、鉴权或词库解析。
 
 func TestConjVerb(t *testing.T) {
 	cases := []struct {
@@ -35,9 +39,9 @@ func TestConjVerb(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			base, te, ta, ok := conjVerb(c.kana, c.kanj, c.sub)
+			base, te, ta, ok := Verb(c.kana, c.kanj, c.sub)
 			if !ok {
-				t.Fatalf("conjVerb(%s) 返回 !ok", c.kana)
+				t.Fatalf("Verb(%s) 返回 !ok", c.kana)
 			}
 			if base != c.wantBase {
 				t.Errorf("base = %q, want %q", base, c.wantBase)
@@ -52,18 +56,18 @@ func TestConjVerb(t *testing.T) {
 	}
 
 	// 算不出的要稳稳返回 !ok，不能给错答案
-	if _, _, _, ok := conjVerb("すし", "", "1"); ok {
+	if _, _, _, ok := Verb("すし", "", "1"); ok {
 		t.Error("非动词词形应当 !ok")
 	}
 	// 反向保护：い段结尾的普通五段（かいます→かう）不能被特殊五段规则误伤
-	if base, te, ta, ok := conjVerb("かいます", "買います", "1"); !ok || base != "かう(買う)" || te != "かって(買って)" || ta != "かった(買った)" {
+	if base, te, ta, ok := Verb("かいます", "買います", "1"); !ok || base != "かう(買う)" || te != "かって(買って)" || ta != "かった(買った)" {
 		t.Errorf("かいます 被误判：base=%q te=%q ta=%q ok=%v", base, te, ta, ok)
 	}
 
 	// 特殊五段（尊敬语）：くださる/なさる/いらっしゃる/おっしゃる/ござる 的ます形
 	// 词干是 い段→う段算不出来的（くださ+います→くださう✗），必须 !ok 跳过
 	for _, w := range []string{"くださいます", "なさいます", "いらっしゃいます", "おっしゃいます", "ございます"} {
-		if _, _, _, ok := conjVerb(w, w, "1"); ok {
+		if _, _, _, ok := Verb(w, w, "1"); ok {
 			t.Errorf("特殊五段 %s 应当 !ok（普通规则会算出错形）", w)
 		}
 	}
@@ -83,14 +87,15 @@ func TestConjTaMirrorsTe(t *testing.T) {
 		{"れんしゅうします", "練習します", "3"}, {"きます", "来ます", "3"},
 		{"します", "", "3"},
 	} {
-		_, te, ta, ok := conjVerb(c.kana, c.kanj, c.sub)
+		_, te, ta, ok := Verb(c.kana, c.kanj, c.sub)
 		if !ok {
-			t.Fatalf("conjVerb(%s) 返回 !ok", c.kana)
+			t.Fatalf("Verb(%s) 返回 !ok", c.kana)
 		}
 		// ⚠️ te/ta 是「かな(漢字)」串，结尾是 ")"，不能直接喂 teToTa ——
 		// 先取假名侧再换词尾，汉字侧同理（两侧都是同一条音便，验一侧就够）。
-		teKana, _, _ := splitLexiconWord(te)
-		taKana, _, _ := splitLexiconWord(ta)
+		// 只拆本包生成的半角括号答案，不引入词库解析依赖。
+		teKana, _, _ := strings.Cut(te, "(")
+		taKana, _, _ := strings.Cut(ta, "(")
 		want, ok2 := teToTa(teKana)
 		if !ok2 {
 			t.Fatalf("%s 的て形 %q 换不出た形", c.kana, teKana)
@@ -138,9 +143,9 @@ func TestConjVerbNai(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			base, nai, ok := conjVerbNai(c.kana, c.kanj, c.sub)
+			base, nai, ok := VerbNai(c.kana, c.kanj, c.sub)
 			if !ok {
-				t.Fatalf("conjVerbNai(%s) 返回 !ok", c.kana)
+				t.Fatalf("VerbNai(%s) 返回 !ok", c.kana)
 			}
 			if base != c.wantBase {
 				t.Errorf("base = %q, want %q", base, c.wantBase)
@@ -152,16 +157,16 @@ func TestConjVerbNai(t *testing.T) {
 	}
 
 	// 算不出的要稳稳 !ok：非动词词形、特殊五段（くださる→くださわない✗）
-	if _, _, ok := conjVerbNai("すし", "", "1"); ok {
+	if _, _, ok := VerbNai("すし", "", "1"); ok {
 		t.Error("非动词词形应当 !ok")
 	}
 	for _, w := range []string{"くださいます", "なさいます", "いらっしゃいます", "おっしゃいます", "ございます"} {
-		if _, _, ok := conjVerbNai(w, w, "1"); ok {
+		if _, _, ok := VerbNai(w, w, "1"); ok {
 			t.Errorf("特殊五段 %s 应当 !ok（普通规则会算出错形）", w)
 		}
 	}
 	// 反面保护：かきます（く行，非い结尾）不能被 い→わ 规则误伤成 かわない
-	if _, nai, ok := conjVerbNai("かきます", "書きます", "1"); !ok || nai != "かかない(書かない)" {
+	if _, nai, ok := VerbNai("かきます", "書きます", "1"); !ok || nai != "かかない(書かない)" {
 		t.Errorf("かきます 被误判：nai=%q ok=%v", nai, ok)
 	}
 }
@@ -180,9 +185,9 @@ func TestConjAdjI(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			past, neg, pastneg, ok := conjAdjI(c.kana, c.kanj)
+			past, neg, pastneg, ok := AdjI(c.kana, c.kanj)
 			if !ok {
-				t.Fatalf("conjAdjI(%s) 返回 !ok", c.kana)
+				t.Fatalf("AdjI(%s) 返回 !ok", c.kana)
 			}
 			if past != c.wantPast {
 				t.Errorf("past = %q, want %q", past, c.wantPast)
@@ -196,13 +201,13 @@ func TestConjAdjI(t *testing.T) {
 		})
 	}
 	// 注：きれい 这类「以 い 结尾的ナ形」由 handler 按 word_meta 的 pos.Sub 路由，
-	// conjAdjI 本身无法从词形判断词性，这里不做断言（曾经误解成 !ok，是错的）。
+	// AdjI 本身无法从词形判断词性，这里不做断言（曾经误解成 !ok，是错的）。
 }
 
 func TestConjAdjNa(t *testing.T) {
-	past, neg, pastneg, ok := conjAdjNa("あんぜん", "安全")
+	past, neg, pastneg, ok := AdjNa("あんぜん", "安全")
 	if !ok {
-		t.Fatal("conjAdjNa 返回 !ok")
+		t.Fatal("AdjNa 返回 !ok")
 	}
 	if past != "あんぜんでした(安全でした)" {
 		t.Errorf("past = %q", past)
@@ -257,8 +262,8 @@ func TestConjClassMapping(t *testing.T) {
 		{"名词", "一类", ""}, {"动词", "", ""}, {"动词", "五类", ""},
 	}
 	for _, c := range verbs {
-		if got := conjVerbClass(c.pos, c.sub); got != c.want {
-			t.Errorf("conjVerbClass(%q,%q) = %q, want %q", c.pos, c.sub, got, c.want)
+		if got := VerbClass(c.pos, c.sub); got != c.want {
+			t.Errorf("VerbClass(%q,%q) = %q, want %q", c.pos, c.sub, got, c.want)
 		}
 	}
 	adjs := []struct {
@@ -269,23 +274,23 @@ func TestConjClassMapping(t *testing.T) {
 		{"名词", "い形", ""}, {"形容词", "", ""}, {"形容词", "3", ""},
 	}
 	for _, c := range adjs {
-		if got := conjAdjClass(c.pos, c.sub); got != c.want {
-			t.Errorf("conjAdjClass(%q,%q) = %q, want %q", c.pos, c.sub, got, c.want)
+		if got := AdjClass(c.pos, c.sub); got != c.want {
+			t.Errorf("AdjClass(%q,%q) = %q, want %q", c.pos, c.sub, got, c.want)
 		}
 	}
 }
 
 func TestConjSkipWord(t *testing.T) {
-	if !conjSkipWord("にすんでいます", "にすんでいます") {
+	if !SkipWord("にすんでいます", "にすんでいます") {
 		t.Error("〜ています 的活用形应当跳过（不是辞书形）")
 	}
-	if !conjSkipWord("いってきます", "いってきます") {
+	if !SkipWord("いってきます", "いってきます") {
 		t.Error("寒暄固定说法应当跳过")
 	}
-	if conjSkipWord("すみます(住みます)", "すみます") {
+	if SkipWord("すみます(住みます)", "すみます") {
 		t.Error("普通动词不该被跳过")
 	}
-	if conjSkipWord("あります", "あります") {
+	if SkipWord("あります", "あります") {
 		t.Error("あります 不该被跳过")
 	}
 }
