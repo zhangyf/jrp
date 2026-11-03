@@ -14,6 +14,7 @@ import (
 	"github.com/zhangyf/jrp/internal/offline"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
+	"github.com/zhangyf/jrp/internal/planconfig"
 )
 
 // 离线闭环：导出 Excel 拿去离线练，练完把填好的文件传回来自动解析。
@@ -240,7 +241,7 @@ func BuildSentencePlanFrom(st *Storage, today time.Time, n int, arc *Archive) []
 		cfg, _ := resolvePlanConfig(ctx, st)
 		extra := BuildReviewSentences(rb, hist, arc, today,
 			cfg.SentenceReviewCount, exclude, DefaultReviewIdleDays,
-			reviewCircle(ctx, st), planCircleRatio(cfg))
+			reviewCircle(ctx, st), planconfig.PlanCircleRatio(cfg))
 		for _, e := range extra {
 			out = append(out, PlanSentence{
 				Number:  len(out) + 1,
