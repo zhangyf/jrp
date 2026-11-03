@@ -7,21 +7,9 @@ import (
 	"strings"
 	"testing"
 	"time"
-)
 
-// 备用链解析：去空、去重、排除主模型 —— 主模型已经在链首，重复只是白试一次。
-func TestParseFallbackModels(t *testing.T) {
-	got := parseFallbackModels(" a , b ,, a ,", "primary")
-	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
-		t.Fatalf("期望 [a b]，得到 %v", got)
-	}
-	if got := parseFallbackModels("primary,backup", "primary"); len(got) != 1 || got[0] != "backup" {
-		t.Fatalf("主模型必须被排除，得到 %v", got)
-	}
-	if got := parseFallbackModels("", "primary"); len(got) != 0 {
-		t.Fatalf("空串应返回空列表，得到 %v", got)
-	}
-}
+	"github.com/zhangyf/jrp/internal/llm"
+)
 
 // 冷却：失败 1 次照常用，连续 2 次进冷却，过了 5 分钟自动恢复试探。
 func TestLLMModelCooling(t *testing.T) {
@@ -71,7 +59,7 @@ func TestJudgeWithFallbackSwitchesOnFailure(t *testing.T) {
 		srv := fakeLLMServer(&asked, map[string]string{"primary": "http500"})
 		defer srv.Close()
 
-		cfg := llmConfig{Endpoint: srv.URL, Model: "primary", Fallback: []string{"backup"}, Timeout: 3 * time.Second}
+		cfg := llm.Config{Endpoint: srv.URL, Model: "primary", Fallback: []string{"backup"}, Timeout: 3 * time.Second}
 		resetLLMHealth()
 		res, model, err := judgeWithFallback(cfg, "prompt")
 		if err != nil {
@@ -90,7 +78,7 @@ func TestJudgeWithFallbackSwitchesOnFailure(t *testing.T) {
 		srv := fakeLLMServer(&asked, map[string]string{"primary": "garbage"})
 		defer srv.Close()
 
-		cfg := llmConfig{Endpoint: srv.URL, Model: "primary", Fallback: []string{"backup"}, Timeout: 3 * time.Second}
+		cfg := llm.Config{Endpoint: srv.URL, Model: "primary", Fallback: []string{"backup"}, Timeout: 3 * time.Second}
 		resetLLMHealth()
 		_, model, err := judgeWithFallback(cfg, "prompt")
 		if err != nil || model != "backup" {
@@ -103,7 +91,7 @@ func TestJudgeWithFallbackSwitchesOnFailure(t *testing.T) {
 		srv := fakeLLMServer(&asked, map[string]string{"primary": "http500", "backup": "http500"})
 		defer srv.Close()
 
-		cfg := llmConfig{Endpoint: srv.URL, Model: "primary", Fallback: []string{"backup"}, Timeout: 3 * time.Second}
+		cfg := llm.Config{Endpoint: srv.URL, Model: "primary", Fallback: []string{"backup"}, Timeout: 3 * time.Second}
 		resetLLMHealth()
 		if _, _, err := judgeWithFallback(cfg, "prompt"); err == nil {
 			t.Fatal("全挂必须返回 error")
@@ -114,7 +102,7 @@ func TestJudgeWithFallbackSwitchesOnFailure(t *testing.T) {
 		var asked1, asked2 []string
 		srv := fakeLLMServer(&asked1, map[string]string{"primary": "http500"})
 		defer srv.Close()
-		cfg := llmConfig{Endpoint: srv.URL, Model: "primary", Fallback: []string{"backup"}, Timeout: 3 * time.Second}
+		cfg := llm.Config{Endpoint: srv.URL, Model: "primary", Fallback: []string{"backup"}, Timeout: 3 * time.Second}
 		resetLLMHealth()
 		_, _, _ = judgeWithFallback(cfg, "p1")
 		_, _, _ = judgeWithFallback(cfg, "p2") // 第 2 次失败 → primary 进冷却

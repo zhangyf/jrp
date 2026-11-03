@@ -1026,10 +1026,10 @@ JRP_LLM_TIMEOUT=8                      # 可选，秒，上限 60
 
 **实际在用的模型（2026-09-29 老师给的）**：腾讯 TokenHub 上的
 `deepseek-v4-flash-0731`，endpoint `https://tokenhub.tencentmaas.com/v1/chat/completions`，
-`Authorization: Bearer <key>` —— 标准 OpenAI 兼容格式，`callLLM` 直接支持，
+`Authorization: Bearer <key>` —— 标准 OpenAI 兼容格式，`internal/llm.Call` 直接支持，
 不用改代码，只填环境变量。
 
-**⚠️ 请求体必须带 `"stream": false`**（`buildLLMRequest`，有单测盯着）：
+**⚠️ 请求体必须带 `"stream": false`**（`internal/llm/client.go` 的私有 `buildRequest`，有单测盯着）：
 不写这条，tokenhub 这类网关可能按 SSE 流式返回，`choices[0].message.content`
 会拿不到东西，判定全线失败。
 
@@ -1389,6 +1389,16 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 - `internal/grading/grade_test.go`：原判分纯测试整体随包迁移；四档语义、空输入、IME 分隔符、片假名折叠和多形态断言不变。单包验证：`go test ./internal/grading`。
 - `api_grade.go`、`api_offline.go` 和 `excel_meta.go` 调用该包；`api_grade_test.go` 和 `excel_meta_test.go` 仍在根包验证 HTTP 与 Excel 回填。`ImportPreview.GradeMode` 仍是字符串，JSON 字段不变。
 - 网页仍使用原 `web/grade.js`，小程序仍调用 `/api/grade`，不新增第三份规则。目录迁移不改变判分口径，也不改变草稿、档案或造句判定。
+
+### 大模型公共配置与请求包边界（2026-11-03，A批）
+
+- `internal/llm/config.go`：`Config`、`LoadConfig`、`ParseFallbackModels`；配置来源仍为 `JRP_LLM_*`，内置文本默认模型、8秒默认超时及1至60秒有效范围不变，不覆盖服务器显式配置。
+- `internal/llm/client.go`：`Call` 构造单次文本请求，私有 `buildRequest` 保留 `temperature:0`、`stream:false`；`Post` 是文本与视觉共用的单次HTTP发送路径，body原样发送，成功返回原始content。仍用原默认HTTP客户端、单次超时和1MiB限读，没有新增重试或严格超限校验。
+- 两个对应的 `_test.go` 承接配置、备用列表解析和请求体原测试，补充请求头、错误响应、空内容、超时、读取上限及body关闭测试；单包验证：`go test ./internal/llm`。测试只用本地假传输，不访问真实网关或COS。
+- `api_judge.go` 保留提示词、领域结果解析、COS模板与结果缓存、HTTP入口；`llm_failover.go` 保留进程级共享冷却状态与两种切换循环。只更新包调用，不改变失败判据。
+- `api_vision.go` 保留视觉配置、内联图片请求体、并发、重试及总时间预算；`api_worddef.go` 保留档案优先和词义解析。视觉不能被改成文本请求，两者只共用 `Post`。
+- 判句的JSON解析失败仍触发切换；词义/视觉仍按原流程在领域解析前记录请求成功，本批不统一这两类行为。冷却逻辑未迁移或改动；原 `llmCooldown` 常量仍为2分钟，不按旧注释改为5分钟。
+- 本批无新依赖、无额外模型/COS请求、不迁移数据；仅改源码不代表上线，提交推送和部署按老师确认执行。
 
 ## Command Reference
 

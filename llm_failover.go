@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/llm"
 )
 
 // 判句模型自动切换（2026-10-15 老师要求）。
@@ -30,24 +32,6 @@ const (
 	llmFailThreshold = 2
 	llmCooldown      = 2 * time.Minute
 )
-
-// parseFallbackModels 解析备用模型列表。纯函数，可单测。
-func parseFallbackModels(raw, primary string) []string {
-	seen := map[string]bool{}
-	if p := strings.TrimSpace(primary); p != "" {
-		seen[p] = true
-	}
-	var out []string
-	for _, p := range strings.Split(raw, ",") {
-		p = strings.TrimSpace(p)
-		if p == "" || seen[p] {
-			continue
-		}
-		seen[p] = true
-		out = append(out, p)
-	}
-	return out
-}
 
 // ---------- 健康状态（冷却） ----------
 
@@ -103,7 +87,7 @@ func llmMarkResult(model string, ok bool, now time.Time) {
 //
 // 跟 judgeWithFallback 的区别：那边要对答句做判定 JSON 解析，这边只要原文
 // （查中文释义这类用途），解析交给调用方。冷却和失败留痕两边共用。
-func llmChat(cfg llmConfig, prompt string) (string, string, error) {
+func llmChat(cfg llm.Config, prompt string) (string, string, error) {
 	order := append([]string{cfg.Model}, cfg.Fallback...)
 	var lastErr error
 	tried := 0
@@ -115,7 +99,7 @@ func llmChat(cfg llmConfig, prompt string) (string, string, error) {
 		tried++
 		c := cfg
 		c.Model = m
-		reply, err := callLLM(c, prompt)
+		reply, err := llm.Call(c, prompt)
 		if err == nil && strings.TrimSpace(reply) != "" {
 			llmMarkResult(m, true, now)
 			return strings.TrimSpace(reply), m, nil
@@ -136,7 +120,7 @@ func llmChat(cfg llmConfig, prompt string) (string, string, error) {
 // judgeWithFallback 按「主 → 备」顺序问，谁答得出来用谁。
 // 返回实际生效的模型名，写进响应里便于排查 —— 老师问「现在用的是哪个」时能一眼看到。
 // 全部失败返回 error，调用方退回字面判定。
-func judgeWithFallback(cfg llmConfig, prompt string) (judgeResult, string, error) {
+func judgeWithFallback(cfg llm.Config, prompt string) (judgeResult, string, error) {
 	order := append([]string{cfg.Model}, cfg.Fallback...)
 	var lastErr error
 	tried := 0
@@ -148,7 +132,7 @@ func judgeWithFallback(cfg llmConfig, prompt string) (judgeResult, string, error
 		tried++
 		c := cfg
 		c.Model = m
-		reply, err := callLLM(c, prompt)
+		reply, err := llm.Call(c, prompt)
 		if err == nil {
 			var res judgeResult
 			if res, err = parseJudgeReply(reply); err == nil {

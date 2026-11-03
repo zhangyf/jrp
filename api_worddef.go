@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"github.com/zhangyf/jrp/internal/llm"
 )
 
 // 查中文意思 + 补汉字写法：录入新词时只用打假名，剩下的服务端补齐。
@@ -125,7 +127,7 @@ func (s *server) lookupWordDefs(st *Storage, words []string) ([]WordDefItem, str
 	// ② 剩下的问模型
 	model := ""
 	if len(todo) > 0 {
-		if cfg, ok := loadLLMConfig(); ok {
+		if cfg, ok := llm.LoadConfig(); ok {
 			reply, used, err := llmChat(cfg, fillWordDefPrompt(wordDefPrompt, todo))
 			if err == nil {
 				model = used
