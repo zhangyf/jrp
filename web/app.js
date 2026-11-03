@@ -229,13 +229,18 @@ var app = {
   },
 
   // 三圆手册分级（2026-11-02 按《标日初上 三圆词汇速记手册》逐个打标）。
-  // 手册没收的词 circle 为空 → 页面不显示这一格（不是「没标」，是手册里没有）。
-  CIRCLE_CLS: { '三圆': 'c3', '二圆': 'c2', '一圆': 'c1' },
+  // 老师 2026-11-03 定的画法：**画圈不写字** —— 三圆 3 个红圈、二圆 2 个、一圆 1 个。
+  // 文字只留在 title/aria-label 上（悬停和读屏还能知道是几圆）。
+  // 手册没收的词 circle 为空 → 显示占位「—」。
+  CIRCLE_DOTS: { '三圆': 3, '二圆': 2, '一圆': 1 },
 
   circleHtml: function (w) {
     var c = String((w && w.circle) || '').trim();
-    if (!c) return '<span class="f-empty">—</span>';
-    return '<span class="circle-chip ' + (this.CIRCLE_CLS[c] || '') + '">' + esc(c) + '</span>';
+    var n = this.CIRCLE_DOTS[c] || 0;
+    if (!n) return '<span class="f-empty">—</span>';
+    var dots = '';
+    for (var i = 0; i < n; i++) dots += '<i class="cdot"></i>';
+    return '<span class="cdots" title="' + esc(c) + '" aria-label="' + esc(c) + '">' + dots + '</span>';
   },
 
   // 「圆级 / 词性 / 备注」左右并排三格（2026-09-28 老师：上下放太占地；

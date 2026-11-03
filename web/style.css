@@ -185,15 +185,17 @@ main { max-width: 860px; margin: 0 auto; padding: 18px; }
 }
 .facts dd { margin: 0; flex: 1; min-width: 0; font-size: 14px; line-height: 1.5; }
 .facts .f-empty { color: #bfbfb5; }
-/* 三圆手册分级：三圆(核心) → 二圆 → 一圆，颜色由重到轻（跟小程序同一套配色） */
-.circle-chip {
-  display: inline-block; padding: 1px 10px; border-radius: 999px;
-  background: #efefec; color: #6a6a60;
-  font-size: 13px;
+/* 三圆手册分级：画红圈，三圆 3 个 / 二圆 2 个 / 一圆 1 个（老师 2026-11-03 定的画法，
+   不写「三圆」这种文字）。个数本身就是级别，扫一眼就知道轻重。 */
+.cdots { display: inline-flex; align-items: center; gap: 4px; }
+.cdot {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  border: 2px solid #d1453b;
+  /* 圈是空的才有「圈」的样子，实心小圆点在这个尺寸下就是一个点 */
+  box-sizing: border-box;
 }
-.circle-chip.c3 { background: #fbeceb; color: #b4392f; font-weight: 600; }
-.circle-chip.c2 { background: #fdf1e3; color: #854f0b; }
-.circle-chip.c1 { background: #eef1f6; color: #4a5a78; }
 .pos-chip {
   display: inline-block; padding: 1px 10px; border-radius: 999px;
   background: var(--accent-soft); color: var(--accent);
@@ -365,16 +367,10 @@ tr.unknown { opacity: 1; }
 .lex-table td.num.bad { color: var(--bad); font-weight: 600; }
 .lex-table td.grp { font-size: 12px; white-space: nowrap; }
 .lex-table td.note { font-size: 12px; color: var(--muted); min-width: 120px; }
-/* 手册分级（三圆词汇速记手册）：三圆最核心，颜色最重 */
+/* 手册分级（三圆词汇速记手册）：画红圈，三圆 3 个 / 二圆 2 个 / 一圆 1 个。
+   画法跟复习页同一份（.cdots / .cdot，见上文），这里只补表格里的对齐 */
 .lex-table td.circle { white-space: nowrap; }
-.chip-circle {
-  display: inline-block; font-size: 12px; line-height: 1.6;
-  padding: 0 8px; border-radius: 999px;
-  background: #efefec; color: var(--muted);
-}
-.chip-circle.c3 { background: var(--bad-soft); color: var(--bad); font-weight: 600; }
-.chip-circle.c2 { background: var(--unknown-soft); color: var(--unknown); }
-.chip-circle.c1 { background: #eef1f6; color: #4a5a78; }
+.lex-table td.circle .cdots { vertical-align: middle; }
 /* 挂起：手册里有但还没学到，不进每日练习 */
 .chip-hold {
   display: inline-block; font-size: 11px; line-height: 1.6;

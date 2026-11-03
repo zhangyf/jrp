@@ -123,18 +123,21 @@ page {
   color: #8a8a86;
 }
 
-/* 三圆手册分级：三圆(核心) → 二圆 → 一圆，颜色由重到轻。
-   词汇总表、单词复习（练习/回看）都要显示，配色只有这一份 —— 见 utils/circle.js。
+/* 三圆手册分级：画红圈不写字 —— 三圆 3 个圈、二圆 2 个、一圆 1 个
+   （老师 2026-11-03 定的画法）。个数本身就是级别，扫一眼就知道轻重。
+   词汇总表、单词复习（练习/回看/钉子户）都用这一份 —— 见 utils/circle.js。
    放全局 app.wxss：小程序页面 wxss 只作用于本页，两个页面各写一份必然画成两样。 */
-.circle {
-  font-size: 22rpx;
-  padding: 2rpx 12rpx;
-  border-radius: 999rpx;
+.cdots {
+  display: flex;
+  align-items: center;
+  gap: 5rpx;
   flex-shrink: 0;
-  margin-left: 10rpx;
-  background: #efefec;
-  color: #6a6a60;
+  margin-left: 12rpx;
 }
-.circle.c3 { background: #fbeceb; color: #b4392f; font-weight: 600; }
-.circle.c2 { background: #fdf1e3; color: #854f0b; }
-.circle.c1 { background: #eef1f6; color: #4a5a78; }
+.cdot {
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  border: 3rpx solid #d1453b;
+  box-sizing: border-box;
+}

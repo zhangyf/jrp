@@ -78,7 +78,7 @@ Page({
             stText: st.text,
             stCls: st.cls,
             circleText: ci.text,
-            circleCls: ci.cls,
+            circleDots: ci.dots,
             // 挂起 = 手册里有但还没学到，不进每日练习（词汇总表里照常看到）
             hold: !!it.hold,
             rate: rate(it),

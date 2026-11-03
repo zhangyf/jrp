@@ -1416,9 +1416,14 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 （`set()` / `setReview()` 各一份），加字段漏了这里 = 列表模式永远显示「—」（踩过）。
 手册没收的词 `circle` 为空 → 显示占位「—」，**不是不显示**（三格版式不许塌成两格）。
 
-小程序：配色和显示名只有一份 `miniprogram/utils/circle.js`（词库页 + 练习页共用），
-`.circle` 样式放在 **`app.wxss`**（页面 wxss 只作用于本页，两份必然画成两样）。
-体验版的题是服务端写死的、不带 circle → 那一格不出现，属正常。
+**画法是画圈，不写字**（老师 2026-11-03 定的）：三圆 3 个红圈、二圆 2 个、一圆 1 个。
+个数本身就是级别，扫一眼知道轻重；文字只留在 web 的 `title`/`aria-label`
+和词汇总表的详情行里。web 用 `.cdots`/`.cdot`（`app.circleHtml()`），
+小程序用同一套类名（样式在 **`app.wxss`**，页面 wxss 只作用于本页）。
+
+小程序：圈的个数只有一份 `miniprogram/utils/circle.js`（词库页 + 练习页共用），
+WXML 里 `wx:for` 遍历 `circleDots`（⚠️ WXML 不能自己数数，数组要在 JS 里算好）。
+体验版的题是服务端写死的、不带 circle → 那一组不出现，属正常。
 
 **跟手册对词时的匹配顺序**（`tmp/cmp2.py`，本地比对用）：
 原形精确 → ます形（手册给原形 `洗う`、档案存 `洗います`）→ 平片假名互转（`ごみ`/`ゴミ`）

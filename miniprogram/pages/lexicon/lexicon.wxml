@@ -27,7 +27,10 @@
             <text class="kanji" wx:if="{{item.kanji}}">（{{item.kanji}}）</text>
           </view>
           <view class="pos" wx:if="{{item.pos}}">{{item.pos}}<text class="sub" wx:if="{{item.sub}}">·{{item.sub}}</text></view>
-          <text class="circle {{item.circleCls}}" wx:if="{{item.circleText}}">{{item.circleText}}</text>
+          <!-- 手册分级画圈（三圆 3 个 / 二圆 2 个 / 一圆 1 个），详情行里才写文字 -->
+          <view class="cdots" wx:if="{{item.circleDots.length}}">
+            <view class="cdot" wx:for="{{item.circleDots}}" wx:key="*this"></view>
+          </view>
         </view>
         <view class="rline2">
           <text class="def">{{item.def}}</text>

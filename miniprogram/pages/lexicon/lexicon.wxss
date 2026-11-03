@@ -80,7 +80,7 @@
 }
 .pos .sub { color: #a0a096; }
 
-/* 手册分级的配色在全局 app.wxss（词汇总表和练习页共用 .circle） */
+/* 手册分级的画法在全局 app.wxss（词汇总表和练习页共用 .cdots / .cdot） */
 
 .rline2 {
   display: flex;

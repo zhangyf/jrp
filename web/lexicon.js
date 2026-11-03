@@ -4,14 +4,13 @@
 // 词性来自服务端 word_meta.json（不在档案里），没标到的显示「—」。
 
 // 手册分级（三圆词汇速记手册）：三圆(核心) > 二圆 > 一圆。
-// 手册没收的词 circle 为空 → 显示「—」。
+// 画法跟复习页一致 —— **画红圈不写字**（三圆 3 个 / 二圆 2 个 / 一圆 1 个），
+// 文字只留在 title 上（悬停能看到是几圆）。见 app.circleHtml。
+// 手册没收的词 circle 为空 → 显示「·」。
 // hold = 手册里有但还没学到，不进每日练习 —— 列表里挂个灰标，提醒别找它练。
-var CIRCLE_CLS = { 三圆: 'c3', 二圆: 'c2', 一圆: 'c1' };
-
 function circleCell(it) {
   if (!it.circle) return '<span class="muted">·</span>';
-  return '<span class="chip-circle ' + (CIRCLE_CLS[it.circle] || '') + '">' + esc(it.circle) + '</span>' +
-    (it.hold ? ' <span class="chip-hold">未学</span>' : '');
+  return app.circleHtml(it) + (it.hold ? ' <span class="chip-hold">未学</span>' : '');
 }
 
 var lexicon = {
