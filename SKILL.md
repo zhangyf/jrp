@@ -1425,6 +1425,18 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 WXML 里 `wx:for` 遍历 `circleDots`（⚠️ WXML 不能自己数数，数组要在 JS 里算好）。
 体验版的题是服务端写死的、不带 circle → 那一组不出现，属正常。
 
+**词性一律显示符号，不写中文**（2026-11-03 老师要的）：
+N / V1 / V2 / V3 / Aい / Aな / Adv / P / Pron / Q / N.pr / Adn / Conj / Int / Expr / Phr / Idm / —。
+⛔ **这是穷举表，不是「匹配不上就原文兜底」** —— 词性表 25 种取值全有确定符号；
+真冒出新词性原样显示（不吞掉）。老数据「动/1」和新数据「动词/一类」两套写法都认。
+
+- 两份实现必须同口径：`web/app.js` 的 `app.posSymbol()` 与
+  `miniprogram/utils/pos.js` 的 `posSymbol()`。测试 `outputs/pos_symbol_test.js`
+  两边各跑一遍再互相比对 —— 改一边忘另一边会挂。
+- 中文没删，挪到 `title`（web 悬停）和词汇总表/详情行 —— 老师选的「悬停+详情」。
+- ⚠️ **活用专项答题前仍只给 V / A**（`posSymbol(w, true)`），小类照样藏着；
+  title 也只能给大类，否则符号藏了、悬停漏出「一类」等于白藏。
+
 **跟手册对词时的匹配顺序**（`tmp/cmp2.py`，本地比对用）：
 原形精确 → ます形（手册给原形 `洗う`、档案存 `洗います`）→ 平片假名互转（`ごみ`/`ゴミ`）
 → 单假名兜底（`き`/`ひ`/`め`，⚠️ 必须最后，否则 `の` 会误命中助词）→ 近似前缀。
