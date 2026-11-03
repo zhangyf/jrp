@@ -412,6 +412,18 @@ Knowledge base IDs:
              （闲置 < `DefaultReviewIdleDays` = 30 天）就跳过；③ 按「最久没出过」排序。
              ⚠️ 第 ② 条不能省 —— 句库是静态的，不刷这层的话练过的词会一直占着名额，
              回炉就退化成随机抽句。
+           - **圆级优先（2026-11-03 老师定的）**：三圆词（手册最高频）拿
+             `sentence_review_circle_ratio`% 的名额（默认 **70**，20 句里 14 句），
+             剩下的给二圆 / 一圆 / 没标；**层内仍按「最久没出过」排**。
+             锚点词 `ReviewSentence.Word` 就是档案词形，跟 `word_meta.json` 的
+             `circle` 是同一个 key，**精确匹配、不需要分词**。
+             ⚠️ 配额是**上限不是保底**：三圆池子不够就由其他档补满，题量永不缩水；
+             `circle` 读不到（词表炸了）或 ratio≤0 → 整步跳过，行为跟没这功能时一致
+             （`TestReviewSentencesCircleDisabledKeepsOldBehaviour` 盯着这条回滚路径）。
+             ⚠️ 只认 `三圆`/`二圆`/`一圆` 三个中文值，写成「3圆」一律落「没标」档。
+             ⚠️ **只加在回炉句上，不加到 20 句课本原文** —— 原文那 20 句靠按课轮转
+             覆盖课文，Go 里没分词器，靠词形子串猜「句子里有没有三圆词」必然有误差，
+             而且会破坏跨课摊平。体检看 `sentence-preview` 的 `review_circle`。
            - **同一原型句当天只用一次**：多个回炉词可能共用同一个骨架，且原型句本身可能
              就在当天 20 句里。不去重会出现第 20 句写「森さんは 先週 休みました」、
              第 22 句写「森さんは 今日 休みました」—— 骨架刚练过一遍，变形句等于白出。
@@ -940,6 +952,10 @@ Every lesson has ONE core theme. Identify it, state it upfront, and build the en
      `sentence_base_count`（课本原句数，默认 20）+ `sentence_review_count`
      （回炉变形句数，默认 20），允许 0-50。读不到/解析坏/越界 → 内置默认 20+20，
      缓存 60 秒。
+     第三个键 `sentence_review_circle_ratio`（2026-11-03，允许 0-100，默认 70）：
+     回炉句里三圆词的名额占比，**写 0 等于关掉圆级优先**（回退到纯「最久没出过」）。
+     ⚠️ 它是指针字段 —— `nil` = 没配过（用内置 70），`0` = 有意关掉，两者语义不同，
+     所以别用 `== 0` 判断「没配」（比结构体时用 `planCircleRatio()` 取生效值）。
      **改配额不用编译、不用部署**：`jrp --lang ja plan-config --set sentence_review_count=24`
      （多个用逗号分隔），`--reset` 删回退内置，无参看当前生效值与来源。
      三处引用（网页出题 `api_plan.go`、离线 Excel `api_offline.go`、预检

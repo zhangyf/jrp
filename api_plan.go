@@ -227,7 +227,8 @@ func (s *server) buildSentencePlan(st *Storage, targetDate time.Time, upload boo
 			exclude[normSentence(p.Answer)] = true
 		}
 		extra := BuildReviewSentences(rb, hist, arc, targetDate,
-			cfg.SentenceReviewCount, exclude, DefaultReviewIdleDays)
+			cfg.SentenceReviewCount, exclude, DefaultReviewIdleDays,
+			reviewCircle(ctx, st), planCircleRatio(cfg))
 		for _, e := range extra {
 			sentences = append(sentences, PlanSentence{
 				Number:  len(sentences) + 1,

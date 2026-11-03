@@ -44,13 +44,13 @@ func runPlanConfig(fs *flag.FlagSet, lang string) {
 			os.Exit(1)
 		}
 		outputResult(map[string]interface{}{
-			"success":  true,
-			"command":  "plan-config",
-			"reset":    true,
-			"dry_run":  *dryRun,
+			"success":   true,
+			"command":   "plan-config",
+			"reset":     true,
+			"dry_run":   *dryRun,
 			"effective": builtinPlanConfig(),
-			"source":   "builtin",
-			"hint":     "COS 上的配置已删除，线上最多 60 秒后回退到内置默认",
+			"source":    "builtin",
+			"hint":      "COS 上的配置已删除，线上最多 60 秒后回退到内置默认",
 		})
 		return
 	}
@@ -81,7 +81,12 @@ func runPlanConfig(fs *flag.FlagSet, lang string) {
 				fmt.Fprintf(os.Stderr, "Error: %s 的值不是整数（%q）\n", key, parts[1])
 				os.Exit(1)
 			}
-			if !validPlanCount(v) {
+			if key == "sentence_review_circle_ratio" {
+				if v < 0 || v > 100 {
+					fmt.Fprintf(os.Stderr, "Error: %s=%d 越界，允许 0-100（0=不按圆级分层）\n", key, v)
+					os.Exit(1)
+				}
+			} else if !validPlanCount(v) {
 				fmt.Fprintf(os.Stderr, "Error: %s=%d 越界，允许 0-%d\n", key, v, maxPlanCount)
 				os.Exit(1)
 			}
@@ -90,8 +95,11 @@ func runPlanConfig(fs *flag.FlagSet, lang string) {
 				next.SentenceBaseCount = v
 			case "sentence_review_count":
 				next.SentenceReviewCount = v
+			case "sentence_review_circle_ratio":
+				r := v
+				next.SentenceReviewCircleRatio = &r
 			default:
-				fmt.Fprintf(os.Stderr, "Error: 不能改 %q，只能改 sentence_base_count / sentence_review_count\n", key)
+				fmt.Fprintf(os.Stderr, "Error: 不能改 %q，只能改 sentence_base_count / sentence_review_count / sentence_review_circle_ratio\n", key)
 				os.Exit(1)
 			}
 		}

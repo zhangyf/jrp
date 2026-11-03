@@ -5,6 +5,14 @@ import (
 	"testing"
 )
 
+// planConfigEqual 比「生效值」而不是指针地址 —— 圆级占比是指针字段
+// （nil = 没配，0 = 关掉），直接 != 会因为两个指针地址不同而永远判不等。
+func planConfigEqual(a, b PlanConfig) bool {
+	return a.SentenceBaseCount == b.SentenceBaseCount &&
+		a.SentenceReviewCount == b.SentenceReviewCount &&
+		planCircleRatio(a) == planCircleRatio(b)
+}
+
 // 配额外置的护栏全在 choosePlanConfig 里 —— 这里盯着四类输入：
 // 没配、读失败、解析坏（体现为零值+err）、值越界，一律回退内置默认。
 // 少一条就可能出现「COS 上写了份坏配置 → 造句练习整个挂掉」。
@@ -13,14 +21,14 @@ func TestChoosePlanConfigFallsBackToBuiltin(t *testing.T) {
 
 	t.Run("没配过（零值）", func(t *testing.T) {
 		cfg, src := choosePlanConfig(PlanConfig{}, nil)
-		if src != "builtin" || cfg != builtin {
+		if src != "builtin" || !planConfigEqual(cfg, builtin) {
 			t.Fatalf("期望回退内置，得到 %+v / %s", cfg, src)
 		}
 	})
 
 	t.Run("读失败", func(t *testing.T) {
 		cfg, src := choosePlanConfig(PlanConfig{}, errors.New("COS 炸了"))
-		if src != "builtin" || cfg != builtin {
+		if src != "builtin" || !planConfigEqual(cfg, builtin) {
 			t.Fatalf("读失败必须回退内置，得到 %+v / %s", cfg, src)
 		}
 	})
@@ -32,7 +40,7 @@ func TestChoosePlanConfigFallsBackToBuiltin(t *testing.T) {
 			{SentenceBaseCount: -5, SentenceReviewCount: -5},
 		} {
 			cfg, src := choosePlanConfig(bad, nil)
-			if src != "builtin" || cfg != builtin {
+			if src != "builtin" || !planConfigEqual(cfg, builtin) {
 				t.Fatalf("%+v 越界必须回退内置，得到 %+v / %s", bad, cfg, src)
 			}
 		}

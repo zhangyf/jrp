@@ -43,11 +43,11 @@ type CircleInput struct {
 
 // CircleOutcome 是执行结果。
 type CircleOutcome struct {
-	Added       int      `json:"added"`                 // 新增进档案的词数
-	Duplicates  int      `json:"duplicates"`            // 词形已存在，跳过
-	Tagged      int      `json:"tagged"`                // 打上/更新圆级标的词数
-	Held        int      `json:"held"`                  // 被挂起（不进练习）的词数
-	DefFixed    int      `json:"def_fixed"`             // 改过释义的老词数
+	Added       int      `json:"added"`      // 新增进档案的词数
+	Duplicates  int      `json:"duplicates"` // 词形已存在，跳过
+	Tagged      int      `json:"tagged"`     // 打上/更新圆级标的词数
+	Held        int      `json:"held"`       // 被挂起（不进练习）的词数
+	DefFixed    int      `json:"def_fixed"`  // 改过释义的老词数
 	OldFilename string   `json:"old_filename"`
 	NewFilename string   `json:"new_filename"`
 	Version     string   `json:"version"`
@@ -87,6 +87,42 @@ func lessonOfGroup(title string) int {
 		return 0
 	}
 	return n
+}
+
+// circleMap 摊出「词形 -> 圆级」（三圆 / 二圆 / 一圆），供造句子挑句时加权。
+//
+// 拿不到词性表（读失败 / 一条都没标）返回 nil —— 调用方按「不分层」处理，
+// 出题行为跟加这个功能之前一模一样。宁可少加权，也不能因为读不到词表就少出题。
+func circleMap(meta *WordMeta) map[string]string {
+	if meta == nil || len(meta.Items) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(meta.Items))
+	for w, p := range meta.Items {
+		if c := strings.TrimSpace(p.Circle); c != "" {
+			out[w] = c
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// circleRank 圆级分档，数字小的先出：三圆 0、二圆 1、一圆 2、没标 3。
+//
+// ⚠️ 只认 word_meta 里存的这三个中文值 —— 手册就是这么标的手写分级，
+// 写成别的（"3圆"/"三星"）一律落「没标」档，不参与优先。
+func circleRank(circle map[string]string, word string) int {
+	switch circle[word] {
+	case "三圆":
+		return 0
+	case "二圆":
+		return 1
+	case "一圆":
+		return 2
+	}
+	return 3
 }
 
 // applyCircle 是批量导入/打标的唯一实现。

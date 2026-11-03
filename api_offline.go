@@ -233,7 +233,8 @@ func BuildSentencePlanFrom(st *Storage, today time.Time, n int, arc *Archive) []
 		// 回炉配额跟着网页端走同一份配置 —— 离线 Excel 少了回炉句等于白加这个功能。
 		cfg, _ := resolvePlanConfig(ctx, st)
 		extra := BuildReviewSentences(rb, hist, arc, today,
-			cfg.SentenceReviewCount, exclude, DefaultReviewIdleDays)
+			cfg.SentenceReviewCount, exclude, DefaultReviewIdleDays,
+			reviewCircle(ctx, st), planCircleRatio(cfg))
 		for _, e := range extra {
 			out = append(out, PlanSentence{
 				Number:  len(out) + 1,

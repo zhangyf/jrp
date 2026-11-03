@@ -286,14 +286,28 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 
 	// 回炉变形句：跟网页端同一套加餐逻辑（arc 传 nil → 不按闲置过滤，
 	// 预检场景拿不到档案，宁可全列出来让人看过全貌）。
+	circleStat := map[string]int{}
+	cfgNow, _ := resolvePlanConfig(ctx, storage)
 	if rb, rerr := storage.DownloadReviewBank(ctx); rerr == nil && rb != nil {
 		exclude := make(map[string]bool, len(picked))
 		for _, p := range picked {
 			exclude[normSentence(p.Answer)] = true
 		}
-		cfg, _ := resolvePlanConfig(ctx, storage)
+		cfg := cfgNow
+		circle := reviewCircle(ctx, storage)
 		extra := BuildReviewSentences(rb, hist, nil, today,
-			cfg.SentenceReviewCount, exclude, DefaultReviewIdleDays)
+			cfg.SentenceReviewCount, exclude, DefaultReviewIdleDays,
+			circle, planCircleRatio(cfg))
+		// 回炉句挑中了几句三圆 —— 圆级加权有没有生效，看这里。
+		// BankSentence 不带锚点词，只能拿 answer 反查回炉库。
+		wordOf := make(map[string]string, len(rb.Sentences))
+		for _, s := range rb.Sentences {
+			wordOf[normSentence(s.Answer)] = s.Word
+		}
+		rankName := []string{"三圆", "二圆", "一圆", "没标"}
+		for _, e := range extra {
+			circleStat[rankName[circleRank(circle, wordOf[normSentence(e.Answer)])]]++
+		}
 		for _, e := range extra {
 			picked = append(picked, PlanSentence{
 				Number:  len(picked) + 1,
@@ -358,6 +372,11 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 		"pool_size":    len(bank.Sentences),
 		"base_count":   baseCount,
 		"review_added": reviewCount,
+		"review_circle": map[string]interface{}{
+			"三圆": circleStat["三圆"], "二圆": circleStat["二圆"],
+			"一圆": circleStat["一圆"], "没标": circleStat["没标"],
+			"ratio": planCircleRatio(cfgNow),
+		},
 		"self_check": map[string]interface{}{
 			"recent_7d_repeat": recentDup, // 应为 0（错句除外）
 			"inner_repeat":     innerDup,  // 必须为 0

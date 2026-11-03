@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestGroupLesson(t *testing.T) {
 	cases := []struct {
@@ -156,5 +161,167 @@ func TestPickPrototypesZeroOrNegative(t *testing.T) {
 	by := groupProtosByLesson([]BankSentence{{ID: "P1", Lesson: "第1课", Answer: "李さんは 中国人です。"}})
 	if got := pickPrototypes(by, 1, 0, "名词"); got != nil {
 		t.Errorf("n=0 应返回 nil，实际 %v", got)
+	}
+}
+
+// ---------- 圆级优先（2026-11-03）----------
+
+// reviewBankWithCircle 造一个「n3 条三圆 + n2 条二圆」的回炉池子。
+// 每条用独立原型句，免得「同骨架当天只留一条」把分层结果搅乱。
+func reviewBankWithCircle(n3, n2 int) (*ReviewBank, map[string]string) {
+	b := &ReviewBank{}
+	circle := map[string]string{}
+	mk := func(tag, prefix string, i int) {
+		w := fmt.Sprintf("%s_%02d", prefix, i)
+		circle[w] = tag
+		b.Sentences = append(b.Sentences, ReviewSentence{
+			ID:        "R" + w,
+			Word:      w,
+			Answer:    tag + "の文" + w + "。",
+			Prototype: "原型" + w,
+		})
+	}
+	for i := 0; i < n3; i++ {
+		mk("三圆", "c3", i)
+	}
+	for i := 0; i < n2; i++ {
+		mk("二圆", "c2", i)
+	}
+	return b, circle
+}
+
+func countCircle(got []BankSentence) (three, other int) {
+	for _, g := range got {
+		if strings.Contains(g.Answer, "三圆の文") {
+			three++
+		} else {
+			other++
+		}
+	}
+	return
+}
+
+// 三圆占大头：20 句里 14 句三圆（70%），剩下 6 句给二圆 —— 不是独占。
+func TestReviewSentencesCircleTakesMajority(t *testing.T) {
+	// 三圆池子要够 14 条 —— 不够的话其他档会补上来（那是另一个用例）
+	bank, circle := reviewBankWithCircle(16, 12)
+	got := BuildReviewSentences(bank, SentenceHistory{}, nil, time.Now(), 20, nil, 0, circle, 70)
+	if len(got) != 20 {
+		t.Fatalf("要 20 句，给了 %d 句", len(got))
+	}
+	three, other := countCircle(got)
+	if three != 14 || other != 6 {
+		t.Errorf("70%% 配额应是 14 三圆 + 6 其他，实际 %d + %d", three, other)
+	}
+}
+
+// 三圆池子不够时由其他档补满 —— 配额是上限不是保底，题量绝不缩水。
+func TestReviewSentencesCircleShortfallFillsUp(t *testing.T) {
+	bank, circle := reviewBankWithCircle(3, 20)
+	got := BuildReviewSentences(bank, SentenceHistory{}, nil, time.Now(), 20, nil, 0, circle, 70)
+	if len(got) != 20 {
+		t.Fatalf("三圆不够也得给满 20 句，实际 %d 句", len(got))
+	}
+	three, other := countCircle(got)
+	if three != 3 || other != 17 {
+		t.Errorf("三圆只有 3 条时应是 3 + 17，实际 %d + %d", three, other)
+	}
+}
+
+// ratio=0（有意关掉）和 circle=nil（读不到词表）都退回「不分层」，
+// 结果必须跟加这个功能之前一致 —— 这是回滚路径的护栏。
+func TestReviewSentencesCircleDisabledKeepsOldBehaviour(t *testing.T) {
+	bank, circle := reviewBankWithCircle(12, 12)
+	base := func(ratio int, c map[string]string) []BankSentence {
+		return BuildReviewSentences(bank, SentenceHistory{}, nil, time.Now(), 20, nil, 0, c, ratio)
+	}
+	off := base(0, circle)
+	noMeta := base(70, nil)
+	if len(off) != 20 || len(noMeta) != 20 {
+		t.Fatalf("关掉分层也得给满 20 句：off=%d nil=%d", len(off), len(noMeta))
+	}
+	for i := range off {
+		if off[i].ID != noMeta[i].ID {
+			t.Fatalf("ratio=0 与 circle=nil 结果不一致：第 %d 句 %s vs %s", i, off[i].ID, noMeta[i].ID)
+		}
+	}
+	// 不分层时按 ID 排，二圆（Rc2_xx）字典序在前 —— 不再出现 14:6 的分层结果
+	three, other := countCircle(off)
+	if three == 14 {
+		t.Errorf("关掉分层后不该还是 14 句三圆")
+	}
+	_ = other
+}
+
+// 同骨架去重跨层也要生效：分层不能变成「同一原型句一天出两遍」的漏洞。
+func TestReviewSentencesCircleKeepsPrototypeDedupe(t *testing.T) {
+	b := &ReviewBank{Sentences: []ReviewSentence{
+		{ID: "R1", Word: "w3_a", Answer: "三圆の文1。", Prototype: "同じ骨格"},
+		{ID: "R2", Word: "w3_b", Answer: "三圆の文2。", Prototype: "同じ骨格"},
+		{ID: "R3", Word: "w2_a", Answer: "二圆の文1。", Prototype: "別の骨格"},
+	}}
+	circle := map[string]string{"w3_a": "三圆", "w3_b": "三圆", "w2_a": "二圆"}
+	got := BuildReviewSentences(b, SentenceHistory{}, nil, time.Now(), 3, nil, 0, circle, 70)
+	if len(got) != 2 {
+		t.Fatalf("同骨架的两条只能留一条，应出 2 句，实际 %d 句", len(got))
+	}
+	seen := map[string]bool{}
+	for _, g := range got {
+		if g.Prototype == "同じ骨格" && seen["同じ骨格"] {
+			t.Errorf("同一骨架出了两遍：%+v", got)
+		}
+		seen[g.Prototype] = true
+	}
+}
+
+func TestCircleMapAndRank(t *testing.T) {
+	meta := &WordMeta{Items: map[string]WordPOS{
+		"みず(水)":   {Pos: "名词", Circle: "三圆"},
+		"ほん(本)":   {Pos: "名词", Circle: "二圆"},
+		"つくえ(机)":  {Pos: "名词", Circle: "一圆"},
+		"いす(椅子)":  {Pos: "名词"},
+		"でんわ(電話)": {Pos: "名词", Circle: "3圆"}, // 手写分级写歪了 → 落「没标」
+	}}
+	m := circleMap(meta)
+	if got := circleRank(m, "みず(水)"); got != 0 {
+		t.Errorf("三圆 rank=%d，要 0", got)
+	}
+	if got := circleRank(m, "ほん(本)"); got != 1 {
+		t.Errorf("二圆 rank=%d，要 1", got)
+	}
+	if got := circleRank(m, "つくえ(机)"); got != 2 {
+		t.Errorf("一圆 rank=%d，要 2", got)
+	}
+	if got := circleRank(m, "いす(椅子)"); got != 3 {
+		t.Errorf("没标 rank=%d，要 3", got)
+	}
+	if got := circleRank(m, "でんわ(電話)"); got != 3 {
+		t.Errorf("写歪的分级（3圆）rank=%d，要 3（不参与优先）", got)
+	}
+	if circleMap(nil) != nil {
+		t.Error("词表为 nil 时 circleMap 应返回 nil")
+	}
+	if circleMap(&WordMeta{}) != nil {
+		t.Error("空词表 circleMap 应返回 nil")
+	}
+}
+
+func TestPlanCircleRatioDefaults(t *testing.T) {
+	if got := planCircleRatio(PlanConfig{}); got != 70 {
+		t.Errorf("没配时该用内置 70，实际 %d", got)
+	}
+	v := 0
+	if got := planCircleRatio(PlanConfig{SentenceReviewCircleRatio: &v}); got != 0 {
+		t.Errorf("显式 0 = 关掉，实际 %d", got)
+	}
+	bad := 150
+	if got := planCircleRatio(PlanConfig{SentenceReviewCircleRatio: &bad}); got != 70 {
+		t.Errorf("越界值该回退 70，实际 %d", got)
+	}
+	if !validCircleRatio(PlanConfig{}) || !validCircleRatio(PlanConfig{SentenceReviewCircleRatio: &v}) {
+		t.Error("nil / 0 都该判合法")
+	}
+	if validCircleRatio(PlanConfig{SentenceReviewCircleRatio: &bad}) {
+		t.Error("150 该判越界")
 	}
 }

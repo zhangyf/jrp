@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -130,6 +131,19 @@ func wordIdleMap(arc *Archive, today time.Time) map[string]int {
 	return out
 }
 
+// reviewCircle 读词性表摊出「词形 -> 圆级」，给回炉句挑句加权用。
+//
+// 读失败返回 nil —— 挑句那边按「不分层」处理，出题行为跟没加圆级时一致。
+// 拿不到圆级不能变成少出题，这跟 holdSet 的 fail-open 是同一个道理。
+func reviewCircle(ctx context.Context, st *Storage) map[string]string {
+	meta, err := st.DownloadWordMeta(ctx)
+	if err != nil {
+		log.Printf("sentence-review: 词性表读不了（%v），回炉句不按圆级分层", err)
+		return nil
+	}
+	return circleMap(meta)
+}
+
 // BuildReviewSentences 挑 n 条回炉句。纯函数，不碰 COS。
 //
 // 三条筛选，顺序不能反：
@@ -142,10 +156,16 @@ func wordIdleMap(arc *Archive, today time.Time) map[string]int {
 //     且多个回炉词共用一个骨架时也只留一条。否则会出现第 20 句写
 //     「森さんは 先週 休みました」、第 22 句写「森さんは 今日 休みました」，
 //     骨架刚练过一遍，变形句等于白出。
+//  5. 圆级分层（2026-11-03）：三圆词（手册最高频）拿 circleRatio% 的名额，
+//     剩下的名额给二圆 / 一圆 / 没标。层内仍按第 3 步的「最久没出过」排。
+//     三圆池子不够就由其他档补满 —— 是「占大头」不是「独占」，题量永不缩水。
+//     circle 为 nil（读不到 word_meta）或 circleRatio <= 0 时整步跳过，
+//     行为跟没加这个功能时一模一样。
 //
 // arc 传 nil 时跳过第 2 步（拿不到档案就当全都回炉，宁可多练）。
 func BuildReviewSentences(bank *ReviewBank, hist SentenceHistory, arc *Archive,
-	today time.Time, n int, exclude map[string]bool, minIdleDays int) []BankSentence {
+	today time.Time, n int, exclude map[string]bool, minIdleDays int,
+	circle map[string]string, circleRatio int) []BankSentence {
 
 	if bank == nil || n <= 0 {
 		return nil
@@ -210,26 +230,48 @@ func BuildReviewSentences(bank *ReviewBank, hist SentenceHistory, arc *Archive,
 
 	out := make([]BankSentence, 0, n)
 	usedProto := make(map[string]bool)
-	for _, c := range cs {
-		if len(out) >= n {
-			break
-		}
-		// 同一骨架当天只留一条
-		if c.s.Prototype != "" {
-			pk := normSentence(c.s.Prototype)
-			if usedProto[pk] {
-				continue
+	// take 把 list 里的候选加进 out，直到 out 有 limit 条或 list 走完。
+	// 同一骨架当天只留一条（usedProto 跨层共享，分层也不能破这条）。
+	take := func(list []cand, limit int) {
+		for _, c := range list {
+			if len(out) >= limit {
+				return
 			}
-			usedProto[pk] = true
+			if c.s.Prototype != "" {
+				pk := normSentence(c.s.Prototype)
+				if usedProto[pk] {
+					continue
+				}
+				usedProto[pk] = true
+			}
+			out = append(out, BankSentence{
+				ID:        c.s.ID,
+				Lesson:    c.s.Lesson,
+				Type:      "transformed",
+				Prototype: c.s.Prototype,
+				Answer:    c.s.Answer,
+				Chinese:   c.s.Chinese,
+			})
 		}
-		out = append(out, BankSentence{
-			ID:        c.s.ID,
-			Lesson:    c.s.Lesson,
-			Type:      "transformed",
-			Prototype: c.s.Prototype,
-			Answer:    c.s.Answer,
-			Chinese:   c.s.Chinese,
-		})
 	}
+
+	// 圆级分层：三圆一组，其余一组，组内保持上面排好的顺序。
+	// quota 是三圆的名额上限，不是保底 —— 三圆不够时剩下的名额由其他档吃掉。
+	if circleRatio > 0 && circle != nil {
+		var three, rest []cand
+		for _, c := range cs {
+			if circleRank(circle, c.s.Word) == 0 {
+				three = append(three, c)
+			} else {
+				rest = append(rest, c)
+			}
+		}
+		take(three, n*circleRatio/100) // 三圆占大头
+		take(rest, n)                  // 其余补满
+		take(three, n)                 // 都不够再把三圆剩的补上（题量优先）
+		return out
+	}
+
+	take(cs, n)
 	return out
 }

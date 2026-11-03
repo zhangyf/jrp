@@ -19,6 +19,10 @@ const planConfigCosKey = "configs/plan_config.json"
 type PlanConfig struct {
 	SentenceBaseCount   int `json:"sentence_base_count"`
 	SentenceReviewCount int `json:"sentence_review_count"`
+
+	// SentenceReviewCircleRatio 回炉变形句里三圆词占的名额百分比（0-100）。
+	// 用指针是为了分开「没配过」（nil → 用内置 70）和「有意关掉」（0 → 不分层）。
+	SentenceReviewCircleRatio *int `json:"sentence_review_circle_ratio,omitempty"`
 }
 
 func (s *Storage) planConfigKey() string { return s.sharedBase() + "/" + planConfigCosKey }
