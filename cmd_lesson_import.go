@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/lessonimport"
 	"github.com/zhangyf/jrp/internal/sentence"
 )
 
@@ -17,7 +18,7 @@ import (
 // importDoc 一份要抽句子的汇编文档。
 type importDoc struct {
 	Name string
-	Kind lessonDocKind
+	Kind lessonimport.LessonDocKind
 }
 
 type importReport struct {
@@ -31,27 +32,27 @@ type importReport struct {
 
 // resolveImportDocs 找第N课的两份汇编文档（基本课文 + 应用课文）。
 // --doc 指定单份时只抽那一份，kind 按文档名里的「应用课文」判断。
-func resolveImportDocs(fetch docFetcher, lesson int, onlyDoc string) (unit int, docs []importDoc, found bool) {
+func resolveImportDocs(fetch lessonimport.DocFetcher, lesson int, onlyDoc string) (unit int, docs []importDoc, found bool) {
 	if onlyDoc != "" {
-		kind := lessonDocKinds[0]
+		kind := lessonimport.LessonDocKinds[0]
 		if strings.Contains(onlyDoc, "应用课文") {
-			kind = lessonDocKinds[1]
+			kind = lessonimport.LessonDocKinds[1]
 		}
-		return unitOfLesson(lesson), []importDoc{{Name: onlyDoc, Kind: kind}}, true
+		return lessonimport.UnitOfLesson(lesson), []importDoc{{Name: onlyDoc, Kind: kind}}, true
 	}
-	u, basic, applied, ok := resolveLessonDocs(fetch, lesson)
+	u, basic, applied, ok := lessonimport.ResolveLessonDocs(fetch, lesson)
 	if !ok {
-		return unitOfLesson(lesson), nil, false
+		return lessonimport.UnitOfLesson(lesson), nil, false
 	}
 	return u, []importDoc{
-		{Name: basic, Kind: lessonDocKinds[0]},
-		{Name: applied, Kind: lessonDocKinds[1]},
+		{Name: basic, Kind: lessonimport.LessonDocKinds[0]},
+		{Name: applied, Kind: lessonimport.LessonDocKinds[1]},
 	}, true
 }
 
 // collectImport 从给定的文档里抽第 lesson 课的句子，只留句库里没有的。
 // all 传进来时是句库现有全部条目，返回时已把新条目追加在后面（供连续导多课时查重）。
-func collectImport(fetch docFetcher, all []sentence.BankSentence, lesson int, docs []importDoc) (newAll, added []sentence.BankSentence, reports []importReport) {
+func collectImport(fetch lessonimport.DocFetcher, all []sentence.BankSentence, lesson int, docs []importDoc) (newAll, added []sentence.BankSentence, reports []importReport) {
 	for _, d := range docs {
 		content, ok := fetch(d.Name)
 		if !ok {
@@ -60,8 +61,8 @@ func collectImport(fetch docFetcher, all []sentence.BankSentence, lesson int, do
 			})
 			continue
 		}
-		rows := extractLessonRows(content, lesson)
-		plan := buildImportPlan(rows, lesson, d.Kind, d.Name, all)
+		rows := lessonimport.ExtractLessonRows(content, lesson)
+		plan := lessonimport.BuildImportPlan(rows, lesson, d.Kind, d.Name, all)
 		all = append(all, plan.Added...)
 		added = append(added, plan.Added...)
 		reports = append(reports, importReport{
@@ -74,7 +75,7 @@ func collectImport(fetch docFetcher, all []sentence.BankSentence, lesson int, do
 
 // cosFetcher 按文档名从 COS 取内容，取过的缓存起来（导多课不会重复下载）。
 // seed 可预置刚上传、还没落盘的内容（save-lesson 自动入库用）。
-func cosFetcher(ctx context.Context, storage *Storage, seed map[string]string) docFetcher {
+func cosFetcher(ctx context.Context, storage *Storage, seed map[string]string) lessonimport.DocFetcher {
 	cache := map[string]string{}
 	for k, v := range seed {
 		cache[k] = v
@@ -173,7 +174,7 @@ func runSentenceImport(fs *flag.FlagSet, lang string) {
 			"language":  lang,
 			"lesson":    *lesson,
 			"new_count": 0,
-			"note":      "没找到这一课的汇编文档（试过第1-" + strconv.Itoa(maxUnit) + "单元），先 save-lesson 把课文存进 COS",
+			"note":      "没找到这一课的汇编文档（试过第1-" + strconv.Itoa(lessonimport.MaxUnit) + "单元），先 save-lesson 把课文存进 COS",
 		})
 		return
 	}
