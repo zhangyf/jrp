@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/sentence"
-	"github.com/zhangyf/jrp/internal/planconfig"
 )
 
 func TestGroupLesson(t *testing.T) {
@@ -310,21 +309,21 @@ func TestCircleMapAndRank(t *testing.T) {
 }
 
 func TestPlanCircleRatioDefaults(t *testing.T) {
-	if got := planconfig.PlanCircleRatio(PlanConfig{}); got != 70 {
+	if got := planCircleRatio(PlanConfig{}); got != 70 {
 		t.Errorf("没配时该用内置 70，实际 %d", got)
 	}
 	v := 0
-	if got := planconfig.PlanCircleRatio(PlanConfig{SentenceReviewCircleRatio: &v}); got != 0 {
+	if got := planCircleRatio(PlanConfig{SentenceReviewCircleRatio: &v}); got != 0 {
 		t.Errorf("显式 0 = 关掉，实际 %d", got)
 	}
 	bad := 150
-	if got := planconfig.PlanCircleRatio(PlanConfig{SentenceReviewCircleRatio: &bad}); got != 70 {
+	if got := planCircleRatio(PlanConfig{SentenceReviewCircleRatio: &bad}); got != 70 {
 		t.Errorf("越界值该回退 70，实际 %d", got)
 	}
-	if !planconfig.ValidCircleRatio(PlanConfig{}) || !planconfig.ValidCircleRatio(PlanConfig{SentenceReviewCircleRatio: &v}) {
+	if !validCircleRatio(PlanConfig{}) || !validCircleRatio(PlanConfig{SentenceReviewCircleRatio: &v}) {
 		t.Error("nil / 0 都该判合法")
 	}
-	if planconfig.ValidCircleRatio(PlanConfig{SentenceReviewCircleRatio: &bad}) {
+	if validCircleRatio(PlanConfig{SentenceReviewCircleRatio: &bad}) {
 		t.Error("150 该判越界")
 	}
 }
