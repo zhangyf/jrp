@@ -1374,6 +1374,15 @@ Local source: clone the repo to your preferred working directory (e.g., `~/jrp/`
 Go module: `github.com/zhangyf/jrp`
 Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 
+### 首批功能包边界（2026-11-03）
+
+- `internal/conjugation/rules.go`：纯活用规则，公开 `Verb` / `VerbNai` / `AdjI` / `AdjNa` / `VerbClass` / `AdjClass` / `SkipWord`；测试在同目录 `rules_test.go`。
+- `internal/knowledge/markdown.go`：知识点 `Span` / `Item` / `Block` 类型，以及 `ParseMarkdown` / `Title` / `VisibleBlockCount`；纯解析测试在同目录 `markdown_test.go`。
+- 两包只依赖标准库，不依赖 HTTP、Storage、session 或 COS；规则只保留一份实现。
+- `api_conjugation.go` 保留 DTO、取词、抽题和 HTTP 入口；`api_knowledge.go` 保留 HTTP、鉴权和兼容类型别名。知识点 HTTP/权限测试仍在 `api_knowledge_test.go`，不迁移根包的内存存储夹具。
+- 根目录仍是 `package main`，继续从根目录 `go build .`；`serve.go` 保留 `//go:embed web`，前端和部署方式不变。
+- 目录重构不等于上线。后续模块仍须逐批确认范围，部署单独确认；不迁移或回滚学习数据。
+
 ## Command Reference
 
 | Command | Flags | Description |
@@ -1577,14 +1586,14 @@ COS credentials load the same way as other commands (`.env.enc` or env vars).
   （`ください/なさい/いらっしゃい/おっしゃい/ござい`）——写成「ござ」会让 `ございます` 算成 `ござう`。
 - ない形两个坑：① 一类动词末音「い」→**わ**（`かいます→かわない`，不是かあない）；
   ② **`あります` 词性表标的是「一类」，但否定形是 `ない`**，不是「あらない」——靠规则躲不过去，
-  在 `conjVerbNai` 里特判。`conjVerbNai` 的原形**复用 `conjVerb`**，变形规则只留一份。
+  在 `internal/conjugation` 的 `VerbNai` 里特判。`VerbNai` 的原形**复用 `Verb`**，变形规则只留一份。
 - 跳过 `〜ています` 与寒暄固定说法；**纯前端作答，不写档案、不 bump 版本、不进统计**。
-- 单测在 `api_conjugation_test.go`（含 `かいます` 这类普通五段的反面保护，防被特殊规则误伤）：`go test -run TestConj ./...`
+- 单测在 `internal/conjugation/rules_test.go`（含 `かいます` 这类普通五段的反面保护，防被特殊规则误伤）：`go test -run TestConj ./internal/conjugation`
 - **た形（2026-11-03 加）**：跟て形是**同一套音便**，只差 `て→た`/`で→だ`。
-  所以只在 `conjVerb` 里多算一个 ta（五段走 `taEnd` = `teEnd` 换尾音，
+  所以只在 `internal/conjugation.Verb` 里多算一个 ta（五段走 `taEnd` = `teEnd` 换尾音，
   一段/サ变/カ变各多拼一个字），**绝不把音便规则抄第二份** —— 抄两份迟早漂移。
   `TestConjTaMirrorsTe` 盯着这件事：拿て形换尾音跟た形比，对不上就红。
-- 加新题型（可能形、ば形…）的姿势：写 `conjXn` 函数 → handler 的 `switch typ` 加一个 case →
+- 加新题型（可能形、ば形…）的姿势：在 `internal/conjugation` 增加导出的纯规则函数 → `api_conjugation.go` 的 `switch typ` 加一个 case →
   `web/index.html` 的 `#conjType` 加 option → `web/conjugation.js` 的 `typeNames` 补一条。
   前端按服务端返回的 `tasks` 渲染，填空数量不用改代码。
 - ⚠️ **`api_trial.go` 的固定题要同步补**：体验版那几张卡的 label 数必须跟真接口一样
@@ -1592,7 +1601,7 @@ COS credentials load the same way as other commands (`.env.enc` or env vars).
 - ⚠️ 速查表（动词活用表）**两处各一份**：`web/index.html` 的 `.gtable` 和
   小程序 `pages/conj/conj.js` 的 `GRAMMAR_ROWS`。加一列要两边都加。
 
-⚠️ 改完 `api_conjugation.go` / `web/conjugation.js` 必须**重新交叉编译并部署服务器**，
+⚠️ 改完 `internal/conjugation/*.go` / `api_conjugation.go` / `web/conjugation.js` 后，要上线须**重新交叉编译，并在老师单独确认部署后更新服务器**，
 否则老师页面看不到变化（见下一节）。判断新旧最可靠的办法是 `strings <二进制> | grep conj-input`。
 
 ## 账号体系与小程序（2026-10-16 起）
@@ -1713,7 +1722,7 @@ tabBar 三项：**练习 / 统计 / 录入**。
 **知识点板块「新标日III知识点」（2026-11-03 老师要求）**：首页色块入口（`data-mode="knowledge"`），
 页面 `pages/knowledge/knowledge`。⚠️ **不在 tabBar 里** —— 老师选的是首页卡片，tabBar 保持三项。
 
-- **markdown 在服务端拆块**（`api_knowledge.go` 的 `parseKnowledgeMarkdown`）：小程序没有
+- **markdown 在服务端拆块**（`internal/knowledge/markdown.go` 的 `ParseMarkdown`，由 `api_knowledge.go` 调用）：小程序没有
   markdown 渲染能力，而且「哪几块模糊」必须按块切。块类型只有 h1/h2/h3/p/quote/list/table，
   行内拆成 spans（bold / code）。**不认识的行一律当段落** —— 丢内容比样式难看严重得多。
 - **只认「第N课知识点」命名**：knowledge 目录里还混着 `课本原文汇编_第N单元（…）.md` 和
