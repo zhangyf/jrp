@@ -34,11 +34,13 @@ type ReviewItem struct {
 	Unknown    bool   `json:"unknown"` // 主动点了「不会」
 	Manual     bool   `json:"manual"`  // 老师勾了「算对」
 	Blank      bool   `json:"blank"`   // 空着没写、也没标「不会」—— 没进档案，但要能看出来
-	// 词性 / 备注不存快照：随时可能补录，存了就是过期数据。
+	// 词性 / 备注 / 圆级不存快照：随时可能补录，存了就是过期数据。
 	// /api/review 返回时按词形从 word_meta.json join（enrichReviewMeta）。
 	Pos  string `json:"pos,omitempty"`
 	Sub  string `json:"sub,omitempty"`
 	Note string `json:"note,omitempty"`
+	// Circle 三圆手册分级（三圆 / 二圆 / 一圆），回看时也要能看到（2026-11-03）。
+	Circle string `json:"circle,omitempty"`
 }
 
 // reviewKey 快照的 COS 键：reviews/review_<date>_<mode>.json

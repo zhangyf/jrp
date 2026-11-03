@@ -14,6 +14,8 @@
 
 const app = getApp();
 const trial = require('../../utils/trial.js');
+// 手册分级（三圆/二圆/一圆）的显示名与配色，跟词汇总表共用一份
+const { splitCircle } = require('../../utils/circle.js');
 
 Page({
   data: {
@@ -91,21 +93,26 @@ Page({
           this.loadReview();
           return;
         }
-        const items = words.map((w, i) => ({
-          number: w.number || i + 1,
-          word: w.word || '',
-          definition: w.definition || '',
-          group: w.group || '',
-          status: w.status || '',
-          pos: w.pos || '',
-          sub: w.sub || '',
-          note: w.note || '',
-          answer: '',
-          correct: false,
-          graded: false,
-          unknown: false,
-          manual: false
-        }));
+        const items = words.map((w, i) => {
+          const ci = splitCircle(w.circle);
+          return {
+            number: w.number || i + 1,
+            word: w.word || '',
+            definition: w.definition || '',
+            group: w.group || '',
+            status: w.status || '',
+            pos: w.pos || '',
+            sub: w.sub || '',
+            note: w.note || '',
+            circleText: ci.text,
+            circleCls: ci.cls,
+            answer: '',
+            correct: false,
+            graded: false,
+            unknown: false,
+            manual: false
+          };
+        });
         this.setData({
           items, loading: false, graded: false, summary: null,
           answered: 0, reviewOnly: false
@@ -150,6 +157,8 @@ Page({
       pos: it.pos,
       sub: it.sub,
       note: it.note,
+      circleText: it.circleText || '',
+      circleCls: it.circleCls || '',
       answer: '',
       correct: false,
       graded: false,
@@ -169,23 +178,28 @@ Page({
   },
 
   applyReview(r) {
-    const items = r.items.map((x) => ({
-      number: x.number,
-      word: x.word || '',
-      definition: x.definition || '',
-      group: x.group || '',
-      status: x.status || '',
-      pos: x.pos || '',
-      sub: x.sub || '',
-      note: x.note || '',
-      answer: x.answer || '',
-      // graded = 这题参与过判分（没写的行只是跳过，不算对错）
-      graded: !x.blank,
-      correct: !!x.correct,
-      unknown: !!x.unknown,
-      manual: !!x.manual,
-      blank: !!x.blank
-    }));
+    const items = r.items.map((x) => {
+      const ci = splitCircle(x.circle);
+      return {
+        number: x.number,
+        word: x.word || '',
+        definition: x.definition || '',
+        group: x.group || '',
+        status: x.status || '',
+        pos: x.pos || '',
+        sub: x.sub || '',
+        note: x.note || '',
+        circleText: ci.text,
+        circleCls: ci.cls,
+        answer: x.answer || '',
+        // graded = 这题参与过判分（没写的行只是跳过，不算对错）
+        graded: !x.blank,
+        correct: !!x.correct,
+        unknown: !!x.unknown,
+        manual: !!x.manual,
+        blank: !!x.blank
+      };
+    });
     const done = items.filter((i) => !i.blank);
     const ok = done.filter((i) => i.correct).length;
     this.setData({

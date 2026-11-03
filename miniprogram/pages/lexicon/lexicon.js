@@ -7,6 +7,8 @@
 
 const app = getApp();
 const trial = require('../../utils/trial.js');
+// 手册分级（三圆/二圆/一圆）的显示名与配色，跟练习页共用一份
+const { splitCircle } = require('../../utils/circle.js');
 const PAGE = 60;
 
 // 档案里的 status 带 emoji（🟢已掌握），列表里只留文字 + 一个色点，
@@ -28,10 +30,6 @@ function rate(it) {
 
 // 手册分级：三圆(核心) > 二圆 > 一圆。手册没收的词 circle 为空，不显示。
 // 2026-11-02 按《标日初上 三圆词汇速记手册》给总表逐个打标。
-const CIRCLE_CLS = { 三圆: 'c3', 二圆: 'c2', 一圆: 'c1' };
-function splitCircle(c) {
-  return { text: c || '', cls: CIRCLE_CLS[c] || '' };
-}
 
 Page({
   data: {

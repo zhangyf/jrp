@@ -77,12 +77,15 @@ type PlanWord struct {
 	ErrorCount  int      `json:"error_count,omitempty"`
 	ReviewCount int      `json:"review_count,omitempty"`
 	Accuracy    *float64 `json:"accuracy,omitempty"`
-	// 词性 / 备注不在档案里，也不进 plan 存档 —— 只在 API 返回时按词形
+	// 词性 / 备注 / 圆级不在档案里，也不进 plan 存档 —— 只在 API 返回时按词形
 	// 从 word_meta.json join 上来（enrichWordMeta），给页面显示用。
 	// 塞进 plan 存档会牵动 record 的序号映射和存档体积，没必要。
 	Pos  string `json:"pos,omitempty"`
 	Sub  string `json:"sub,omitempty"`
 	Note string `json:"note,omitempty"`
+	// Circle 是三圆手册分级：三圆 / 二圆 / 一圆（手册没收录则空，页面不显示）。
+	// 2026-11-03 老师要「单词复习时展示圆级」，跟词性同一路 join。
+	Circle string `json:"circle,omitempty"`
 }
 
 // PlanSentence is a sentence exercise in a review plan.

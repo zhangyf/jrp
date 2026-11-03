@@ -80,19 +80,7 @@
 }
 .pos .sub { color: #a0a096; }
 
-/* 手册分级：三圆(核心) → 二圆 → 一圆，颜色由深到浅 */
-.circle {
-  font-size: 22rpx;
-  padding: 2rpx 12rpx;
-  border-radius: 999rpx;
-  flex-shrink: 0;
-  margin-left: 10rpx;
-  background: #efefec;
-  color: #6a6a60;
-}
-.circle.c3 { background: #fbeceb; color: #b4392f; font-weight: 600; }
-.circle.c2 { background: #fdf1e3; color: #854f0b; }
-.circle.c1 { background: #eef1f6; color: #4a5a78; }
+/* 手册分级的配色在全局 app.wxss（词汇总表和练习页共用 .circle） */
 
 .rline2 {
   display: flex;

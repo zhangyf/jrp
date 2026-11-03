@@ -160,7 +160,7 @@ main { max-width: 860px; margin: 0 auto; padding: 18px; }
 
 .definition { font-size: 26px; font-weight: 600; margin: 10px 0 14px; }
 
-/* 词条附加信息：词性 + 备注（近义区分）。
+/* 词条附加信息：圆级 + 词性 + 备注（近义区分）。
    卡片模式和列表模式共用同一段结构 —— 只是行内紧凑一档，版式不许两套。 */
 .facts {
   margin: 0 0 14px;
@@ -170,20 +170,30 @@ main { max-width: 860px; margin: 0 auto; padding: 18px; }
   overflow: hidden;
   display: flex; align-items: stretch;
 }
-/* 左右并排：词性窄、备注宽。窄屏（手机）才退回上下两行 */
+/* 左右并排：圆级窄、词性窄、备注宽。窄屏（手机）才退回上下三行 */
 .facts .f-cell {
   display: flex; align-items: baseline; gap: 8px;
   padding: 7px 12px;
   min-width: 0;
 }
-.facts .f-pos { flex: 0 0 34%; }
-.facts .f-note { flex: 1 1 auto; border-left: 1px solid var(--line); }
+.facts .f-circle { flex: 0 0 22%; border-right: 1px solid var(--line); }
+.facts .f-pos { flex: 0 0 28%; border-right: 1px solid var(--line); }
+.facts .f-note { flex: 1 1 auto; }
 .facts dt {
   flex: 0 0 auto; margin: 0;
   color: var(--muted); font-size: 13px;
 }
 .facts dd { margin: 0; flex: 1; min-width: 0; font-size: 14px; line-height: 1.5; }
 .facts .f-empty { color: #bfbfb5; }
+/* 三圆手册分级：三圆(核心) → 二圆 → 一圆，颜色由重到轻（跟小程序同一套配色） */
+.circle-chip {
+  display: inline-block; padding: 1px 10px; border-radius: 999px;
+  background: #efefec; color: #6a6a60;
+  font-size: 13px;
+}
+.circle-chip.c3 { background: #fbeceb; color: #b4392f; font-weight: 600; }
+.circle-chip.c2 { background: #fdf1e3; color: #854f0b; }
+.circle-chip.c1 { background: #eef1f6; color: #4a5a78; }
 .pos-chip {
   display: inline-block; padding: 1px 10px; border-radius: 999px;
   background: var(--accent-soft); color: var(--accent);
@@ -194,7 +204,8 @@ main { max-width: 860px; margin: 0 auto; padding: 18px; }
 .word-item .facts dd { font-size: 13px; }
 @media (max-width: 560px) {
   .facts { flex-direction: column; }
-  .facts .f-pos { flex: none; }
+  .facts .f-circle, .facts .f-pos { flex: none; border-right: none; }
+  .facts .f-pos { border-top: 1px solid var(--line); }
   .facts .f-note { border-left: none; border-top: 1px solid var(--line); }
 }
 

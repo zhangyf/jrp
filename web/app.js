@@ -228,10 +228,21 @@ var app = {
     return s;
   },
 
-  // 「词性 / 备注」左右并排两格（2026-09-28 老师：上下放太占地）。
+  // 三圆手册分级（2026-11-02 按《标日初上 三圆词汇速记手册》逐个打标）。
+  // 手册没收的词 circle 为空 → 页面不显示这一格（不是「没标」，是手册里没有）。
+  CIRCLE_CLS: { '三圆': 'c3', '二圆': 'c2', '一圆': 'c1' },
+
+  circleHtml: function (w) {
+    var c = String((w && w.circle) || '').trim();
+    if (!c) return '<span class="f-empty">—</span>';
+    return '<span class="circle-chip ' + (this.CIRCLE_CLS[c] || '') + '">' + esc(c) + '</span>';
+  },
+
+  // 「圆级 / 词性 / 备注」左右并排三格（2026-09-28 老师：上下放太占地；
+  // 圆级是 2026-11-03 加的第四格信息，跟词性同一行）。
   // 卡片模式、列表模式、今日练习、钉子户全都调这一个函数 ——
   // 同一件事不许画成两种样子（2026-09-23 老师定的规矩）。
-  //   w         词条目（pos/sub/note）
+  //   w         词条目（circle/pos/sub/note）
   //   extraNote 兜底备注：释义括号里拆出来的那截。词表里手写了 note 就以
   //             手写的为准（那是老师亲自校准过的区分点）。
   factsHtml: function (w, extraNote) {
@@ -239,6 +250,7 @@ var app = {
     var pos = this.posText(w);
     var note = String(w.note || '').trim() || String(extraNote || '').trim();
     return '<dl class="facts">' +
+      '<div class="f-cell f-circle"><dt>圆级</dt><dd>' + this.circleHtml(w) + '</dd></div>' +
       '<div class="f-cell f-pos"><dt>词性</dt><dd>' +
         (pos ? '<span class="pos-chip">' + esc(pos) + '</span>'
              : '<span class="f-empty">—</span>') +

@@ -47,8 +47,9 @@ function ListPractice(opts) {
       return {
         number: w.number, word: w.word, definition: w.definition,
         status: w.status || '', group: w.group || '',
-        // 词性 / 备注由 /api/plan 从 word_meta.json join 上来
+        // 词性 / 备注 / 圆级由 /api/plan 从 word_meta.json join 上来
         pos: w.pos || '', sub: w.sub || '', note: w.note || '',
+        circle: w.circle || '',
         input: '', correct: null, manual: false, blank: false, unknown: false
       };
     });
@@ -72,6 +73,7 @@ function ListPractice(opts) {
         number: r.number, word: r.word, definition: r.definition,
         status: r.status || '', group: r.group || '',
         pos: r.pos || '', sub: r.sub || '', note: r.note || '',
+        circle: r.circle || '',
         input: r.answer || '',
         correct: r.blank ? null : !!r.correct,
         manual: !!r.manual, blank: !!r.blank, unknown: !!r.unknown

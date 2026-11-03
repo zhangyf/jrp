@@ -263,9 +263,9 @@ func sentencePlanLocked(old *ReviewPlan, date string) bool {
 	return old != nil && old.Date == date && len(old.Sentences) > 0
 }
 
-// enrichWordMeta 把词性 / 备注 join 到计划里的每个词上。
+// enrichWordMeta 把词性 / 备注 / 圆级 join 到计划里的每个词上。
 //
-// 这两样存在独立的 word_meta.json 里（不在档案表格中），按完整词形
+// 这三样存在独立的 word_meta.json 里（不在档案表格中），按完整词形
 // 「假名(汉字)」匹配。读不到就整批留空 —— 纯展示增强，绝不能因为词性表
 // 挂掉或还没上传，就把今天的练习题给弄没了。
 func (s *server) enrichWordMeta(ctx context.Context, st *Storage, words []PlanWord) {
@@ -277,21 +277,22 @@ func (s *server) enrichWordMeta(ctx context.Context, st *Storage, words []PlanWo
 		return
 	}
 	for i := range words {
-		words[i].Pos, words[i].Sub, words[i].Note = lookupWordMeta(meta, words[i].Word)
+		words[i].Pos, words[i].Sub, words[i].Note, words[i].Circle =
+			lookupWordMeta(meta, words[i].Word)
 	}
 }
 
-// lookupWordMeta 按完整词形「假名(汉字)」查词性 / 备注。
-// 查不到返回三个空串 —— 页面显示「—」，不影响练习。
-func lookupWordMeta(meta *WordMeta, word string) (pos, sub, note string) {
+// lookupWordMeta 按完整词形「假名(汉字)」查词性 / 备注 / 圆级。
+// 查不到返回四个空串 —— 页面显示「—」，不影响练习。
+func lookupWordMeta(meta *WordMeta, word string) (pos, sub, note, circle string) {
 	if meta == nil {
-		return "", "", ""
+		return "", "", "", ""
 	}
 	p, ok := meta.Items[word]
 	if !ok {
-		return "", "", ""
+		return "", "", "", ""
 	}
-	return p.Pos, p.Sub, p.Note
+	return p.Pos, p.Sub, p.Note, p.Circle
 }
 
 // enrichReviewMeta 给回看快照 join 词性 / 备注 —— 跟 enrichWordMeta 同一份
@@ -306,7 +307,7 @@ func (s *server) enrichReviewMeta(ctx context.Context, st *Storage, snap *Review
 		return
 	}
 	for i := range snap.Items {
-		snap.Items[i].Pos, snap.Items[i].Sub, snap.Items[i].Note =
+		snap.Items[i].Pos, snap.Items[i].Sub, snap.Items[i].Note, snap.Items[i].Circle =
 			lookupWordMeta(meta, snap.Items[i].Word)
 	}
 }

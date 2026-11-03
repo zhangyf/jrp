@@ -95,7 +95,7 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 				acc = float64(w.ReviewCount-w.ErrorCount) / float64(w.ReviewCount)
 			}
 			idle := wordIdleDays(w, today)
-			pos, _, _ := lookupWordMeta(meta, w.Word)
+			pos, _, _, _ := lookupWordMeta(meta, w.Word)
 			ln := groupLesson(w.Group)
 			it := item{
 				Word: w.Word, Pos: pos, Def: w.Definition,
