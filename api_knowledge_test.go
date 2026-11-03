@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // 知识点板块的测试盯着三件事：
@@ -217,6 +218,28 @@ func TestKnowledgeAnonymousIsPartialButSharedTokenIsFull(t *testing.T) {
 	locked, visible, total = do(http.Header{"Authorization": []string{"Bearer tok"}})
 	if locked || visible != total {
 		t.Fatalf("共享 token 应给全文：locked=%v visible=%d total=%d", locked, visible, total)
+	}
+
+	// owner：uid 恒为空（零迁移约定）。2026-11-03 的真事故 —— 这里曾经把
+	// uid=="" 当成匿名挡掉，结果小程序里「每日复习已登录、知识点还是未登录」。
+	// 同一个会话走 withUser 的页面全是登录态，只有这条自己认会话的路由被挡。
+	sid := "owner-sid-" + time.Now().Format("150405.000000000")
+	sessions.Lock()
+	sessions.m[sid] = &session{UID: "", Role: "owner", Created: time.Now(), LastSeen: time.Now()}
+	sessions.Unlock()
+	locked, visible, total = do(http.Header{"Authorization": []string{"Bearer " + sid}})
+	if locked || visible != total {
+		t.Fatalf("owner（uid 为空）应给全文：locked=%v visible=%d total=%d", locked, visible, total)
+	}
+
+	// 体验版：uid 是 trial，凭证是公开的，一律受限
+	tsid := "trial-sid-" + time.Now().Format("150405.000000000")
+	sessions.Lock()
+	sessions.m[tsid] = &session{UID: trialUID, Role: "trial", Created: time.Now(), LastSeen: time.Now()}
+	sessions.Unlock()
+	locked, visible, total = do(http.Header{"Authorization": []string{"Bearer " + tsid}})
+	if !locked || visible >= total {
+		t.Fatalf("体验版应受限：locked=%v visible=%d total=%d", locked, visible, total)
 	}
 }
 

@@ -185,8 +185,16 @@ func (s *server) knowledgeFullAccess(r *http.Request, ctx context.Context) bool 
 	if !logged {
 		return false
 	}
-	if sess.UID == "" || sess.UID == trialUID {
+	// ⚠️ uid == "" ⇔ owner（零迁移约定，见 auth.go / api_auth.go 的 is_owner）。
+	// 2026-11-03 踩过：这里原来写成 `sess.UID == "" || sess.UID == trialUID`，
+	// 把 owner 当成匿名挡在门外 —— 老师在小程序里「每日复习已登录、知识点还是未登录」
+	// 就是这个。匿名压根没有会话（sessionUser 已经先返回 false 了），
+	// 能走到这里的 uid=="" 只可能是 owner。
+	if sess.UID == trialUID {
 		return false // 体验版凭证是公开的，等于匿名
+	}
+	if sess.UID == "" {
+		return true // owner：全量
 	}
 	u, ok := findUserByUID(cachedUsers(ctx, s.storage), sess.UID)
 	if !ok {
