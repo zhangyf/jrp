@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-
-	"github.com/zhangyf/jrp/internal/planconfig"
 )
 
 // 出题配额配置，存在 COS 上 —— 改配额不用改代码、不用重新部署。
@@ -17,8 +15,15 @@ import (
 
 const planConfigCosKey = "configs/plan_config.json"
 
-// PlanConfig 类型与解析/校验/回退规则已迁 internal/planconfig，根 types.go 只留别名。
-// 本文件只做 COS 读写，规则不在本文件。
+// PlanConfig 出题配额。零值表示「没配」，调用方回退内置默认（见 choosePlanConfig）。
+type PlanConfig struct {
+	SentenceBaseCount   int `json:"sentence_base_count"`
+	SentenceReviewCount int `json:"sentence_review_count"`
+
+	// SentenceReviewCircleRatio 回炉变形句里三圆词占的名额百分比（0-100）。
+	// 用指针是为了分开「没配过」（nil → 用内置 70）和「有意关掉」（0 → 不分层）。
+	SentenceReviewCircleRatio *int `json:"sentence_review_circle_ratio,omitempty"`
+}
 
 func (s *Storage) planConfigKey() string { return s.sharedBase() + "/" + planConfigCosKey }
 
@@ -29,7 +34,7 @@ func (s *Storage) DownloadPlanConfig(ctx context.Context) (PlanConfig, error) {
 	if err != nil {
 		return PlanConfig{}, nil
 	}
-	return planconfig.ParsePlanConfig(data)
+	return parsePlanConfig(data)
 }
 
 // UploadPlanConfig 写配置。演练模式下不落盘，跟其余 Upload* 保持一致。
