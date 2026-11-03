@@ -235,7 +235,7 @@ func visionChat(cfg visionConfig, prompt, imageURL string) (string, string, bool
 	tried := 0
 	for _, m := range order {
 		now := time.Now()
-		if llmSkipModel(m, now) {
+		if llm.SkipModel(m, now) {
 			continue
 		}
 		tried++
@@ -256,14 +256,14 @@ func visionChat(cfg visionConfig, prompt, imageURL string) (string, string, bool
 		}
 		reply, err := llm.Post(cfg.Endpoint, cfg.APIKey, body, cfg.Timeout)
 		if err == nil && strings.TrimSpace(reply) != "" {
-			llmMarkResult(m, true, now)
+			llm.MarkResult(m, true, now)
 			return strings.TrimSpace(reply), m, false, nil
 		}
 		lastErr = err
 		if visionRetryable(err) {
 			retryable = true
 		}
-		llmMarkResult(m, false, now)
+		llm.MarkResult(m, false, now)
 		log.Printf("vision: 模型 %s 失败：%v", m, err)
 	}
 	if tried == 0 {

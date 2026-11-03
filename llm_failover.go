@@ -4,7 +4,6 @@ import (
 	"errors"
 	"log"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/zhangyf/jrp/internal/llm"
@@ -19,7 +18,7 @@ import (
 // 三条原则：
 //  1. 什么算失败：网络错、非 2xx、空内容、超时，以及**模型胡说解析不出 JSON**。
 //     最后一条最容易漏 —— 模型回一段废话也是失败，必须换下一个。
-//  2. 冷却：连续失败 2 次的模型 5 分钟内不再试。少了这条，每一句都要先干等它超时，
+//  2. 冷却：连续失败 2 次的模型 2 分钟内不再试。少了这条，每一句都要先干等它超时，
 //     老师那边看到的就是判句一直转圈。
 //  3. 全挂不报错：退回字面判定，跟没配模型时一模一样。模型不可用是降级，不是故障。
 //
@@ -27,59 +26,6 @@ import (
 //
 //	JRP_LLM_MODEL     主模型
 //	JRP_LLM_FALLBACK  备用模型，逗号分隔（去空、去重、自动排除主模型）
-
-const (
-	llmFailThreshold = 2
-	llmCooldown      = 2 * time.Minute
-)
-
-// ---------- 健康状态（冷却） ----------
-
-var llmHealth = struct {
-	sync.Mutex
-	m map[string]*llmModelHealth
-}{m: map[string]*llmModelHealth{}}
-
-type llmModelHealth struct {
-	fails     int
-	coolUntil time.Time
-}
-
-// llmModelCooling 这个模型现在该不该跳过。抽成纯函数是为了能单测。
-func llmModelCooling(fails int, coolUntil, now time.Time) bool {
-	if fails < llmFailThreshold {
-		return false
-	}
-	return now.Before(coolUntil)
-}
-
-func llmSkipModel(model string, now time.Time) bool {
-	llmHealth.Lock()
-	defer llmHealth.Unlock()
-	h, ok := llmHealth.m[model]
-	if !ok {
-		return false
-	}
-	return llmModelCooling(h.fails, h.coolUntil, now)
-}
-
-func llmMarkResult(model string, ok bool, now time.Time) {
-	llmHealth.Lock()
-	defer llmHealth.Unlock()
-	h, found := llmHealth.m[model]
-	if !found {
-		h = &llmModelHealth{}
-		llmHealth.m[model] = h
-	}
-	if ok {
-		h.fails, h.coolUntil = 0, time.Time{}
-		return
-	}
-	h.fails++
-	if h.fails >= llmFailThreshold {
-		h.coolUntil = now.Add(llmCooldown)
-	}
-}
 
 // ---------- 切换 ----------
 
@@ -93,7 +39,7 @@ func llmChat(cfg llm.Config, prompt string) (string, string, error) {
 	tried := 0
 	for _, m := range order {
 		now := time.Now()
-		if llmSkipModel(m, now) {
+		if llm.SkipModel(m, now) {
 			continue
 		}
 		tried++
@@ -101,11 +47,11 @@ func llmChat(cfg llm.Config, prompt string) (string, string, error) {
 		c.Model = m
 		reply, err := llm.Call(c, prompt)
 		if err == nil && strings.TrimSpace(reply) != "" {
-			llmMarkResult(m, true, now)
+			llm.MarkResult(m, true, now)
 			return strings.TrimSpace(reply), m, nil
 		}
 		lastErr = err
-		llmMarkResult(m, false, now)
+		llm.MarkResult(m, false, now)
 		log.Printf("llm-chat: 模型 %s 失败：%v", m, err)
 	}
 	if tried == 0 {
@@ -126,7 +72,7 @@ func judgeWithFallback(cfg llm.Config, prompt string) (judgeResult, string, erro
 	tried := 0
 	for _, m := range order {
 		now := time.Now()
-		if llmSkipModel(m, now) {
+		if llm.SkipModel(m, now) {
 			continue
 		}
 		tried++
@@ -136,12 +82,12 @@ func judgeWithFallback(cfg llm.Config, prompt string) (judgeResult, string, erro
 		if err == nil {
 			var res judgeResult
 			if res, err = parseJudgeReply(reply); err == nil {
-				llmMarkResult(m, true, now)
+				llm.MarkResult(m, true, now)
 				return res, m, nil
 			}
 		}
 		lastErr = err
-		llmMarkResult(m, false, now)
+		llm.MarkResult(m, false, now)
 		// 每次失败都留痕 —— 2026-10-15 网关抖了几分钟，全链冷却，老师判句全退回
 		// 字面判定，服务端却一个字都没记，只能靠猜。有了这行，journalctl 一翻就知道
 		// 当时是超时、5xx 还是模型胡说。

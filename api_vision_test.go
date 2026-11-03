@@ -4,6 +4,9 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/zhangyf/jrp/internal/llm"
 )
 
 // 模型回话的形状比想象中野：套代码块、前后废话、给成对象包数组。
@@ -127,4 +130,121 @@ func TestVisionRetryable(t *testing.T) {
 	if !visionRetryable(errors.New("模型返回 502：gateway down")) {
 		t.Error("5xx 应该重试")
 	}
+}
+
+func TestVisionChatSkipsCoolingPrimary(t *testing.T) {
+	primary := testLLMHealthModel(t, "primary")
+	backup := testLLMHealthModel(t, "backup")
+	llm.MarkResult(primary, false, llmCoolingTestTime)
+	llm.MarkResult(primary, false, llmCoolingTestTime)
+	srv, asked := fakeLLMServer(t, map[string]string{primary: "vision", backup: "vision"})
+	cfg := visionConfig{Endpoint: srv.URL, Model: primary, Fallback: []string{backup}, Timeout: 3 * time.Second}
+	reply, model, retryable, err := visionChat(cfg, "prompt", testLLMImageURL)
+	if err != nil || reply != `[{"word":"みず(水)","def":"水"}]` || model != backup || retryable {
+		t.Fatalf("应跳过冷却主模型并使用备用：reply=%q，model=%q，retryable=%v，err=%v", reply, model, retryable, err)
+	}
+	assertLLMRequests(t, asked, backup)
+	if !llm.SkipModel(primary, llmCoolingTestTime) {
+		t.Fatal("跳过主模型不得清零它的冷却状态")
+	}
+}
+
+// 当前实现没有 force 分支；全链冷却时返回错误，不应擅自访问网关。
+func TestVisionChatAllModelsCooling(t *testing.T) {
+	primary := testLLMHealthModel(t, "primary")
+	backup := testLLMHealthModel(t, "backup")
+	for _, model := range []string{primary, backup} {
+		llm.MarkResult(model, false, llmCoolingTestTime)
+		llm.MarkResult(model, false, llmCoolingTestTime)
+	}
+	srv, asked := fakeLLMServer(t, map[string]string{primary: "vision", backup: "vision"})
+	cfg := visionConfig{Endpoint: srv.URL, Model: primary, Fallback: []string{backup}, Timeout: 3 * time.Second}
+	reply, model, retryable, err := visionChat(cfg, "prompt", testLLMImageURL)
+	if err == nil || err.Error() != "所有视觉模型都在冷却中" || reply != "" || model != "" || retryable {
+		t.Fatalf("全链冷却应不发请求并返回不可重试的冷却错误：reply=%q，model=%q，retryable=%v，err=%v", reply, model, retryable, err)
+	}
+	assertLLMRequests(t, asked)
+	for _, model := range []string{primary, backup} {
+		if !llm.SkipModel(model, llmCoolingTestTime) {
+			t.Fatalf("未调用的模型冷却状态不得被重置：%s", model)
+		}
+	}
+}
+
+func TestVisionChatRecoversAfterCooldown(t *testing.T) {
+	primary := testLLMHealthModel(t, "primary")
+	backup := testLLMHealthModel(t, "backup")
+	llm.MarkResult(primary, false, llmHealthTestTime)
+	llm.MarkResult(primary, false, llmHealthTestTime)
+	if !llm.SkipModel(primary, llmHealthTestTime) || llm.SkipModel(primary, llmHealthTestTime.Add(2*time.Minute)) {
+		t.Fatal("测试前置条件：主模型曾进入冷却，且在 2 分钟后到期")
+	}
+	srv, asked := fakeLLMServer(t, map[string]string{primary: "vision", backup: "vision"})
+	cfg := visionConfig{Endpoint: srv.URL, Model: primary, Fallback: []string{backup}, Timeout: 3 * time.Second}
+	reply, model, retryable, err := visionChat(cfg, "prompt", testLLMImageURL)
+	if err != nil || reply == "" || model != primary || retryable {
+		t.Fatalf("冷却过期应重新尝试并恢复主模型：reply=%q，model=%q，retryable=%v，err=%v", reply, model, retryable, err)
+	}
+	if llm.SkipModel(primary, llmHealthTestTime) {
+		t.Fatal("视觉调用成功必须清除旧冷却状态")
+	}
+	llm.MarkResult(primary, false, llmHealthTestTime)
+	if llm.SkipModel(primary, llmHealthTestTime) {
+		t.Fatal("成功后的单次失败不应立即再次冷却，失败计数必须已经清零")
+	}
+	assertLLMRequests(t, asked, primary)
+}
+
+func TestVisionChatRecordsFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		mode      string
+		retryable bool
+	}{
+		{"网关5xx", "http500", true},
+		{"模型400", "http400", false},
+		{"空白原文", "empty", true},
+		{"网关响应JSON损坏", "invalid", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			primary := testLLMHealthModel(t, "primary")
+			srv, asked := fakeLLMServer(t, map[string]string{primary: tc.mode})
+			cfg := visionConfig{Endpoint: srv.URL, Model: primary, Timeout: 3 * time.Second}
+			for i := 0; i < 2; i++ {
+				reply, model, retryable, err := visionChat(cfg, "prompt", testLLMImageURL)
+				if err == nil || reply != "" || model != "" || retryable != tc.retryable {
+					t.Fatalf("失败返回值不符：reply=%q，model=%q，retryable=%v，err=%v", reply, model, retryable, err)
+				}
+				if got := llm.SkipModel(primary, llmHealthTestTime); got != (i == 1) {
+					t.Fatalf("第 %d 次视觉失败后冷却状态=%v", i+1, got)
+				}
+			}
+			_, _, retryable, err := visionChat(cfg, "prompt", testLLMImageURL)
+			if err == nil || err.Error() != "所有视觉模型都在冷却中" || retryable {
+				t.Fatalf("后续调用应因冷却停止，retryable=%v，err=%v", retryable, err)
+			}
+			assertLLMRequests(t, asked, primary, primary)
+		})
+	}
+}
+
+func TestVisionChatFallbackRecordsFailureAndSuccess(t *testing.T) {
+	primary := testLLMHealthModel(t, "primary")
+	backup := testLLMHealthModel(t, "backup")
+	llm.MarkResult(primary, false, llmHealthTestTime)
+	llm.MarkResult(backup, false, llmHealthTestTime)
+	srv, asked := fakeLLMServer(t, map[string]string{primary: "http500", backup: "vision"})
+	cfg := visionConfig{Endpoint: srv.URL, Model: primary, Fallback: []string{backup}, Timeout: 3 * time.Second}
+	reply, model, retryable, err := visionChat(cfg, "prompt", testLLMImageURL)
+	if err != nil || reply == "" || model != backup || retryable {
+		t.Fatalf("备用成功应返回成功且不要求重试，即使之前主模型 5xx：reply=%q，model=%q，retryable=%v，err=%v", reply, model, retryable, err)
+	}
+	if !llm.SkipModel(primary, llmHealthTestTime) {
+		t.Fatal("失败主模型应记录第二次失败并进入冷却")
+	}
+	llm.MarkResult(backup, false, llmHealthTestTime)
+	if llm.SkipModel(backup, llmHealthTestTime) {
+		t.Fatal("备用成功应清零之前的失败，后续一次失败不能冷却")
+	}
+	assertLLMRequests(t, asked, primary, backup)
 }
