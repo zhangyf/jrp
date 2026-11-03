@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
+	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // LangConfig holds language-specific configuration.
@@ -60,11 +61,10 @@ type PlanWord struct {
 }
 
 // PlanSentence is a sentence exercise in a review plan.
-type PlanSentence struct {
-	Number  int    `json:"number"`
-	Chinese string `json:"chinese"`
-	Answer  string `json:"answer"`
-}
+//
+// 定义已迁 internal/sentence，根包只保留别名 —— ReviewPlan / RecordInput /
+// excel.go / api_trial.go 继续用 PlanSentence 这个名字，不用跟着改。
+type PlanSentence = sentence.PlanSentence
 
 // ReviewPlan is the JSON saved alongside each Excel for record tracking.
 //
@@ -97,11 +97,11 @@ type RecordResult struct {
 // 现在改由 ApplySentenceState 处理，所以类型换成了带 answer/chinese 的
 // SentenceResult —— 造句的间隔重复需要原文才能定位。
 type RecordInput struct {
-	PlanDate        string           `json:"plan_date"`
-	Language        string           `json:"language"`
-	WordResults     []RecordResult   `json:"word_results"`
-	SentenceResults []SentenceResult `json:"sentence_results"`
-	Hard            bool             `json:"hard,omitempty"`
+	PlanDate        string                    `json:"plan_date"`
+	Language        string                    `json:"language"`
+	WordResults     []RecordResult            `json:"word_results"`
+	SentenceResults []sentence.SentenceResult `json:"sentence_results"`
+	Hard            bool                      `json:"hard,omitempty"`
 
 	// 当天每题的详情，回写成功后存成快照供当天回看（只读）。
 	// 档案里只有累计值（复习次数/错误数/LastReview），不记当次对错 ——

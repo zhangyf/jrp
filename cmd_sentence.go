@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // 造句相关的维护命令。
@@ -104,7 +106,7 @@ func runSentenceLint(fs *flag.FlagSet, lang string) {
 			docs[name] = "" // 下载失败 → 该文档下的句子都报"查不到出处"
 			continue
 		}
-		docs[name] = normSentence(string(data))
+		docs[name] = sentence.Norm(string(data))
 	}
 
 	var problems []map[string]string
@@ -133,7 +135,7 @@ func runSentenceLint(fs *flag.FlagSet, lang string) {
 			})
 			continue
 		}
-		if !strings.Contains(doc, normSentence(s.Answer)) {
+		if !strings.Contains(doc, sentence.Norm(s.Answer)) {
 			problems = append(problems, map[string]string{
 				"id": s.ID, "answer": s.Answer, "issue": "在出处文档里找不到，可能是 AI 编的",
 			})
@@ -175,7 +177,7 @@ func runSentenceBank(fs *flag.FlagSet, lang string) {
 
 	switch {
 	case *file != "":
-		var bank SentenceBank
+		var bank sentence.SentenceBank
 		if err := readJSONFile(*file, &bank); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: 读取本地句库失败：%v\n", err)
 			os.Exit(1)
@@ -224,7 +226,7 @@ func runSentenceBank(fs *flag.FlagSet, lang string) {
 		for k := range byLesson {
 			lessons = append(lessons, k)
 		}
-		sortLessons(lessons)
+		sentence.SortLessons(lessons)
 		outputResult(map[string]interface{}{
 			"success":        true,
 			"command":        "sentence-bank",
@@ -281,7 +283,7 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 		os.Exit(1)
 	}
 
-	picked := BuildSentencePlan(bank, hist, wrong, today, *count)
+	picked := sentence.BuildSentencePlan(bank, hist, wrong, today, *count)
 	baseCount := len(picked)
 
 	// 回炉变形句：跟网页端同一套加餐逻辑（arc 传 nil → 不按闲置过滤，
@@ -291,7 +293,7 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 	if rb, rerr := storage.DownloadReviewBank(ctx); rerr == nil && rb != nil {
 		exclude := make(map[string]bool, len(picked))
 		for _, p := range picked {
-			exclude[normSentence(p.Answer)] = true
+			exclude[sentence.Norm(p.Answer)] = true
 		}
 		cfg := cfgNow
 		circle := reviewCircle(ctx, storage)
@@ -299,14 +301,14 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 			cfg.SentenceReviewCount, exclude, DefaultReviewIdleDays,
 			circle, planCircleRatio(cfg))
 		// 回炉句挑中了几句三圆 —— 圆级加权有没有生效，看这里。
-		// BankSentence 不带锚点词，只能拿 answer 反查回炉库。
+		// sentence.BankSentence 不带锚点词，只能拿 answer 反查回炉库。
 		wordOf := make(map[string]string, len(rb.Sentences))
 		for _, s := range rb.Sentences {
-			wordOf[normSentence(s.Answer)] = s.Word
+			wordOf[sentence.Norm(s.Answer)] = s.Word
 		}
 		rankName := []string{"三圆", "二圆", "一圆", "没标"}
 		for _, e := range extra {
-			circleStat[rankName[circleRank(circle, wordOf[normSentence(e.Answer)])]]++
+			circleStat[rankName[circleRank(circle, wordOf[sentence.Norm(e.Answer)])]]++
 		}
 		for _, e := range extra {
 			picked = append(picked, PlanSentence{
@@ -327,7 +329,7 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 			continue
 		}
 		for _, s := range ss {
-			recent[normSentence(s)] = true
+			recent[sentence.Norm(s)] = true
 		}
 	}
 	recentDup := 0
@@ -339,11 +341,11 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 		}
 		d, err := time.Parse("2006-01-02", w.NextDue)
 		if err != nil || !today.Before(d) {
-			openDue[normSentence(w.Answer)] = true
+			openDue[sentence.Norm(w.Answer)] = true
 		}
 	}
 	for _, p := range picked {
-		n := normSentence(p.Answer)
+		n := sentence.Norm(p.Answer)
 		if recent[n] && !openDue[n] {
 			recentDup++
 		}
@@ -356,7 +358,7 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 	inner := map[string]bool{}
 	innerDup := 0
 	for _, p := range picked {
-		n := normSentence(p.Answer)
+		n := sentence.Norm(p.Answer)
 		if inner[n] {
 			innerDup++
 		}

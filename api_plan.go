@@ -8,6 +8,7 @@ import (
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
+	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // handlePlan 返回某天的练习计划。
@@ -221,14 +222,14 @@ func (s *server) buildSentencePlan(st *Storage, targetDate time.Time, upload boo
 	}
 
 	cfg, _ := resolvePlanConfig(ctx, st)
-	sentences := BuildSentencePlan(bank, hist, wrong, targetDate, cfg.SentenceBaseCount)
+	sentences := sentence.BuildSentencePlan(bank, hist, wrong, targetDate, cfg.SentenceBaseCount)
 
 	// 回炉变形句。拿不到句库 / 解析失败就当今天没有加餐 —— 新功能绝不能
 	// 把整个造句练习弄没，20 句原文该怎么出还怎么出。
 	if rb, rerr := st.DownloadReviewBank(ctx); rerr == nil && rb != nil {
 		exclude := make(map[string]bool, len(sentences))
 		for _, p := range sentences {
-			exclude[normSentence(p.Answer)] = true
+			exclude[sentence.Norm(p.Answer)] = true
 		}
 		extra := BuildReviewSentences(rb, hist, arc, targetDate,
 			cfg.SentenceReviewCount, exclude, DefaultReviewIdleDays,

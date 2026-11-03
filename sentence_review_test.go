@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 func TestGroupLesson(t *testing.T) {
@@ -36,7 +38,7 @@ func TestRoundAcc(t *testing.T) {
 }
 
 func TestGroupProtosByLesson(t *testing.T) {
-	ss := []BankSentence{
+	ss := []sentence.BankSentence{
 		{ID: "A1", Lesson: "第3课", Source: "应用课文", Answer: "とても 長い アプリの 文です。"},
 		{ID: "B1", Lesson: "第3课", Source: "基本课文", Answer: "ここは デパートです。"},
 		{ID: "B2", Lesson: "第3课", Source: "基本课文", Answer: "トイレは どこに ありますか。"},
@@ -55,7 +57,7 @@ func TestGroupProtosByLesson(t *testing.T) {
 }
 
 func TestPickPrototypesSameLessonFirst(t *testing.T) {
-	ss := []BankSentence{
+	ss := []sentence.BankSentence{
 		{ID: "P1", Lesson: "第4课", Source: "基本课文", Answer: "部屋に 机と 椅子が あります。"},
 		{ID: "P2", Lesson: "第4课", Source: "基本课文", Answer: "机の 上に 猫が います。"},
 		{ID: "P3", Lesson: "第4课", Source: "基本课文", Answer: "売店は 駅の 外に あります。"},
@@ -75,7 +77,7 @@ func TestPickPrototypesSameLessonFirst(t *testing.T) {
 }
 
 func TestPickPrototypesFallsBackToNearbyLesson(t *testing.T) {
-	ss := []BankSentence{
+	ss := []sentence.BankSentence{
 		{ID: "P1", Lesson: "第7课", Source: "基本课文", Answer: "李さんは 毎日 コーヒーを 飲みます。"},
 		{ID: "P2", Lesson: "第6课", Source: "基本课文", Answer: "李さんは 先月 北京から 来ました。"},
 		{ID: "P3", Lesson: "第8课", Source: "基本课文", Answer: "李さんは 日本語で 手紙を 書きます。"},
@@ -96,7 +98,7 @@ func TestPickPrototypesFallsBackToNearbyLesson(t *testing.T) {
 }
 
 func TestPickPrototypesUnknownLesson(t *testing.T) {
-	ss := []BankSentence{
+	ss := []sentence.BankSentence{
 		{ID: "P1", Lesson: "第2课", Source: "基本课文", Answer: "これは 本です。"},
 		{ID: "P2", Lesson: "第3课", Source: "基本课文", Answer: "ここは デパートです。"},
 	}
@@ -109,8 +111,8 @@ func TestPickPrototypesUnknownLesson(t *testing.T) {
 
 func TestProtoScoreNounNeedsSlot(t *testing.T) {
 	// 名词要找有名词槽的句子：「はい、そうです。」这种没槽位的必须被压下去
-	withSlot := BankSentence{Lesson: "第3课", Source: "基本课文", Answer: "ここは デパートです。"}
-	noSlot := BankSentence{Lesson: "第3课", Source: "基本课文", Answer: "はい、そうです。"}
+	withSlot := sentence.BankSentence{Lesson: "第3课", Source: "基本课文", Answer: "ここは デパートです。"}
+	noSlot := sentence.BankSentence{Lesson: "第3课", Source: "基本课文", Answer: "はい、そうです。"}
 	if protoScore(withSlot, "名词") <= protoScore(noSlot, "名词") {
 		t.Errorf("有名词槽的句子该排前面：有槽=%d 无槽=%d",
 			protoScore(withSlot, "名词"), protoScore(noSlot, "名词"))
@@ -118,8 +120,8 @@ func TestProtoScoreNounNeedsSlot(t *testing.T) {
 }
 
 func TestProtoScoreVerbPrefersMasu(t *testing.T) {
-	masu := BankSentence{Lesson: "第7课", Source: "基本课文", Answer: "李さんは 毎日 コーヒーを 飲みます。"}
-	desu := BankSentence{Lesson: "第7课", Source: "基本课文", Answer: "これは 本です。"}
+	masu := sentence.BankSentence{Lesson: "第7课", Source: "基本课文", Answer: "李さんは 毎日 コーヒーを 飲みます。"}
+	desu := sentence.BankSentence{Lesson: "第7课", Source: "基本课文", Answer: "これは 本です。"}
 	if protoScore(masu, "动词") <= protoScore(desu, "动词") {
 		t.Errorf("动词该优先ます结尾的：ます=%d です=%d",
 			protoScore(masu, "动词"), protoScore(desu, "动词"))
@@ -127,8 +129,8 @@ func TestProtoScoreVerbPrefersMasu(t *testing.T) {
 }
 
 func TestProtoScoreAdjPrefersKeiyoushi(t *testing.T) {
-	i := BankSentence{Lesson: "第9课", Source: "基本课文", Answer: "四川料理は 辛いです。"}
-	n := BankSentence{Lesson: "第9课", Source: "基本课文", Answer: "これは 本です。"}
+	i := sentence.BankSentence{Lesson: "第9课", Source: "基本课文", Answer: "四川料理は 辛いです。"}
+	n := sentence.BankSentence{Lesson: "第9课", Source: "基本课文", Answer: "これは 本です。"}
 	if protoScore(i, "形容词") <= protoScore(n, "形容词") {
 		t.Errorf("形容词该优先い形句：い=%d 普通=%d",
 			protoScore(i, "形容词"), protoScore(n, "形容词"))
@@ -138,7 +140,7 @@ func TestProtoScoreAdjPrefersKeiyoushi(t *testing.T) {
 // 真实场景回归：给地名「なごや」推荐时，第4课里带地点槽的「売店は 駅の 外に あります。」
 // 必须排在「だれも いません。」前面 —— 早期版本只按短句优先，推荐的都是没槽位的废句。
 func TestPickPrototypesPrefersUsableSlot(t *testing.T) {
-	ss := []BankSentence{
+	ss := []sentence.BankSentence{
 		{ID: "A", Lesson: "第4课", Source: "基本课文", Answer: "だれも いません。"},
 		{ID: "B", Lesson: "第4课", Source: "基本课文", Answer: "売店は 駅の 外に あります。"},
 		{ID: "C", Lesson: "第4课", Source: "基本课文", Answer: "小野さんの 家は どこに ありますか。"},
@@ -158,7 +160,7 @@ func TestPickPrototypesPrefersUsableSlot(t *testing.T) {
 }
 
 func TestPickPrototypesZeroOrNegative(t *testing.T) {
-	by := groupProtosByLesson([]BankSentence{{ID: "P1", Lesson: "第1课", Answer: "李さんは 中国人です。"}})
+	by := groupProtosByLesson([]sentence.BankSentence{{ID: "P1", Lesson: "第1课", Answer: "李さんは 中国人です。"}})
 	if got := pickPrototypes(by, 1, 0, "名词"); got != nil {
 		t.Errorf("n=0 应返回 nil，实际 %v", got)
 	}
@@ -190,7 +192,7 @@ func reviewBankWithCircle(n3, n2 int) (*ReviewBank, map[string]string) {
 	return b, circle
 }
 
-func countCircle(got []BankSentence) (three, other int) {
+func countCircle(got []sentence.BankSentence) (three, other int) {
 	for _, g := range got {
 		if strings.Contains(g.Answer, "三圆の文") {
 			three++
@@ -205,7 +207,7 @@ func countCircle(got []BankSentence) (three, other int) {
 func TestReviewSentencesCircleTakesMajority(t *testing.T) {
 	// 三圆池子要够 14 条 —— 不够的话其他档会补上来（那是另一个用例）
 	bank, circle := reviewBankWithCircle(16, 12)
-	got := BuildReviewSentences(bank, SentenceHistory{}, nil, time.Now(), 20, nil, 0, circle, 70)
+	got := BuildReviewSentences(bank, sentence.SentenceHistory{}, nil, time.Now(), 20, nil, 0, circle, 70)
 	if len(got) != 20 {
 		t.Fatalf("要 20 句，给了 %d 句", len(got))
 	}
@@ -218,7 +220,7 @@ func TestReviewSentencesCircleTakesMajority(t *testing.T) {
 // 三圆池子不够时由其他档补满 —— 配额是上限不是保底，题量绝不缩水。
 func TestReviewSentencesCircleShortfallFillsUp(t *testing.T) {
 	bank, circle := reviewBankWithCircle(3, 20)
-	got := BuildReviewSentences(bank, SentenceHistory{}, nil, time.Now(), 20, nil, 0, circle, 70)
+	got := BuildReviewSentences(bank, sentence.SentenceHistory{}, nil, time.Now(), 20, nil, 0, circle, 70)
 	if len(got) != 20 {
 		t.Fatalf("三圆不够也得给满 20 句，实际 %d 句", len(got))
 	}
@@ -232,8 +234,8 @@ func TestReviewSentencesCircleShortfallFillsUp(t *testing.T) {
 // 结果必须跟加这个功能之前一致 —— 这是回滚路径的护栏。
 func TestReviewSentencesCircleDisabledKeepsOldBehaviour(t *testing.T) {
 	bank, circle := reviewBankWithCircle(12, 12)
-	base := func(ratio int, c map[string]string) []BankSentence {
-		return BuildReviewSentences(bank, SentenceHistory{}, nil, time.Now(), 20, nil, 0, c, ratio)
+	base := func(ratio int, c map[string]string) []sentence.BankSentence {
+		return BuildReviewSentences(bank, sentence.SentenceHistory{}, nil, time.Now(), 20, nil, 0, c, ratio)
 	}
 	off := base(0, circle)
 	noMeta := base(70, nil)
@@ -261,7 +263,7 @@ func TestReviewSentencesCircleKeepsPrototypeDedupe(t *testing.T) {
 		{ID: "R3", Word: "w2_a", Answer: "二圆の文1。", Prototype: "別の骨格"},
 	}}
 	circle := map[string]string{"w3_a": "三圆", "w3_b": "三圆", "w2_a": "二圆"}
-	got := BuildReviewSentences(b, SentenceHistory{}, nil, time.Now(), 3, nil, 0, circle, 70)
+	got := BuildReviewSentences(b, sentence.SentenceHistory{}, nil, time.Now(), 3, nil, 0, circle, 70)
 	if len(got) != 2 {
 		t.Fatalf("同骨架的两条只能留一条，应出 2 句，实际 %d 句", len(got))
 	}

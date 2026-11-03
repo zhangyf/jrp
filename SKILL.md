@@ -1392,6 +1392,15 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 - 根 `archive_test.go` 验证类型别名/JSON形态及七列档案往返；`api_record_test.go` 用内存存储验证每日/钉子户计划编号映射、回写日期、未提交词不变及历史统计，不触真实COS。
 - 本批仅调整包归属和调用引用；HTTP/CLI流程、档案/计划格式、鉴权、COS key、`go:embed web` 和部署方式不变。无新增依赖或数据迁移；提交推送、合并、部署继续分别确认。
 
+### 句子核心包边界（2026-11-03，普通句）
+
+- `internal/sentence/sentence.go`：句库类型 `SentenceBank`/`BankSentence`/`SentenceHistory`/`SentenceWrong`/`WrongSentence`/`SentenceResult`，归一化 `Norm`（原 `normSentence`）与私有 `foldWidth`/`sentenceNormRe`，容错解析 `LoadSentenceHistory`/`LoadSentenceWrong`，出题 `BuildSentencePlan` 及轮换助手，落库 `ApplySentenceState` 及 `nextSentenceDue`/`pruneSentenceHistory`/`mergeUnique`/`chineseFromResults`。函数体、正则、阈值、注释逐字迁移，选题与错句规则不变。
+- `internal/sentence/types.go`：`PlanSentence`；根 `types.go` 保留 `type PlanSentence = sentence.PlanSentence`，`ReviewPlan`/`RecordInput`/Excel/体验版因此零改动。
+- 根 `sentence.go` 只留 9 个 `*Storage` 方法（三个 key + 六个读写），它们带 receiver 不能搬；`sentence_review.go`（回炉句）整文件仍在根包，另做一批。
+- 导出改名：`normSentence→Norm`、`loadSentenceHistory→LoadSentenceHistory`、`loadSentenceWrong→LoadSentenceWrong`、`sortLessons→SortLessons`，其余无外部引用的保持私有；根包不设转发 wrapper。
+- 测试：`internal/sentence/sentence_test.go` 随包迁移（依赖根 `sentencePlanLocked` 的 `TestSentencePlanLocked` 留根），另补 `rules_test.go` 覆盖归一化、容错解析、课号排序与轮换、到期推进、历史清理、去重与中文回填；单包验证：`go test ./internal/sentence`。
+- 新包只依赖标准库，不 import 根包、不碰存储或网络。本批不改 HTTP/CLI 流程、句库 JSON 结构、COS key 与部署方式。
+
 ### 档案模块包边界（2026-11-03）
 
 - `internal/archive/types.go`：`Archive`、`ChangelogEntry` 及两个方法 `AppendWord`、`SetDefinition`；根 `types.go` 只保留类型别名，字段顺序与序列化形态不变，`Groups` 为 `[]review.WordGroup`。

@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // 回炉变形句：把「正确率不错、但很久没见面」的词塞回课本句型里再练一遍。
@@ -163,9 +165,9 @@ func reviewCircle(ctx context.Context, st *Storage) map[string]string {
 //     行为跟没加这个功能时一模一样。
 //
 // arc 传 nil 时跳过第 2 步（拿不到档案就当全都回炉，宁可多练）。
-func BuildReviewSentences(bank *ReviewBank, hist SentenceHistory, arc *Archive,
+func BuildReviewSentences(bank *ReviewBank, hist sentence.SentenceHistory, arc *Archive,
 	today time.Time, n int, exclude map[string]bool, minIdleDays int,
-	circle map[string]string, circleRatio int) []BankSentence {
+	circle map[string]string, circleRatio int) []sentence.BankSentence {
 
 	if bank == nil || n <= 0 {
 		return nil
@@ -181,7 +183,7 @@ func BuildReviewSentences(bank *ReviewBank, hist SentenceHistory, arc *Archive,
 			continue
 		}
 		for _, a := range answers {
-			k := normSentence(a)
+			k := sentence.Norm(a)
 			if k == "" {
 				continue
 			}
@@ -200,12 +202,12 @@ func BuildReviewSentences(bank *ReviewBank, hist SentenceHistory, arc *Archive,
 		if s.Answer == "" {
 			continue
 		}
-		k := normSentence(s.Answer)
+		k := sentence.Norm(s.Answer)
 		if k == "" || exclude[k] {
 			continue
 		}
 		// 原型句当天已经出过（作为原句或别的变形句）→ 跳过
-		if s.Prototype != "" && exclude[normSentence(s.Prototype)] {
+		if s.Prototype != "" && exclude[sentence.Norm(s.Prototype)] {
 			continue
 		}
 		if minIdleDays > 0 && s.Word != "" {
@@ -228,7 +230,7 @@ func BuildReviewSentences(bank *ReviewBank, hist SentenceHistory, arc *Archive,
 		return cs[i].s.ID < cs[j].s.ID
 	})
 
-	out := make([]BankSentence, 0, n)
+	out := make([]sentence.BankSentence, 0, n)
 	usedProto := make(map[string]bool)
 	// take 把 list 里的候选加进 out，直到 out 有 limit 条或 list 走完。
 	// 同一骨架当天只留一条（usedProto 跨层共享，分层也不能破这条）。
@@ -238,13 +240,13 @@ func BuildReviewSentences(bank *ReviewBank, hist SentenceHistory, arc *Archive,
 				return
 			}
 			if c.s.Prototype != "" {
-				pk := normSentence(c.s.Prototype)
+				pk := sentence.Norm(c.s.Prototype)
 				if usedProto[pk] {
 					continue
 				}
 				usedProto[pk] = true
 			}
-			out = append(out, BankSentence{
+			out = append(out, sentence.BankSentence{
 				ID:        c.s.ID,
 				Lesson:    c.s.Lesson,
 				Type:      "transformed",
