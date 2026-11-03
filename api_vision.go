@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 	"unicode"
+
+	"github.com/zhangyf/jrp/internal/llm"
 )
 
 // 拍照取词：把图片直接丢给视觉大模型，让它吐「词形 + 中文意思」。
@@ -105,7 +107,7 @@ func loadVisionConfig() (visionConfig, bool) {
 	if fb == "" {
 		fb = visionDefaultFallback
 	}
-	c.Fallback = parseFallbackModels(fb, c.Model)
+	c.Fallback = llm.ParseFallbackModels(fb, c.Model)
 	if v := strings.TrimSpace(os.Getenv("JRP_VISION_TIMEOUT")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 120 {
 			c.Timeout = time.Duration(n) * time.Second
@@ -252,7 +254,7 @@ func visionChat(cfg visionConfig, prompt, imageURL string) (string, string, bool
 			lastErr = err
 			continue
 		}
-		reply, err := postLLM(cfg.Endpoint, cfg.APIKey, body, cfg.Timeout)
+		reply, err := llm.Post(cfg.Endpoint, cfg.APIKey, body, cfg.Timeout)
 		if err == nil && strings.TrimSpace(reply) != "" {
 			llmMarkResult(m, true, now)
 			return strings.TrimSpace(reply), m, false, nil

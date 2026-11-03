@@ -1,20 +1,18 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/llm"
 )
 
 // 造句的语义判定：字面比对不一致时，问大模型「这句意思成立吗」。
@@ -27,43 +25,6 @@ import (
 //     不能这次判对下次判错 —— 跟「不提交不换题」是同一个规矩。
 //
 // 密钥只存在于服务器环境变量，前端拿不到，也不会出现在任何响应里。
-
-// llmConfig 大模型配置，全部来自环境变量。
-type llmConfig struct {
-	Endpoint string        // OpenAI 兼容的 chat/completions 地址
-	APIKey   string        // Bearer token
-	Model    string        // 主模型
-	Fallback []string      // 备用模型，主模型失败时按顺序接上（见 llm_failover.go）
-	Timeout  time.Duration // 单个模型的超时（切换链条里每个都各自计时）
-}
-
-const llmDefaultTimeout = 8 * time.Second
-
-// loadLLMConfig 读环境变量。Endpoint 或 APIKey 任一为空就是不启用。
-//
-//	JRP_LLM_ENDPOINT  https://api.deepseek.com/v1/chat/completions
-//	JRP_LLM_API_KEY   sk-...
-//	JRP_LLM_MODEL     主模型（可选，默认 deepseek-chat）
-//	JRP_LLM_FALLBACK  备用模型，逗号分隔（可选，主模型挂了依次接上）
-//	JRP_LLM_TIMEOUT   秒（可选，默认 8，上限 60）—— 链条里每个模型各自计时
-func loadLLMConfig() (llmConfig, bool) {
-	c := llmConfig{
-		Endpoint: strings.TrimSpace(os.Getenv("JRP_LLM_ENDPOINT")),
-		APIKey:   strings.TrimSpace(os.Getenv("JRP_LLM_API_KEY")),
-		Model:    strings.TrimSpace(os.Getenv("JRP_LLM_MODEL")),
-		Timeout:  llmDefaultTimeout,
-	}
-	if c.Model == "" {
-		c.Model = "deepseek-chat"
-	}
-	c.Fallback = parseFallbackModels(os.Getenv("JRP_LLM_FALLBACK"), c.Model)
-	if v := strings.TrimSpace(os.Getenv("JRP_LLM_TIMEOUT")); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 60 {
-			c.Timeout = time.Duration(n) * time.Second
-		}
-	}
-	return c, c.Endpoint != "" && c.APIKey != ""
-}
 
 // ---------- prompt ----------
 
@@ -246,74 +207,6 @@ func parseJudgeReply(reply string) (judgeResult, error) {
 	return judgeResult{Correct: *out.Correct, Reason: strings.TrimSpace(out.Reason)}, nil
 }
 
-// ---------- 调用 ----------
-
-// buildLLMRequest 造请求体。抽出来是为了能单测 —— 「stream:false」这条
-// 一旦被删，网关可能改走 SSE，判定会全线失败（2026-09-29）。
-func buildLLMRequest(cfg llmConfig, prompt string) ([]byte, error) {
-	// 显式 stream:false —— 有些网关（腾讯云 tokenhub 这类）不写这条就按 SSE
-	// 流式返回，choices[0].message.content 会拿不到东西，判定直接失败。
-	return json.Marshal(map[string]interface{}{
-		"model":       cfg.Model,
-		"temperature": 0,
-		"stream":      false,
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
-		},
-	})
-}
-
-func callLLM(cfg llmConfig, prompt string) (string, error) {
-	body, err := buildLLMRequest(cfg, prompt)
-	if err != nil {
-		return "", err
-	}
-	return postLLM(cfg.Endpoint, cfg.APIKey, body, cfg.Timeout)
-}
-
-// postLLM 发一次请求，把 choices[0].message.content 取出来。
-//
-// 判句、查中文释义、拍照取词都走这里 —— 超时、错误码、空内容的处理只有一份。
-// body 由调用方拼（视觉要带图片，content 是数组不是字符串，拼不出来统一形状）。
-func postLLM(endpoint, apiKey string, body []byte, timeout time.Duration) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return "", err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("模型返回 %d：%.120s", resp.StatusCode, string(raw))
-	}
-	var apiResp struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(raw, &apiResp); err != nil {
-		return "", fmt.Errorf("解析模型响应失败：%w", err)
-	}
-	if len(apiResp.Choices) == 0 || strings.TrimSpace(apiResp.Choices[0].Message.Content) == "" {
-		return "", fmt.Errorf("模型返回空内容")
-	}
-	return apiResp.Choices[0].Message.Content, nil
-}
-
 // ---------- 缓存 ----------
 
 // 判定缓存：同一 (原句, 学生写的) 只问一次模型。刷新页面、换设备重开
@@ -338,7 +231,7 @@ func judgeCacheKey(version, answer, input string) string {
 
 // judgeWithCache 判定一句，顺带返回这次用的模板版本（前端存进草稿，
 // 下次恢复时对不上就作废重判）。
-func judgeWithCache(ctx context.Context, st *Storage, cfg llmConfig, answer, chinese, input string) (judgeResult, string, string, error) {
+func judgeWithCache(ctx context.Context, st *Storage, cfg llm.Config, answer, chinese, input string) (judgeResult, string, string, error) {
 	tpl, version, _ := resolveJudgePrompt(ctx, st)
 	key := judgeCacheKey(version, answer, input)
 	judgeCache.Lock()
@@ -374,7 +267,7 @@ func (s *server) handleJudgeSentence(w http.ResponseWriter, r *http.Request, st 
 		return
 	}
 
-	cfg, enabled := loadLLMConfig()
+	cfg, enabled := llm.LoadConfig()
 	if !enabled {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"success": true, "enabled": false,
@@ -442,7 +335,7 @@ func (s *server) handleJudgePrompt(w http.ResponseWriter, r *http.Request, st *S
 		})
 		return
 	}
-	_, enabled := loadLLMConfig()
+	_, enabled := llm.LoadConfig()
 	tpl, ver, src := resolveJudgePrompt(r.Context(), st)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,

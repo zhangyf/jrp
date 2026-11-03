@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -44,37 +43,6 @@ func TestParseJudgeReply(t *testing.T) {
 	}
 }
 
-// 没配密钥就不启用 —— 这是「默认关闭」的底线：老师还没定模型之前，
-// 造句必须照常能练，不能因为没配就报错。
-func TestLoadLLMConfigDisabledWithoutEnv(t *testing.T) {
-	t.Setenv("JRP_LLM_ENDPOINT", "")
-	t.Setenv("JRP_LLM_API_KEY", "")
-	_, ok := loadLLMConfig()
-	if ok {
-		t.Fatal("没配 endpoint/key 却启用了")
-	}
-
-	t.Setenv("JRP_LLM_ENDPOINT", "https://api.deepseek.com/v1/chat/completions")
-	_, ok = loadLLMConfig()
-	if ok {
-		t.Fatal("只有 endpoint 没有 key 也不该启用")
-	}
-}
-
-func TestLoadLLMConfigReadsEnv(t *testing.T) {
-	t.Setenv("JRP_LLM_ENDPOINT", "https://api.deepseek.com/v1/chat/completions")
-	t.Setenv("JRP_LLM_API_KEY", "sk-test")
-	t.Setenv("JRP_LLM_MODEL", "deepseek-chat")
-	t.Setenv("JRP_LLM_TIMEOUT", "5")
-	c, ok := loadLLMConfig()
-	if !ok {
-		t.Fatal("配齐了却没启用")
-	}
-	if c.Model != "deepseek-chat" || c.Timeout.Seconds() != 5 {
-		t.Errorf("got model=%q timeout=%v", c.Model, c.Timeout)
-	}
-}
-
 // 缓存键必须走归一化：全角「２」和半角「2」是同一句，不能问两次模型，
 // 更不能给出两个不同结论。
 func TestJudgeCacheKeyFoldsWidth(t *testing.T) {
@@ -103,8 +71,8 @@ func TestJudgePromptKeepsConservativeRules(t *testing.T) {
 	for _, must := range []string{
 		"只判断意思是否成立",
 		"汉字与假名",
-		"助词缺失判错",                 // 不能退回「助词省略也算对」的老版本
-		"换成另一个同样成立的",            // 助词替换仍判对，不许一刀切全错
+		"助词缺失判错",     // 不能退回「助词省略也算对」的老版本
+		"换成另一个同样成立的", // 助词替换仍判对，不许一刀切全错
 		"感叹词、语气词、开场填充词",
 		"没学过的表达",
 		"拿不准时按关键要素是否齐全来判断", // 不是「拿不准就判正确」也不是「拿不准就判错」
@@ -120,38 +88,5 @@ func TestJudgePromptKeepsConservativeRules(t *testing.T) {
 		if !strings.Contains(p, must) {
 			t.Errorf("prompt 缺少例句 %q", must)
 		}
-	}
-}
-
-// 请求体必须显式 stream:false —— tokenhub 这类网关不写就按 SSE 返回，
-// 判定会全线拿不到内容。
-func TestBuildLLMRequestNonStreaming(t *testing.T) {
-	cfg := llmConfig{Endpoint: "https://tokenhub.tencentmaas.com/v1/chat/completions",
-		APIKey: "sk-x", Model: "deepseek-v4-flash-0731"}
-	b, err := buildLLMRequest(cfg, "判定一下")
-	if err != nil {
-		t.Fatalf("buildLLMRequest: %v", err)
-	}
-	var m map[string]interface{}
-	if err := json.Unmarshal(b, &m); err != nil {
-		t.Fatalf("请求体不是合法 JSON: %v", err)
-	}
-	if v, ok := m["stream"]; !ok || v != false {
-		t.Errorf("stream 必须是 false，got %#v（缺了它网关会走 SSE）", m["stream"])
-	}
-	if m["model"] != "deepseek-v4-flash-0731" {
-		t.Errorf("model 不对: %#v", m["model"])
-	}
-	msgs, ok := m["messages"].([]interface{})
-	if !ok || len(msgs) != 1 {
-		t.Fatalf("messages 应为 1 条，got %#v", m["messages"])
-	}
-	msg := msgs[0].(map[string]interface{})
-	if msg["role"] != "user" || !strings.Contains(msg["content"].(string), "判定一下") {
-		t.Errorf("messages[0] 内容不对: %#v", msg)
-	}
-	// 密钥绝不能出现在请求体里
-	if strings.Contains(string(b), cfg.APIKey) {
-		t.Errorf("请求体里不该出现密钥: %s", b)
 	}
 }
