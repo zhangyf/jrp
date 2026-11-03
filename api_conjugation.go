@@ -2,7 +2,7 @@ package main
 
 // 活用专项练习（2026-09-28 老师新增板块）。
 //
-//	GET /api/conjugation?type=verb&count=10      → 动词卡：原词（ます形）→ 原形 + て形
+//	GET /api/conjugation?type=verb&count=10      → 动词卡：原词（ます形）→ 原形 + て形 + た形
 //	GET /api/conjugation?type=verb_nai&count=10  → 动词ない形卡：原词 → 原形 + ない形
 //	GET /api/conjugation?type=adj&count=10       → 形容词卡：原词 → 过去式 / 否定形 / 过去否定形（带です）
 //
@@ -121,6 +121,35 @@ func teEnd(base string) (string, bool) {
 	return "", false
 }
 
+// teToTa て形词尾→た形词尾：て→た、で→だ（って→った、んで→んだ…）。
+func teToTa(te string) (string, bool) {
+	head, last, ok := splitHeadLast(te)
+	if !ok {
+		return "", false
+	}
+	switch last {
+	case 'て':
+		return head + "た", true
+	case 'で':
+		return head + "だ", true
+	}
+	return "", false
+}
+
+// taEnd 动1 原形→た形的词尾音便。
+//
+// ⚠️ た形跟て形是**同一套音便**（促音便/拨音便/い音便），只是 て→た、で→だ。
+// 所以这里复用 teEnd 再换尾音，绝不把音便规则抄第二份 ——
+// 抄两份的话哪天改规则（比如补一个例外）一定漏掉另一边。
+// 例外 行く→行った 也跟着 teEnd 走，不用单独写。
+func taEnd(base string) (string, bool) {
+	te, ok := teEnd(base)
+	if !ok {
+		return "", false
+	}
+	return teToTa(te)
+}
+
 // formAnswer 组装「かな(漢字)」答案串；没有汉字侧就只给假名。
 func formAnswer(kanaForm, kanjiForm string) string {
 	if kanjiForm != "" && kanjiForm != kanaForm {
@@ -129,10 +158,13 @@ func formAnswer(kanaForm, kanjiForm string) string {
 	return kanaForm
 }
 
-// conjVerb 按动词分类算出 原形 / て形 两个答案串（已是「かな(漢字)」格式）。
-func conjVerb(kana, kanji, sub string) (base, te string, ok bool) {
+// conjVerb 按动词分类算出 原形 / て形 / た形 三个答案串（已是「かな(漢字)」格式）。
+//
+// た形是 2026-11-03 老师要求加的：音便跟て形同源，所以每类只多一行，
+// 规则仍然只有一份（见 taEnd）。
+func conjVerb(kana, kanji, sub string) (base, te, ta string, ok bool) {
 	if !strings.HasSuffix(kana, "ます") {
-		return "", "", false
+		return "", "", "", false
 	}
 	switch sub {
 	case "1": // 五段：い段→う段，再按原形词尾音便接て
@@ -140,63 +172,68 @@ func conjVerb(kana, kanji, sub string) (base, te string, ok bool) {
 		// 尊敬语特殊五段（〜うではなく〜る）：くださる/なさる/いらっしゃる/おっしゃる/ござる，
 		// 普通规则会算成 くださう 这类错形，直接跳过不算。
 		if irregularIStem[stem] {
-			return "", "", false
+			return "", "", "", false
 		}
 		baseKana, ok1 := applyItoU(stem)
 		if !ok1 {
-			return "", "", false
+			return "", "", "", false
 		}
 		teKana, ok2 := teEnd(baseKana)
 		if !ok2 {
-			return "", "", false
+			return "", "", "", false
 		}
-		var baseKanji, teKanji string
+		taKana, okT := taEnd(baseKana)
+		if !okT {
+			return "", "", "", false
+		}
+		var baseKanji, teKanji, taKanji string
 		if kanji != "" {
 			if bk, ok3 := applyItoU(strings.TrimSuffix(kanji, "ます")); ok3 {
 				baseKanji = bk
 				teKanji, _ = teEnd(bk)
+				taKanji, _ = taEnd(bk)
 			}
 		}
-		return formAnswer(baseKana, baseKanji), formAnswer(teKana, teKanji), true
+		return formAnswer(baseKana, baseKanji), formAnswer(teKana, teKanji), formAnswer(taKana, taKanji), true
 
-	case "2": // 一段：去ます＋る／て
+	case "2": // 一段：去ます＋る／て／た
 		stem := strings.TrimSuffix(kana, "ます")
 		if stem == "" {
-			return "", "", false
+			return "", "", "", false
 		}
-		baseKana, teKana := stem+"る", stem+"て"
-		var baseKanji, teKanji string
+		baseKana, teKana, taKana := stem+"る", stem+"て", stem+"た"
+		var baseKanji, teKanji, taKanji string
 		if kanji != "" && strings.HasSuffix(kanji, "ます") {
 			stemK := strings.TrimSuffix(kanji, "ます")
-			baseKanji, teKanji = stemK+"る", stemK+"て"
+			baseKanji, teKanji, taKanji = stemK+"る", stemK+"て", stemK+"た"
 		}
-		return formAnswer(baseKana, baseKanji), formAnswer(teKana, teKanji), true
+		return formAnswer(baseKana, baseKanji), formAnswer(teKana, teKanji), formAnswer(taKana, taKanji), true
 
 	case "3": // サ变・カ变
 		if strings.HasSuffix(kana, "します") {
 			stem := strings.TrimSuffix(kana, "します")
-			baseKana, teKana := stem+"する", stem+"して"
-			var baseKanji, teKanji string
+			baseKana, teKana, taKana := stem+"する", stem+"して", stem+"した"
+			var baseKanji, teKanji, taKanji string
 			if kanji != "" && strings.HasSuffix(kanji, "します") {
 				stemK := strings.TrimSuffix(kanji, "します")
-				baseKanji, teKanji = stemK+"する", stemK+"して"
+				baseKanji, teKanji, taKanji = stemK+"する", stemK+"して", stemK+"した"
 			}
-			return formAnswer(baseKana, baseKanji), formAnswer(teKana, teKanji), true
+			return formAnswer(baseKana, baseKanji), formAnswer(teKana, teKanji), formAnswer(taKana, taKanji), true
 		}
 		if kana == "きます" && strings.HasPrefix(kanji, "来") { // 来ます 特例
-			return formAnswer("くる", "来る"), formAnswer("きて", "来て"), true
+			return formAnswer("くる", "来る"), formAnswer("きて", "来て"), formAnswer("きた", "来た"), true
 		}
 		if kana == "します" && kanji == "" { // 裸 します
-			return "する", "して", true
+			return "する", "して", "した", true
 		}
 	}
-	return "", "", false
+	return "", "", "", false
 }
 
 // conjVerbNai 按动词分类算出 原形 / ない形 两个答案串（2026-10-13 老师新增题型）。
 // 原形直接复用 conjVerb —— 变形规则只留一份，不在两处维护。
 func conjVerbNai(kana, kanji, sub string) (base, nai string, ok bool) {
-	base, _, ok = conjVerb(kana, kanji, sub)
+	base, _, _, ok = conjVerb(kana, kanji, sub)
 	if !ok {
 		return "", "", false
 	}
@@ -426,7 +463,7 @@ func (s *server) handleConjugation(w http.ResponseWriter, r *http.Request, st *S
 			if cls == "" || conjSkipWord(w.Word, kana) {
 				continue
 			}
-			base, te, ok := conjVerb(kana, kanji, cls)
+			base, te, ta, ok := conjVerb(kana, kanji, cls)
 			if !ok {
 				continue
 			}
@@ -436,6 +473,9 @@ func (s *server) handleConjugation(w http.ResponseWriter, r *http.Request, st *S
 					Tasks: []ConjTask{
 						{Label: "原形", Answers: []string{base}},
 						{Label: "て形", Answers: []string{te}},
+						// た形（2026-11-03 老师要求）：跟て形同一张卡，
+						// 音便同源，放一起对比着练正好。
+						{Label: "た形", Answers: []string{ta}},
 					},
 				})
 			} else {

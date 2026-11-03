@@ -233,8 +233,10 @@ func writeTrialLexicon(w http.ResponseWriter) {
 }
 
 // trialConjugation 活用练习：每个类型固定 2 题，不管前端传 count 多少。
-// label 必须跟真接口一致（原形/て形、原形/ない形、过去式/否定形/过去否定形），
+// label 必须跟真接口一致（原形/て形/た形、原形/ない形、过去式/否定形/过去否定形），
 // 否则前端那一栏的题目名会跟对不上。
+// ⚠️ 真接口加了新形（2026-11-03 加た形），这里必须同步补一列，
+// 否则体验版那张卡比正常卡少一个空。
 func trialConjugation(typ string) []ConjItem {
 	two := func(forms ...string) []string { return forms }
 	switch typ {
@@ -267,18 +269,20 @@ func trialConjugation(typ string) []ConjItem {
 					{Label: "过去否定形", Answers: two("やすくなかった", "安くなかった")},
 				}},
 		}
-	default: // verb（て形）
+	default: // verb（て形 + た形）
 		return []ConjItem{
 			{Word: "たべる(食べる)", Definition: "吃", Pos: "动词", Sub: "二类",
 				Tasks: []ConjTask{
 					{Label: "原形", Answers: two("たべる", "食べる")},
 					{Label: "て形", Answers: two("たべて", "食べて")},
+					{Label: "た形", Answers: two("たべた", "食べた")},
 				}},
 			{Word: "かう(買う)", Definition: "买", Pos: "动词", Sub: "一类",
 				Tasks: []ConjTask{
 					{Label: "原形", Answers: two("かう", "買う")},
-					// う・つ・る 是促音便
+					// う・つ・る 是促音便（て形 って / た形 った，同一个音便）
 					{Label: "て形", Answers: two("かって", "買って")},
+					{Label: "た形", Answers: two("かった", "買った")},
 				}},
 		}
 	}

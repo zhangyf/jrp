@@ -199,6 +199,21 @@ Current Japanese knowledge docs —— 知识点 `标准日本语初级上册_�
 （第1单元=第1-4课、第2=5-8、第3=9-12、第4=13-16、第5=17-20，故汇编已覆盖到第17课）。
 另有 `造句易错语法速查（第12-13课）.md`。
 
+### 知识点板块（web + 小程序，2026-11-03）
+
+- 接口：`GET /api/knowledge`（课号列表）/ `?lesson=N`（分块正文）。
+  **markdown 在服务端拆块**（`h1/h2/h3/p/quote/list/table` 六种 + 行内 `b`/`c` 标记），
+  前端只按 type 摆样式 —— 小程序没有 md 渲染能力，而且「哪几块模糊」必须按块切，
+  拆块这件事只能在服务端干。
+- 两端入口：小程序 `pages/knowledge`；web 顶部导航「知识点」tab（`web/knowledge.js`）。
+  ⚠️ **两条端都要有**：2026-11-03 老师发现 web 端没这个 tab（当初只按小程序需求做的，
+  web 那排导航从建站起就是那 7 个）。补的时候是**纯前端新增** —— 接口、解析、模糊
+  判据全在服务端，前端只是多画一屏。
+  ⚠️ `/api/knowledge` 是唯一不走 `withUser` 的读接口（匿名要能进），自己认会话。
+- 未登录（含体验版）也能进，只是看不全：服务端回 `visible`，下标 >= visible 的块盖模糊。
+  **这是展示层软限制**（响应里全文都在，抓包能拿到），目的是引导登录，不是防攻击。
+- 网页端两块端各自维护登录入口：小程序弹登录浮层，web 链到 `login.html`。
+
 ### IMA Knowledge Base (legacy / human-readable fallback)
 
 IMA is read-only. Knowledge points have been migrated to COS; IMA remains as a human-readable
@@ -1548,7 +1563,7 @@ COS credentials load the same way as other commands (`.env.enc` or env vars).
 
 | 页 | 接口 | 题型 |
 |---|---|---|
-| 动词活用 | `GET /api/conjugation?type=verb&count=N` | 一卡**两空**：原形 + て形 |
+| 动词活用 | `GET /api/conjugation?type=verb&count=N` | 一卡**三空**：原形 + て形 + た形 |
 | 动词 ない形活用 | `GET /api/conjugation?type=verb_nai&count=N` | 一卡**两空**：原形 + ない形 |
 | 形容词活用 | `GET /api/conjugation?type=adj&count=N` | 一卡**三空**：过去式 / 否定形 / 过去否定形（都带 です） |
 
@@ -1565,9 +1580,17 @@ COS credentials load the same way as other commands (`.env.enc` or env vars).
   在 `conjVerbNai` 里特判。`conjVerbNai` 的原形**复用 `conjVerb`**，变形规则只留一份。
 - 跳过 `〜ています` 与寒暄固定说法；**纯前端作答，不写档案、不 bump 版本、不进统计**。
 - 单测在 `api_conjugation_test.go`（含 `かいます` 这类普通五段的反面保护，防被特殊规则误伤）：`go test -run TestConj ./...`
-- 加新题型（た形、可能形…）的姿势：写 `conjXn` 函数 → handler 的 `switch typ` 加一个 case →
+- **た形（2026-11-03 加）**：跟て形是**同一套音便**，只差 `て→た`/`で→だ`。
+  所以只在 `conjVerb` 里多算一个 ta（五段走 `taEnd` = `teEnd` 换尾音，
+  一段/サ变/カ变各多拼一个字），**绝不把音便规则抄第二份** —— 抄两份迟早漂移。
+  `TestConjTaMirrorsTe` 盯着这件事：拿て形换尾音跟た形比，对不上就红。
+- 加新题型（可能形、ば形…）的姿势：写 `conjXn` 函数 → handler 的 `switch typ` 加一个 case →
   `web/index.html` 的 `#conjType` 加 option → `web/conjugation.js` 的 `typeNames` 补一条。
   前端按服务端返回的 `tasks` 渲染，填空数量不用改代码。
+- ⚠️ **`api_trial.go` 的固定题要同步补**：体验版那几张卡的 label 数必须跟真接口一样
+  （`TestTrialConjugationLabelsMatchRealAPI` 盯着），否则试用版比正式版少一个空。
+- ⚠️ 速查表（动词活用表）**两处各一份**：`web/index.html` 的 `.gtable` 和
+  小程序 `pages/conj/conj.js` 的 `GRAMMAR_ROWS`。加一列要两边都加。
 
 ⚠️ 改完 `api_conjugation.go` / `web/conjugation.js` 必须**重新交叉编译并部署服务器**，
 否则老师页面看不到变化（见下一节）。判断新旧最可靠的办法是 `strings <二进制> | grep conj-input`。

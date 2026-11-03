@@ -687,3 +687,68 @@ details[open] summary { margin-bottom: 10px; }
   .mini-dock { width: 132px; left: 8px; }
   .mini-dock img { width: 108px; height: 108px; }
 }
+
+/* ---- 新标日知识点（web 端 2026-11-03 补） ---- */
+/* 课号条：21 个 chip 一行放不下就折行（web 没有小程序那种横向 scroll-view） */
+.kb-lessons { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.kb-n {
+  min-width: 38px; padding: 4px 8px;
+  font: inherit; font-size: 13px;
+  background: var(--panel); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; cursor: pointer;
+}
+.kb-n:hover { border-color: var(--accent); color: var(--accent); }
+.kb-n.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+/* 正文块：服务端已经拆好块，这里只排版式（markdown 不在前端解析） */
+.kb-blk { margin: 0 0 14px; }
+.kb-h1 { font-size: 18px; font-weight: 600; margin: 0 0 10px; color: var(--accent); }
+.kb-h2 { font-size: 16px; font-weight: 600; margin: 18px 0 8px; padding-left: 9px; border-left: 3px solid var(--accent); }
+.kb-h3 { font-size: 14px; font-weight: 600; margin: 14px 0 6px; color: var(--muted); }
+.kb-p { margin: 0 0 8px; font-size: 14px; }
+.kb-quote {
+  margin: 0 0 8px; padding: 8px 12px;
+  background: var(--panel); border-left: 3px solid var(--line);
+  border-radius: 0 6px 6px 0; font-size: 13px; color: var(--muted);
+}
+.kb-list { margin: 0 0 8px; padding-left: 22px; font-size: 14px; }
+.kb-list li { margin: 3px 0; }
+.kb-p code, .kb-list code, .kb-h2 code, .kb-h3 code {
+  background: #f0f0ec; border-radius: 3px; padding: 1px 4px;
+  font-family: ui-monospace, Consolas, monospace; font-size: 13px;
+}
+
+.kb-tbl-wrap { overflow-x: auto; margin: 0 0 10px; }
+.kb-table { border-collapse: collapse; font-size: 13px; width: 100%; }
+.kb-table th, .kb-table td {
+  border: 1px solid var(--line); padding: 5px 9px; text-align: left;
+}
+.kb-table th { background: var(--panel); font-weight: 600; white-space: nowrap; }
+
+/* 未登录：超出的段落盖模糊。
+   ⚠️ 这是展示层的软限制（接口里全文已经发下来了），目的是引导登录，不是防攻击。 */
+.kb-blk.blur {
+  filter: blur(4px);
+  opacity: .55;
+  user-select: none;
+  pointer-events: none;
+}
+.kb-cut {
+  margin: 4px 0 16px; padding: 8px 0;
+  font-size: 12px; color: var(--muted); text-align: center;
+  border-top: 1px dashed var(--line);
+}
+.kb-lockbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 14px; padding: 8px 12px;
+  background: var(--unknown-soft); border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; color: var(--unknown);
+}
+.kb-lockbtn {
+  display: inline-block; padding: 4px 12px;
+  background: var(--accent); color: #fff; border-radius: 6px;
+  font-size: 13px; text-decoration: none;
+}
+.kb-lockbtn:hover { opacity: .9; }
+.kb-lockbtn.wide { display: block; text-align: center; padding: 8px; margin-top: 4px; }
+.kb-foot { margin: 4px 0 16px; }

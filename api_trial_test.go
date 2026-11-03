@@ -445,3 +445,38 @@ func TestTrialQuestionsAreStable(t *testing.T) {
 		t.Error("每日复习和钉子户用了同一批词")
 	}
 }
+
+// TestTrialConjugationLabelsMatchRealAPI 体验版固定题的 label 必须跟真接口一一对应。
+//
+// 真接口 2026-11-03 给动词卡加了た形（原形/て形/た形 三个空），试用卡要是还停在
+// 两个空，审核看到的就是「试用版和正式版长得不一样」。
+// ⚠️ 以后真接口再加新形（比如ば形），改完 api_trial.go 必须同步改这里的表。
+func TestTrialConjugationLabelsMatchRealAPI(t *testing.T) {
+	want := map[string][]string{
+		"verb":     {"原形", "て形", "た形"},
+		"verb_nai": {"原形", "ない形"},
+		"adj":      {"过去式", "否定形", "过去否定形"},
+	}
+	for typ, labels := range want {
+		items := trialConjugation(typ)
+		if len(items) == 0 {
+			t.Fatalf("%s 一题都没有", typ)
+		}
+		for i, it := range items {
+			if len(it.Tasks) != len(labels) {
+				t.Errorf("%s 第%d题有 %d 个空，应为 %d 个（%v）",
+					typ, i+1, len(it.Tasks), len(labels), labels)
+				continue
+			}
+			for j, lb := range labels {
+				if it.Tasks[j].Label != lb {
+					t.Errorf("%s 第%d题第%d空 label=%q，应为 %q",
+						typ, i+1, j+1, it.Tasks[j].Label, lb)
+				}
+				if len(it.Tasks[j].Answers) == 0 {
+					t.Errorf("%s 第%d题第%d空（%s）没有答案", typ, i+1, j+1, lb)
+				}
+			}
+		}
+	}
+}
