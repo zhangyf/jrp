@@ -1688,6 +1688,11 @@ tabBar 三项：**练习 / 统计 / 录入**。
   个人数据；withUser 在鉴权打开后对匿名直接 401，那样未登录/体验版进来就是白屏。
   自己在 `knowledgeFullAccess` 里认会话：真登录给全文，匿名和 **体验版**给
   `locked:true` + `visible`（体验版凭证是公开的，等于匿名）。
+  ⛔ **`sess.UID == ""` ⇔ owner，不是匿名**（2026-11-03 真事故）：这里原来写成
+  `if sess.UID == "" || sess.UID == trialUID { return false }`，把 owner 本人挡在门外 ——
+  表现是「小程序里每日复习已登录、知识点还是未登录」。匿名压根没有会话
+  （`sessionUser` 先返回 false），能走到这行的 uid 为空只可能是 owner。
+  任何**自己认会话**的路由都要记住这条；走 withUser 的路由不受影响。
 - **模糊是展示层软限制，不是加密**：全文照样下发，前端把下标 >= `visible` 的块盖
   `filter: blur()`；抓包能拿全文 —— 这是有意的取舍，老师要的是「被挡住」的视觉。
   ⚠️ 部分安卓 WebView 不支持 CSS filter → 兜底 `color: transparent + text-shadow`。
