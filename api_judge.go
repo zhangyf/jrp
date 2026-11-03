@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/llm"
+	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // 造句的语义判定：字面比对不一致时，问大模型「这句意思成立吗」。
@@ -226,7 +227,7 @@ var judgeCache = struct {
 // judgeCacheKey 缓存键带模板版本：prompt 一改，旧的判定结论自然失效，
 // 不会出现「规矩换了但还拿旧结论糊弄」的情况。
 func judgeCacheKey(version, answer, input string) string {
-	return version + "\x00" + normSentence(answer) + "\x00" + normSentence(input)
+	return version + "\x00" + sentence.Norm(answer) + "\x00" + sentence.Norm(input)
 }
 
 // judgeWithCache 判定一句，顺带返回这次用的模板版本（前端存进草稿，
@@ -297,7 +298,7 @@ func (s *server) handleJudgeSentence(w http.ResponseWriter, r *http.Request, st 
 	}
 
 	// 归一化后一致 —— 前端已经判对了，这里兜一下（换设备、旧前端）
-	if normSentence(in.Answer) == normSentence(in.Input) {
+	if sentence.Norm(in.Answer) == sentence.Norm(in.Input) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"success": true, "enabled": true, "correct": true, "by": "literal",
 		})

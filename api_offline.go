@@ -12,6 +12,7 @@ import (
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/grading"
 	"github.com/zhangyf/jrp/internal/review"
+	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // 离线闭环：导出 Excel 拿去离线练，练完把填好的文件传回来自动解析。
@@ -227,12 +228,12 @@ func BuildSentencePlanFrom(st *Storage, today time.Time, n int, arc *Archive) []
 	if err != nil {
 		return nil
 	}
-	out := BuildSentencePlan(bank, hist, wrong, today, n)
+	out := sentence.BuildSentencePlan(bank, hist, wrong, today, n)
 
 	if rb, rerr := st.DownloadReviewBank(ctx); rerr == nil && rb != nil {
 		exclude := make(map[string]bool, len(out))
 		for _, p := range out {
-			exclude[normSentence(p.Answer)] = true
+			exclude[sentence.Norm(p.Answer)] = true
 		}
 		// 回炉配额跟着网页端走同一份配置 —— 离线 Excel 少了回炉句等于白加这个功能。
 		cfg, _ := resolvePlanConfig(ctx, st)

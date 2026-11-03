@@ -8,6 +8,7 @@ import (
 
 	"github.com/xuri/excelize/v2"
 	"github.com/zhangyf/jrp/internal/grading"
+	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // 离线 Excel 闭环：导出时把 plan_date / language / mode 藏进 _meta sheet，
@@ -231,7 +232,7 @@ func ParseExerciseFile(path string, mode grading.GradeMode) (*ImportPreview, err
 			Chinese:     e.def,
 			Answer:      ansSentences[n],
 			Input:       input,
-			AutoCorrect: input != "" && normSentence(input) == normSentence(ansSentences[n]),
+			AutoCorrect: input != "" && sentence.Norm(input) == sentence.Norm(ansSentences[n]),
 			Confidence:  "low", // 长句手写，自动判分仅供参考，必须人工确认
 		})
 	}

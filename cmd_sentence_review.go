@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
+	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // runSentenceReviewTodo 只读体检：列出「够格回炉、但还没做变形句」的词，
@@ -224,8 +225,8 @@ func lessonLabel(n int) string {
 // 原来这里按「短句优先」排（短句好改造），结果造出来的全是短句。
 // 改成「长句优先」：骨架本身有内容，换进去的那个词才练得到东西。
 // 真正决定顺序的是 protoScore（见下），这里只作为同分时的稳定次序。
-func groupProtosByLesson(sentences []BankSentence) map[int][]BankSentence {
-	out := map[int][]BankSentence{}
+func groupProtosByLesson(sentences []sentence.BankSentence) map[int][]sentence.BankSentence {
+	out := map[int][]sentence.BankSentence{}
 	for _, s := range sentences {
 		if s.Answer == "" {
 			continue
@@ -251,7 +252,7 @@ func groupProtosByLesson(sentences []BankSentence) map[int][]BankSentence {
 // 只按课号匹配是不够的——「なごや（名古屋）」在第4课，同课最短的几条是
 // 「だれも いません。」这种没名词槽的句子，套不进去。所以按词性看句子里
 // 有没有对应的槽位；太短的句子（「はい、そうです。」）一律降权。
-func protoScore(s BankSentence, pos string) int {
+func protoScore(s sentence.BankSentence, pos string) int {
 	a := s.Answer
 	n := len([]rune(a))
 	score := 0
@@ -294,14 +295,14 @@ func protoScore(s BankSentence, pos string) int {
 // pickPrototypes 给某个词挑 n 条原型句骨架：先同课，再按课号距离往外扩；
 // 同课内按「这个词能不能套进去」（protoScore）排序。
 // 同课的句子最可能就是这个词在课文里出现的句型。
-func pickPrototypes(byLesson map[int][]BankSentence, lesson int, n int, pos string) []BankSentence {
+func pickPrototypes(byLesson map[int][]sentence.BankSentence, lesson int, n int, pos string) []sentence.BankSentence {
 	if n <= 0 {
 		return nil
 	}
 	// 课号未知（「追加词汇（8/7）」这类补充分组，62 个分组里有 6 个）：
 	// 没法靠课号定位，就在全库里按「这个词能不能套进去」打分挑。
 	if lesson <= 0 {
-		var all []BankSentence
+		var all []sentence.BankSentence
 		for _, list := range byLesson {
 			all = append(all, list...)
 		}
@@ -313,7 +314,7 @@ func pickPrototypes(byLesson map[int][]BankSentence, lesson int, n int, pos stri
 		}
 		return all
 	}
-	var out []BankSentence
+	var out []sentence.BankSentence
 	seen := map[string]bool{}
 	for d := 0; d <= 30 && len(out) < n; d++ {
 		var ls []int
@@ -329,7 +330,7 @@ func pickPrototypes(byLesson map[int][]BankSentence, lesson int, n int, pos stri
 			if l <= 0 {
 				continue
 			}
-			cands := append([]BankSentence(nil), byLesson[l]...)
+			cands := append([]sentence.BankSentence(nil), byLesson[l]...)
 			sort.SliceStable(cands, func(i, j int) bool {
 				return protoScore(cands[i], pos) > protoScore(cands[j], pos)
 			})
@@ -354,7 +355,7 @@ func pickPrototypes(byLesson map[int][]BankSentence, lesson int, n int, pos stri
 	return out
 }
 
-func protoList(ss []BankSentence) []protoSuggest {
+func protoList(ss []sentence.BankSentence) []protoSuggest {
 	out := make([]protoSuggest, 0, len(ss))
 	for _, s := range ss {
 		out = append(out, protoSuggest{
@@ -615,7 +616,7 @@ func runSentenceReviewBank(fs *flag.FlagSet, lang string) {
 			if s.Word != "" {
 				haveWord[s.Word] = true
 			}
-			haveAns[normSentence(s.Answer)] = true
+			haveAns[sentence.Norm(s.Answer)] = true
 			haveID[s.ID] = true
 		}
 		fatal, warn := checkReviewSentences(ctx, storage, add.Sentences, lang)
@@ -632,7 +633,7 @@ func runSentenceReviewBank(fs *flag.FlagSet, lang string) {
 			case s.Word != "" && haveWord[s.Word]:
 				skipped = append(skipped, s.Word+"（已有变形句）")
 				continue
-			case haveAns[normSentence(s.Answer)]:
+			case haveAns[sentence.Norm(s.Answer)]:
 				skipped = append(skipped, s.Answer+"（句子已存在）")
 				continue
 			}
@@ -650,7 +651,7 @@ func runSentenceReviewBank(fs *flag.FlagSet, lang string) {
 				s.Type = "transformed"
 			}
 			haveID[s.ID] = true
-			haveAns[normSentence(s.Answer)] = true
+			haveAns[sentence.Norm(s.Answer)] = true
 			if s.Word != "" {
 				haveWord[s.Word] = true
 			}
@@ -705,7 +706,7 @@ func runSentenceReviewBank(fs *flag.FlagSet, lang string) {
 		for k := range byLesson {
 			lessons = append(lessons, k)
 		}
-		sortLessons(lessons)
+		sentence.SortLessons(lessons)
 		outputResult(map[string]interface{}{
 			"success":   true,
 			"command":   "sentence-review-bank",
@@ -750,15 +751,15 @@ func loadReviewFile(path string) (*ReviewBank, error) {
 // 网络抖一下不该把整批卡住，但校验项会在输出里标注"未校验"。
 func checkReviewSentences(ctx context.Context, st *Storage, ss []ReviewSentence, lang string) (fatal []string, warn []string) {
 	bank, errBank := st.DownloadSentenceBank(ctx)
-	protoBy := map[string]BankSentence{}
+	protoBy := map[string]sentence.BankSentence{}
 	bankAns := map[string]bool{}
 	if errBank == nil && bank != nil {
 		for _, s := range bank.Sentences {
 			if s.Answer == "" {
 				continue
 			}
-			protoBy[normSentence(s.Answer)] = s
-			bankAns[normSentence(s.Answer)] = true
+			protoBy[sentence.Norm(s.Answer)] = s
+			bankAns[sentence.Norm(s.Answer)] = true
 		}
 	}
 	arcWords := map[string]bool{}
@@ -795,7 +796,7 @@ func checkReviewSentences(ctx context.Context, st *Storage, ss []ReviewSentence,
 		if s.Prototype == "" {
 			fatal = append(fatal, fmt.Sprintf("%s：缺 prototype（原型句）", tag))
 		} else if len(protoBy) > 0 {
-			if p, ok := protoBy[normSentence(s.Prototype)]; !ok {
+			if p, ok := protoBy[sentence.Norm(s.Prototype)]; !ok {
 				fatal = append(fatal, fmt.Sprintf("%s：原型句不在主句库里 → %s", tag, s.Prototype))
 			} else {
 				if s.PrototypeID == "" {
@@ -813,13 +814,13 @@ func checkReviewSentences(ctx context.Context, st *Storage, ss []ReviewSentence,
 				}
 			}
 		}
-		if bankAns[normSentence(s.Answer)] {
+		if bankAns[sentence.Norm(s.Answer)] {
 			fatal = append(fatal, fmt.Sprintf("%s：变形句跟课本原文一模一样 → %s", tag, s.Answer))
 		}
-		if seenAns[normSentence(s.Answer)] {
+		if seenAns[sentence.Norm(s.Answer)] {
 			fatal = append(fatal, fmt.Sprintf("%s：这一批里句子重复 → %s", tag, s.Answer))
 		}
-		seenAns[normSentence(s.Answer)] = true
+		seenAns[sentence.Norm(s.Answer)] = true
 		if s.ID != "" {
 			if seenID[s.ID] {
 				fatal = append(fatal, fmt.Sprintf("id 重复：%s", s.ID))

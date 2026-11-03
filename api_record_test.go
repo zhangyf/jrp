@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
+	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // 造句部分提交：没交的句子必须留在 plan 里（刷新后还在），
@@ -20,7 +21,7 @@ func TestPruneSentencePlanPartial(t *testing.T) {
 		{Number: 3, Answer: "c"},
 		{Number: 4, Answer: "d"},
 	}}
-	left := pruneSentencePlan(plan, []SentenceResult{
+	left := pruneSentencePlan(plan, []sentence.SentenceResult{
 		{Number: 1, Correct: true},
 		{Number: 3, Correct: false},
 	})
@@ -38,7 +39,7 @@ func TestPruneSentencePlanAll(t *testing.T) {
 		{Number: 1, Answer: "a"},
 		{Number: 2, Answer: "b"},
 	}}
-	left := pruneSentencePlan(plan, []SentenceResult{
+	left := pruneSentencePlan(plan, []sentence.SentenceResult{
 		{Number: 1, Correct: true},
 		{Number: 2, Correct: false},
 	})
@@ -55,10 +56,10 @@ func TestPruneSentencePlanTwice(t *testing.T) {
 		{Number: 2, Answer: "b"},
 		{Number: 3, Answer: "c"},
 	}}
-	if l := pruneSentencePlan(plan, []SentenceResult{{Number: 1, Correct: true}}); l != 2 {
+	if l := pruneSentencePlan(plan, []sentence.SentenceResult{{Number: 1, Correct: true}}); l != 2 {
 		t.Fatalf("第一次后应剩 2: %d", l)
 	}
-	if l := pruneSentencePlan(plan, []SentenceResult{{Number: 2, Correct: true}}); l != 1 {
+	if l := pruneSentencePlan(plan, []sentence.SentenceResult{{Number: 2, Correct: true}}); l != 1 {
 		t.Fatalf("第二次后应剩 1: %d", l)
 	}
 	if plan.Sentences[0].Number != 3 {

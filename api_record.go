@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
+	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // handleRecord 统一落库入口。
@@ -100,7 +101,7 @@ func (s *server) handleRecord(w http.ResponseWriter, r *http.Request, st *Storag
 			})
 			return
 		}
-		wrong, hist = ApplySentenceState(wrong, hist, input.SentenceResults, input.PlanDate)
+		wrong, hist = sentence.ApplySentenceState(wrong, hist, input.SentenceResults, input.PlanDate)
 		if err := st.UploadSentenceWrong(s.ctx(), wrong); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"success": false, "error": "写错句失败：" + err.Error(),
@@ -203,7 +204,7 @@ func intParam(r *http.Request, name string, def int) int {
 // pruneSentencePlan 把已提交的句子从 plan 里摘掉，返回还剩几句。
 // 部分提交时剩下的句子留在 plan 里，刷新页面还是这批（题号保持原编号，
 // 前端草稿按 number+原句指纹回填，对得上）。
-func pruneSentencePlan(plan *ReviewPlan, results []SentenceResult) int {
+func pruneSentencePlan(plan *ReviewPlan, results []sentence.SentenceResult) int {
 	submitted := make(map[int]bool, len(results))
 	for _, sr := range results {
 		submitted[sr.Number] = true

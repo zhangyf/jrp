@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // ---------- 抽句子的共用部分（CLI 与 save-lesson 自动入库共用） ----------
@@ -49,7 +51,7 @@ func resolveImportDocs(fetch docFetcher, lesson int, onlyDoc string) (unit int, 
 
 // collectImport 从给定的文档里抽第 lesson 课的句子，只留句库里没有的。
 // all 传进来时是句库现有全部条目，返回时已把新条目追加在后面（供连续导多课时查重）。
-func collectImport(fetch docFetcher, all []BankSentence, lesson int, docs []importDoc) (newAll, added []BankSentence, reports []importReport) {
+func collectImport(fetch docFetcher, all []sentence.BankSentence, lesson int, docs []importDoc) (newAll, added []sentence.BankSentence, reports []importReport) {
 	for _, d := range docs {
 		content, ok := fetch(d.Name)
 		if !ok {
@@ -92,21 +94,21 @@ func cosFetcher(ctx context.Context, storage *Storage, seed map[string]string) d
 
 // autoImportLessons 把若干课一次性导进句库并写回 COS。save-lesson 用它，
 // 所以「存完课文 → 句子自动进句库」是一条命令的事，不用再单独敲 sentence-import。
-func autoImportLessons(ctx context.Context, storage *Storage, lessons []int, seed map[string]string) (added []BankSentence, perLesson []map[string]interface{}, err error) {
+func autoImportLessons(ctx context.Context, storage *Storage, lessons []int, seed map[string]string) (added []sentence.BankSentence, perLesson []map[string]interface{}, err error) {
 	bank, err := storage.DownloadSentenceBank(ctx)
 	if err != nil || bank == nil {
-		bank = &SentenceBank{Version: 1}
+		bank = &sentence.SentenceBank{Version: 1}
 	}
 	fetch := cosFetcher(ctx, storage, seed)
 
-	all := make([]BankSentence, 0, len(bank.Sentences))
+	all := make([]sentence.BankSentence, 0, len(bank.Sentences))
 	all = append(all, bank.Sentences...)
 	for _, ln := range lessons {
 		_, docs, found := resolveImportDocs(fetch, ln, "")
 		if !found {
 			continue
 		}
-		var part []BankSentence
+		var part []sentence.BankSentence
 		var reports []importReport
 		all, part, reports = collectImport(fetch, all, ln, docs)
 		added = append(added, part...)
@@ -159,7 +161,7 @@ func runSentenceImport(fs *flag.FlagSet, lang string) {
 	bank, err := storage.DownloadSentenceBank(ctx)
 	if err != nil || bank == nil {
 		// 还没建库：按空库处理，第一次导入顺便把库建出来。
-		bank = &SentenceBank{Version: 1}
+		bank = &sentence.SentenceBank{Version: 1}
 	}
 
 	fetch := cosFetcher(ctx, storage, nil)
@@ -176,9 +178,9 @@ func runSentenceImport(fs *flag.FlagSet, lang string) {
 		return
 	}
 
-	all := make([]BankSentence, 0, len(bank.Sentences))
+	all := make([]sentence.BankSentence, 0, len(bank.Sentences))
 	all = append(all, bank.Sentences...)
-	var added []BankSentence
+	var added []sentence.BankSentence
 	var reports []importReport
 	all, added, reports = collectImport(fetch, all, *lesson, docs)
 

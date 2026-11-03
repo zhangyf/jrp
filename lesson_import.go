@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // ---------- 汇编文档 → 句库 ----------
@@ -69,7 +71,7 @@ func resolveLessonDocs(fetch docFetcher, lesson int) (unit int, basic, applied s
 
 // lessonDocKind 一份汇编文档对应句库里的哪种来源。
 type lessonDocKind struct {
-	Source string // 存进 BankSentence.Source
+	Source string // 存进 sentence.BankSentence.Source
 	Suffix string // 文档名后缀
 	IDTag  string // ID 中段：B = 基本课文文档，A = 应用课文文档
 }
@@ -259,7 +261,7 @@ func lessonSectionsIn(md string) []int {
 }
 
 // maxBankSeq 已有条目里 L<n><tag>xxx 的最大序号，新条目从它后面接着编。
-func maxBankSeq(existing []BankSentence, lesson int, tag string) int {
+func maxBankSeq(existing []sentence.BankSentence, lesson int, tag string) int {
 	prefix := fmt.Sprintf("L%d%s", lesson, tag)
 	max := 0
 	for _, s := range existing {
@@ -284,8 +286,8 @@ func maxBankSeq(existing []BankSentence, lesson int, tag string) int {
 // 课本可能两句都教 —— 相似度说得出"很像"，说不出"就是同一句"，
 // 自动覆盖会把真句子盖没。所以现在的规则就这么简单。
 type importPlan struct {
-	Added   []BankSentence `json:"added"`
-	Skipped int            `json:"skipped"`
+	Added   []sentence.BankSentence `json:"added"`
+	Skipped int                     `json:"skipped"`
 }
 
 // buildImportPlan 把抽出来的行变成导入方案：
@@ -295,10 +297,10 @@ type importPlan struct {
 //  2. 其他一律追加，ID 接着已有最大号编
 //
 // 不做覆盖、不做相似度判断、不做待定清单 —— 老师明确不要这套复杂度。
-func buildImportPlan(rows []importedRow, lesson int, kind lessonDocKind, doc string, existing []BankSentence) importPlan {
+func buildImportPlan(rows []importedRow, lesson int, kind lessonDocKind, doc string, existing []sentence.BankSentence) importPlan {
 	have := make(map[string]bool, len(existing))
 	for _, s := range existing {
-		if n := normSentence(s.Answer); n != "" {
+		if n := sentence.Norm(s.Answer); n != "" {
 			have[n] = true
 		}
 	}
@@ -307,7 +309,7 @@ func buildImportPlan(rows []importedRow, lesson int, kind lessonDocKind, doc str
 	seq := maxBankSeq(existing, lesson, kind.IDTag)
 	seen := make(map[string]bool, len(rows))
 	for _, r := range rows {
-		n := normSentence(r.JP)
+		n := sentence.Norm(r.JP)
 		if n == "" || seen[n] || have[n] {
 			plan.Skipped++
 			continue
@@ -319,8 +321,8 @@ func buildImportPlan(rows []importedRow, lesson int, kind lessonDocKind, doc str
 	return plan
 }
 
-func newBankSentence(lesson int, kind lessonDocKind, doc string, seq int, r importedRow) BankSentence {
-	return BankSentence{
+func newBankSentence(lesson int, kind lessonDocKind, doc string, seq int, r importedRow) sentence.BankSentence {
+	return sentence.BankSentence{
 		ID:        fmt.Sprintf("L%d%s%03d", lesson, kind.IDTag, seq),
 		Lesson:    lessonLabelOf(lesson),
 		Source:    kind.Source,

@@ -12,6 +12,7 @@ import (
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
+	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // runLessonStatus 一次查清某一课的「四件套」齐不齐：
@@ -122,7 +123,7 @@ type lessonStatusSource struct {
 	lang      string
 	knowledge []string          // COS 上所有知识点/汇编文档名
 	docs      map[string]string // 文档名 → 内容（下载失败不进 map）
-	bank      *SentenceBank
+	bank      *sentence.SentenceBank
 	words     map[int]int // 课号 → 档案里的词数
 }
 
@@ -145,7 +146,7 @@ func newLessonStatusSource(ctx context.Context, storage *Storage, lang string) (
 
 	bank, err := storage.DownloadSentenceBank(ctx)
 	if err != nil || bank == nil {
-		bank = &SentenceBank{}
+		bank = &sentence.SentenceBank{}
 	}
 	s.bank = bank
 
