@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"github.com/zhangyf/jrp/internal/llm"
+	"github.com/zhangyf/jrp/internal/vision"
 )
 
 // 拍照取词：把图片直接丢给视觉大模型，让它吐「词形 + 中文意思」。
@@ -62,27 +62,10 @@ const (
 	visionTotalBudget = 120 * time.Second
 )
 
-// VisionCandidate 是从图片里认出来的一个候选词。
-type VisionCandidate struct {
-	Word string `json:"word"`
-	Def  string `json:"def"`
-}
-
-// VisionImageResult 是**一张图**的认词结果。
-//
-// 按图返回（而不是只给一个扁平列表）是老师 2026-10-21 问出来的：
-// 「既然是拍照取词，那就意味着有些词我是不认识的，你不把原始照片给我展示出来，
-//
-//	我怎么知道你识别出来的单词是准确的还是不准确的呢。」
-//
-// —— 所以前端按图分块，每块带上原图缩略图，老师对着照片核哪个词认错了。
-type VisionImageResult struct {
-	Index      int               `json:"index"`
-	OK         bool              `json:"ok"`
-	Error      string            `json:"error,omitempty"`
-	Model      string            `json:"model,omitempty"`
-	Candidates []VisionCandidate `json:"candidates"`
-}
+// VisionCandidate / VisionImageResult 保根包名字，定义随迁到 internal/vision。
+// 类型别名 = 同一类型，HTTP 响应 JSON 字节不变（tag / omitempty 逐字保留）。
+type VisionCandidate = vision.Candidate
+type VisionImageResult = vision.ImageResult
 
 type visionConfig struct {
 	Endpoint string
@@ -116,100 +99,11 @@ func loadVisionConfig() (visionConfig, bool) {
 	return c, c.Endpoint != "" && c.APIKey != ""
 }
 
-// visionPrompt 认词用的提示词。
-//
-// 「只输出 JSON 数组」这句不能省 —— 省了模型就开始给你讲解它看到了什么，
-// 解析直接拿不到东西。第 1 条（例句/标题不要）是实测出来的：不给这条，
-// 它会把「これは わたしの ほんです。」这种课文句子也当词收进来。
-const visionPrompt = `你是日语老师。图片是日语课本的一页（可能是生词表）。
-请提取其中的日语单词词条和对应的中文意思。
+// visionPrompt 让 askVision 保持原样调用；定义在 internal/vision（规则护栏有单测盯着）。
+const visionPrompt = vision.Prompt
 
-要求：
-1. 只提取词条。例句、课文正文、标题、页码、序号都不要。
-2. word 保留图片里的写法（包括括号），def 给简明中文意思；图片里没有中文就留空字符串。
-3. 多个义项用顿号并列。
-4. 同一个词出现多次只给一条。
-
-只输出 JSON 数组，不要解释，不要代码块：[{"word": "みず(水)", "def": "水"}]`
-
-// parseVisionReply 从模型回话里抠出 JSON 数组。
-// 模型爱在外面套 ```json、给成对象包数组、或者前后加废话，三种都得接住。
-func parseVisionReply(reply string) ([]VisionCandidate, error) {
-	s := stripCodeFence(reply)
-
-	if l, r := strings.Index(s, "["), strings.LastIndex(s, "]"); l >= 0 && r > l {
-		var out []VisionCandidate
-		if err := json.Unmarshal([]byte(s[l:r+1]), &out); err == nil && len(out) > 0 {
-			return cleanVisionCandidates(out), nil
-		}
-	}
-	// 兜一层：模型给成 {"words":[...]} / {"items":[...]}
-	var wrapped struct {
-		Words []VisionCandidate `json:"words"`
-		Items []VisionCandidate `json:"items"`
-	}
-	if l, r := strings.Index(s, "{"), strings.LastIndex(s, "}"); l >= 0 && r > l {
-		if err := json.Unmarshal([]byte(s[l:r+1]), &wrapped); err == nil {
-			got := wrapped.Words
-			if len(got) == 0 {
-				got = wrapped.Items
-			}
-			if len(got) > 0 {
-				return cleanVisionCandidates(got), nil
-			}
-		}
-	}
-	return nil, errors.New("模型没按 JSON 数组回")
-}
-
-// stripCodeFence 去掉 ```json ... ``` 外壳。
-func stripCodeFence(s string) string {
-	s = strings.TrimSpace(s)
-	i := strings.Index(s, "```")
-	if i < 0 {
-		return s
-	}
-	s = s[i+3:]
-	if j := strings.Index(s, "```"); j >= 0 {
-		s = s[:j]
-	}
-	s = strings.TrimSpace(s)
-	if strings.HasPrefix(strings.ToLower(s), "json") {
-		s = strings.TrimSpace(s[4:])
-	}
-	return s
-}
-
-// hasJapanese 判断字符串里有没有日文（假名或汉字）—— 滤掉模型偶尔夹带的中文标题之类。
-func hasJapanese(s string) bool {
-	for _, r := range s {
-		if unicode.In(r, unicode.Hiragana, unicode.Katakana, unicode.Han) {
-			return true
-		}
-	}
-	return false
-}
-
-// cleanVisionCandidates 去空、去噪、去重。
-func cleanVisionCandidates(in []VisionCandidate) []VisionCandidate {
-	out := make([]VisionCandidate, 0, len(in))
-	seen := map[string]bool{}
-	for _, c := range in {
-		w := strings.TrimSpace(c.Word)
-		if w == "" || !hasJapanese(w) {
-			continue
-		}
-		if len([]rune(w)) > 24 { // 整句话，不是词条
-			continue
-		}
-		if seen[w] {
-			continue
-		}
-		seen[w] = true
-		out = append(out, VisionCandidate{Word: w, Def: strings.TrimSpace(c.Def)})
-	}
-	return out
-}
+// 认词结果的纯解析规则（ParseReply / CleanCandidates / HasJapanese / stripCodeFence）
+// 已随 P4 vision 域迁到 internal/vision；本文件只保留 IO / 编排 / 配额 / 冷却 / 限流。
 
 type visionResult struct {
 	idx   int
@@ -496,7 +390,7 @@ func askVision(cfg visionConfig, idx int, img string, deadline time.Time) vision
 			time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
 			continue
 		}
-		cands, perr := parseVisionReply(reply)
+		cands, perr := vision.ParseReply(reply)
 		if perr != nil {
 			res.err = perr
 			if attempt == visionRetry {

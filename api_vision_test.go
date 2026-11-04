@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/llm"
+	"github.com/zhangyf/jrp/internal/vision"
 )
 
 // 模型回话的形状比想象中野：套代码块、前后废话、给成对象包数组。
@@ -25,7 +26,7 @@ func TestParseVisionReply(t *testing.T) {
 		{"items 字段", `{"items":[{"word":"がくせい","def":"学生"}]}`, 1, "がくせい"},
 	}
 	for _, c := range cases {
-		got, err := parseVisionReply(c.reply)
+		got, err := vision.ParseReply(c.reply)
 		if err != nil {
 			t.Errorf("%s：解析失败：%v", c.name, err)
 			continue
@@ -39,14 +40,14 @@ func TestParseVisionReply(t *testing.T) {
 		}
 	}
 
-	if _, err := parseVisionReply("我看不清这张图"); err == nil {
+	if _, err := vision.ParseReply("我看不清这张图"); err == nil {
 		t.Error("没有 JSON 时应该报错，否则前端会当成「认出 0 个」")
 	}
 }
 
 // 去噪是这条链路的保险丝：模型偶尔会把例句、标题也塞进数组。
 func TestCleanVisionCandidatesFilters(t *testing.T) {
-	got := cleanVisionCandidates([]VisionCandidate{
+	got := vision.CleanCandidates([]VisionCandidate{
 		{Word: "みず(水)", Def: "水"},
 		{Word: "みず(水)", Def: "水"},   // 重复
 		{Word: "", Def: "空的"},       // 空词
@@ -62,10 +63,10 @@ func TestCleanVisionCandidatesFilters(t *testing.T) {
 }
 
 func TestHasJapanese(t *testing.T) {
-	if !hasJapanese("みず") || !hasJapanese("水") || !hasJapanese("ミズ") {
+	if !vision.HasJapanese("みず") || !vision.HasJapanese("水") || !vision.HasJapanese("ミズ") {
 		t.Error("日文应该被认出来")
 	}
-	if hasJapanese("ABC 123 ---") {
+	if vision.HasJapanese("ABC 123 ---") {
 		t.Error("纯符号不该算日文")
 	}
 }

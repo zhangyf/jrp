@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/llm"
+	"github.com/zhangyf/jrp/internal/vision"
 	"github.com/zhangyf/jrp/internal/worddef"
 )
 
@@ -232,7 +233,7 @@ func TestLLMChatSuccessBeforeDomainParsing(t *testing.T) {
 			reply, model, _, err := visionChat(visionConfig{Endpoint: cfg.Endpoint, Model: cfg.Model, Timeout: cfg.Timeout}, "prompt", testLLMImageURL)
 			return reply, model, err
 		}, func(reply string) error {
-			_, err := parseVisionReply(reply)
+			_, err := vision.ParseReply(reply)
 			return err
 		}},
 	}

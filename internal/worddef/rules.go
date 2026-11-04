@@ -91,9 +91,9 @@ func ParseReply(reply string) ([]LLMItem, error) {
 
 // stripCodeFence 去掉 ```json ... ``` 外壳。
 //
-// 与根包 api_vision.go 的 stripCodeFence 是同一份纯规则（逐字一致），各放一份私有副本
-// 是为了让 worddef 域不反向依赖根包、也不提前跨进 vision 域；vision 域（P4 后一域）
-// 收敛时再合并到一处。
+// 与 internal/vision 的 stripCodeFence 是同一份纯规则（逐字一致），各放一份私有副本
+// 是为了让两个用例包互不依赖；按老师「2 选 A」，P5 尾部薄壳合并那个独立 commit
+// 再统一收敛到一处，P4 不为此新建公共包。
 func stripCodeFence(s string) string {
 	s = strings.TrimSpace(s)
 	i := strings.Index(s, "```")
