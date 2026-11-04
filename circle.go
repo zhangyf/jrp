@@ -10,6 +10,7 @@ import (
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/wordmeta"
+	"github.com/zhangyf/jrp/internal/words"
 )
 
 // ============================================================================
@@ -88,14 +89,14 @@ func applyCircle(ctx context.Context, st *Storage, in *CircleInput, hold bool) (
 		} else {
 			group := wordmeta.CircleGroupOf(it)
 			// 撞车点名（跟 add-words 同一套规矩，不阻断）
-			if others := sameDefinitionWords(arc.Groups, it.Def, ""); len(others) > 0 {
+			if others := words.SameDefinitionWords(arc.Groups, it.Def, ""); len(others) > 0 {
 				out.DupDefs = append(out.DupDefs, fmt.Sprintf(
 					"新词「%s」的释义与已有「%s」完全相同：%s —— 请加括号区分用法",
 					word, strings.Join(others, "、"), it.Def))
-			} else if others := sameCoreWords(arc.Groups, it.Def, ""); len(others) > 0 {
+			} else if others := words.SameCoreWords(arc.Groups, it.Def, ""); len(others) > 0 {
 				out.DupCores = append(out.DupCores, fmt.Sprintf(
 					"新词「%s」的主释义「%s」与已有「%s」相同 —— 请在括号里写上区分点",
-					word, definitionCore(it.Def), strings.Join(others, "、")))
+					word, words.DefinitionCore(it.Def), strings.Join(others, "、")))
 			}
 			arc.AppendWord(group, Word{
 				Word:       word,

@@ -9,6 +9,7 @@ import (
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
+	"github.com/zhangyf/jrp/internal/words"
 )
 
 func runUpdateDef(fs *flag.FlagSet, lang string) {
@@ -66,9 +67,9 @@ func runUpdateDef(fs *flag.FlagSet, lang string) {
 	w.Definition = input.Definition
 
 	// 改完还跟别的词一字不差的话，复习时照样分不出来 —— 点名提醒。
-	sameAs := sameDefinitionWords(arc.Groups, input.Definition, w.Word)
+	sameAs := words.SameDefinitionWords(arc.Groups, input.Definition, w.Word)
 	// 主部（括号前）撞车也要点名：不是一字不差照样没区分度。
-	sameCoreAs := sameCoreWords(arc.Groups, input.Definition, w.Word)
+	sameCoreAs := words.SameCoreWords(arc.Groups, input.Definition, w.Word)
 
 	// Calculate version
 	oldDate, oldMajor, oldMinor, _ := archive.ParseFilename(oldFilename)

@@ -616,6 +616,14 @@ func (s *Storage) ListAllArchives(ctx context.Context) ([]objstore.ObjectInfo, e
 	return objs, nil
 }
 
+// ReadArchiveBlob 按完整 COS key 读取一份档案原文。
+// 之前 computeStats 直接调 s.store.GetAll，把底层对象存储泄漏进了业务用例；
+// 收敛到这个公开方法后，统计用例只需依赖 *Storage 的方法面，
+// 后面拆进用例层时可用内存 fake 替身，不必认识 objstore.Store。
+func (s *Storage) ReadArchiveBlob(ctx context.Context, key string) ([]byte, error) {
+	return s.store.GetAll(ctx, key)
+}
+
 // FindLatestArchiveBeforeDate finds the most recent archive on or before the given date.
 func (s *Storage) FindLatestArchiveBeforeDate(ctx context.Context, before time.Time) (string, time.Time, error) {
 	objs, err := s.ListAllArchives(ctx)
