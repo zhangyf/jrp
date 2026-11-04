@@ -1,10 +1,8 @@
-package lessonimport
+package sentence
 
 import (
 	"reflect"
 	"testing"
-
-	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // 本文件只补已有测试（lesson_import_test.go）未覆盖的缺口，函数名一律加
@@ -241,7 +239,7 @@ func TestLessonSectionsInDedupAndSort(t *testing.T) {
 // ---------- 6) MaxBankSeq ----------
 
 func TestMaxBankSeqVariants(t *testing.T) {
-	existing := []sentence.BankSentence{
+	existing := []BankSentence{
 		{ID: "L19B001"},
 		{ID: "L19B009"},
 		{ID: "L19A005"}, // 不同 tag，互不影响
@@ -276,7 +274,7 @@ func TestMaxBankSeqVariants(t *testing.T) {
 		}
 	})
 	t.Run("序号解析失败计为0", func(t *testing.T) {
-		bad := []sentence.BankSentence{{ID: "L19Babc"}, {ID: "L19B"}}
+		bad := []BankSentence{{ID: "L19Babc"}, {ID: "L19B"}}
 		if got := MaxBankSeq(bad, 19, "B"); got != 0 {
 			t.Errorf("序号解析失败应返回 0，实际 %d", got)
 		}
@@ -290,7 +288,7 @@ func TestNewBankSentenceFullFields(t *testing.T) {
 	row := ImportedRow{JP: "あの 人が 吉田課長ですよ。", CN: "那个人是吉田科长。"}
 	got := NewBankSentence(19, LessonDocKinds[0], "课本原文汇编_第5单元（基本课文）.md", 10, row)
 
-	want := sentence.BankSentence{
+	want := BankSentence{
 		ID:        "L19B010",
 		Lesson:    "第19课",
 		Source:    "基本课文",

@@ -9,7 +9,6 @@ import (
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
-	"github.com/zhangyf/jrp/internal/wordmeta"
 	"github.com/zhangyf/jrp/internal/words"
 )
 
@@ -26,8 +25,8 @@ import (
 // ⛔ 不动档案的 7 列 markdown 表格结构 —— 动表格要改所有读写档案的地方，不值。
 //
 // 词性表 / 圆级纯规则（CircleGroupOf / LessonOfGroup / CircleMap 及 5 个类型）
-// 已迁 internal/wordmeta，根包靠 types.go 的别名保持 WordMeta 等名字不变。
-// 圆级分档 CircleRank 归 internal/sentencereview，只吃摊好的 map。
+// 已迁 internal/words，根包靠 types.go 的别名保持 WordMeta 等名字不变。
+// 圆级分档 CircleRank 归 internal/sentence，只吃摊好的 map。
 // applyCircle / unholdLesson 要写档案，留根；编排照旧。
 
 // applyCircle 是批量导入/打标的唯一实现。
@@ -87,7 +86,7 @@ func applyCircle(ctx context.Context, st *Storage, in *CircleInput, hold bool) (
 			out.Warnings = append(out.Warnings,
 				fmt.Sprintf("「%s」档案里没有，输入也没给释义 —— 只打了圆级标，没录进词库", word))
 		} else {
-			group := wordmeta.CircleGroupOf(it)
+			group := words.CircleGroupOf(it)
 			// 撞车点名（跟 add-words 同一套规矩，不阻断）
 			if others := words.SameDefinitionWords(arc.Groups, it.Def, ""); len(others) > 0 {
 				out.DupDefs = append(out.DupDefs, fmt.Sprintf(
@@ -193,7 +192,7 @@ func unholdLesson(ctx context.Context, st *Storage, lesson int) (int, error) {
 	}
 	n := 0
 	for _, g := range arc.Groups {
-		if lesson > 0 && wordmeta.LessonOfGroup(g.Title) != lesson {
+		if lesson > 0 && words.LessonOfGroup(g.Title) != lesson {
 			continue
 		}
 		for _, w := range g.Words {

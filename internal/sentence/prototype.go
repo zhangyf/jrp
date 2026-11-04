@@ -1,4 +1,4 @@
-package sentencereview
+package sentence
 
 import (
 	"encoding/json"
@@ -8,8 +8,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // 回炉变形句的「挑原型句骨架」规则（原 cmd_sentence_review.go 里的纯函数）。
@@ -57,8 +55,8 @@ func JpLen(s string) int {
 // 原来这里按「短句优先」排（短句好改造），结果造出来的全是短句。
 // 改成「长句优先」：骨架本身有内容，换进去的那个词才练得到东西。
 // 真正决定顺序的是 ProtoScore（见下），这里只作为同分时的稳定次序。
-func GroupProtosByLesson(sentences []sentence.BankSentence) map[int][]sentence.BankSentence {
-	out := map[int][]sentence.BankSentence{}
+func GroupProtosByLesson(sentences []BankSentence) map[int][]BankSentence {
+	out := map[int][]BankSentence{}
 	for _, s := range sentences {
 		if s.Answer == "" {
 			continue
@@ -84,7 +82,7 @@ func GroupProtosByLesson(sentences []sentence.BankSentence) map[int][]sentence.B
 // 只按课号匹配是不够的——「なごや（名古屋）」在第4课，同课最短的几条是
 // 「だれも いません。」这种没名词槽的句子，套不进去。所以按词性看句子里
 // 有没有对应的槽位；太短的句子（「はい、そうです。」）一律降权。
-func ProtoScore(s sentence.BankSentence, pos string) int {
+func ProtoScore(s BankSentence, pos string) int {
 	a := s.Answer
 	n := len([]rune(a))
 	score := 0
@@ -127,14 +125,14 @@ func ProtoScore(s sentence.BankSentence, pos string) int {
 // PickPrototypes 给某个词挑 n 条原型句骨架：先同课，再按课号距离往外扩；
 // 同课内按「这个词能不能套进去」（ProtoScore）排序。
 // 同课的句子最可能就是这个词在课文里出现的句型。
-func PickPrototypes(byLesson map[int][]sentence.BankSentence, lesson int, n int, pos string) []sentence.BankSentence {
+func PickPrototypes(byLesson map[int][]BankSentence, lesson int, n int, pos string) []BankSentence {
 	if n <= 0 {
 		return nil
 	}
 	// 课号未知（「追加词汇（8/7）」这类补充分组，62 个分组里有 6 个）：
 	// 没法靠课号定位，就在全库里按「这个词能不能套进去」打分挑。
 	if lesson <= 0 {
-		var all []sentence.BankSentence
+		var all []BankSentence
 		for _, list := range byLesson {
 			all = append(all, list...)
 		}
@@ -146,7 +144,7 @@ func PickPrototypes(byLesson map[int][]sentence.BankSentence, lesson int, n int,
 		}
 		return all
 	}
-	var out []sentence.BankSentence
+	var out []BankSentence
 	seen := map[string]bool{}
 	for d := 0; d <= 30 && len(out) < n; d++ {
 		var ls []int
@@ -162,7 +160,7 @@ func PickPrototypes(byLesson map[int][]sentence.BankSentence, lesson int, n int,
 			if l <= 0 {
 				continue
 			}
-			cands := append([]sentence.BankSentence(nil), byLesson[l]...)
+			cands := append([]BankSentence(nil), byLesson[l]...)
 			sort.SliceStable(cands, func(i, j int) bool {
 				return ProtoScore(cands[i], pos) > ProtoScore(cands[j], pos)
 			})
@@ -187,7 +185,7 @@ func PickPrototypes(byLesson map[int][]sentence.BankSentence, lesson int, n int,
 	return out
 }
 
-func ProtoList(ss []sentence.BankSentence) []ProtoSuggest {
+func ProtoList(ss []BankSentence) []ProtoSuggest {
 	out := make([]ProtoSuggest, 0, len(ss))
 	for _, s := range ss {
 		out = append(out, ProtoSuggest{

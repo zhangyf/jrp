@@ -1,4 +1,4 @@
-package lessonimport
+package sentence
 
 import (
 	"fmt"
@@ -69,7 +69,7 @@ func ResolveLessonDocs(fetch DocFetcher, lesson int) (unit int, basic, applied s
 
 // LessonDocKind 一份汇编文档对应句库里的哪种来源。
 type LessonDocKind struct {
-	Source string // 存进 sentence.BankSentence.Source
+	Source string // 存进 BankSentence.Source
 	Suffix string // 文档名后缀
 	IDTag  string // ID 中段：B = 基本课文文档，A = 应用课文文档
 }

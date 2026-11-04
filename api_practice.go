@@ -34,7 +34,7 @@ import (
 	"github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
-	"github.com/zhangyf/jrp/internal/wordmeta"
+	"github.com/zhangyf/jrp/internal/words"
 )
 
 // ==========================================================================
@@ -128,7 +128,7 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request, st *Storage)
 		out["sentences"] = plan.Sentences
 
 	default:
-		duePlan := plan.BuildDuePlan(arc, s.lang, targetDate, wordmeta.HoldSet(dueHold(ctx, st)))
+		duePlan := plan.BuildDuePlan(arc, s.lang, targetDate, words.HoldSet(dueHold(ctx, st)))
 		if !readOnly {
 			// plan JSON 供 /api/record 把序号映射回词
 			if err := st.UploadPlan(ctx, duePlan); err != nil {
@@ -273,17 +273,17 @@ func (s *server) buildSentencePlan(st *Storage, targetDate time.Time, upload boo
 // 这三样存在独立的 word_meta.json 里（不在档案表格中），按完整词形
 // 「假名(汉字)」匹配。读不到就整批留空 —— 纯展示增强，绝不能因为词性表
 // 挂掉或还没上传，就把今天的练习题给弄没了。
-func (s *server) enrichWordMeta(ctx context.Context, st *Storage, words []PlanWord) {
-	if len(words) == 0 {
+func (s *server) enrichWordMeta(ctx context.Context, st *Storage, planWords []PlanWord) {
+	if len(planWords) == 0 {
 		return
 	}
 	meta, err := st.DownloadWordMeta(ctx)
 	if err != nil || meta == nil {
 		return
 	}
-	for i := range words {
-		words[i].Pos, words[i].Sub, words[i].Note, words[i].Circle =
-			wordmeta.LookupWordMeta(meta, words[i].Word)
+	for i := range planWords {
+		planWords[i].Pos, planWords[i].Sub, planWords[i].Note, planWords[i].Circle =
+			words.LookupWordMeta(meta, planWords[i].Word)
 	}
 }
 
@@ -300,7 +300,7 @@ func (s *server) enrichReviewMeta(ctx context.Context, st *Storage, snap *Review
 	}
 	for i := range snap.Items {
 		snap.Items[i].Pos, snap.Items[i].Sub, snap.Items[i].Note, snap.Items[i].Circle =
-			wordmeta.LookupWordMeta(meta, snap.Items[i].Word)
+			words.LookupWordMeta(meta, snap.Items[i].Word)
 	}
 }
 
@@ -525,7 +525,7 @@ func (s *server) tomorrowPreview(st *Storage) map[string]interface{} {
 	if err != nil {
 		return map[string]interface{}{"error": err.Error()}
 	}
-	previewPlan := plan.BuildDuePlan(arc, s.lang, tomorrow, wordmeta.HoldSet(dueHold(ctx, st)))
+	previewPlan := plan.BuildDuePlan(arc, s.lang, tomorrow, words.HoldSet(dueHold(ctx, st)))
 	return map[string]interface{}{
 		"date":      tomorrow.Format("2006-01-02"),
 		"due_count": len(previewPlan.Words),
@@ -889,7 +889,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request, st *Storag
 		})
 
 	default: // daily：到期词 + 20 句造句
-		plan := plan.BuildDuePlan(arc, s.lang, targetDate, wordmeta.HoldSet(dueHold(ctx, st)))
+		plan := plan.BuildDuePlan(arc, s.lang, targetDate, words.HoldSet(dueHold(ctx, st)))
 		plan.Sentences = BuildSentencePlanFrom(st, targetDate, 20, arc)
 		filename = fmt.Sprintf("review_%s.xlsx", dateStr)
 		genErr = offline.GenerateExcelWithMeta(plan, tmp.Name(), &offline.ExcelMeta{

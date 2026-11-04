@@ -1,13 +1,13 @@
 // Package lexicon 存放词汇总表的 DTO、词形拆分规则与拼装逻辑。
 //
-// 原先 LexiconItem / splitLexiconWord 在根包 api_lexicon.go、buildLexicon
-// 在根包 cmd_lexicon.go，被 CLI dump-lexicon、GET /api/lexicon、体验版假数据、
+// 原先 LexiconItem / splitLexiconWord 在根包 api_words.go、buildLexicon
+// 在根包 cmd_words.go，被 CLI dump-lexicon、GET /api/lexicon、体验版假数据、
 // 活用练习、查释义四处共用。2026-11-04 按分层设计 P2 收拢到本包。
 //
 // ⚠️ DTO 随迁：LexiconItem 的字段顺序与 json tag 是 /api/lexicon 的响应契约，
-// 根包留 type LexiconItem = lexicon.LexiconItem 别名，序列化字节不变。
+// 根包留 type LexiconItem = words.LexiconItem 别名，序列化字节不变。
 // 动 struct 前先看 lexicon_test.go 的 JSON 字节对拍。
-package lexicon
+package words
 
 import (
 	"regexp"
@@ -16,7 +16,6 @@ import (
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
-	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
 // LexiconItem 是词汇总表的一行。
@@ -64,7 +63,7 @@ func SplitLexiconWord(w string) (kana, kanji, note string) {
 
 // BuildLexicon 把档案 + 词性表拼成词汇总表的行。
 // /api/lexicon 和 CLI dump-lexicon 共用这一份，两边不会对不上。
-func BuildLexicon(arc *archive.Archive, meta *wordmeta.WordMeta) ([]LexiconItem, map[string]int, []string) {
+func BuildLexicon(arc *archive.Archive, meta *WordMeta) ([]LexiconItem, map[string]int, []string) {
 	words := review.AllWords(arc.Groups)
 	items := make([]LexiconItem, 0, len(words))
 	posSummary := map[string]int{}

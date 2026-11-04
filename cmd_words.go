@@ -11,7 +11,7 @@
 // cmd_normalize_words.go       isKana, isKanji, classifySegment, NormalizeWordForm, runNormalizeWords
 // cmd_update_def.go            runUpdateDef
 // cmd_update_word.go           runUpdateWord
-// cmd_wordmeta.go              runWordMeta
+// cmd_words.go              runWordMeta
 // cmd_wordnote.go              runWordNote, listNotes
 package main
 
@@ -27,7 +27,6 @@ import (
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
-	"github.com/zhangyf/jrp/internal/wordmeta"
 	"github.com/zhangyf/jrp/internal/words"
 )
 
@@ -985,7 +984,7 @@ func runUpdateWord(fs *flag.FlagSet, lang string) {
 }
 
 // ==========================================================================
-// 原 cmd_wordmeta.go
+// 原 cmd_words.go
 // ==========================================================================
 
 // runWordMeta 词性表的上传与查看。
@@ -1148,7 +1147,7 @@ func runWordNote(fs *flag.FlagSet, lang string) {
 		if _, ok := m.Items[w]; !ok {
 			// 词形没命中多半是括号/汉字写法对不上，给几个候选比直接报错有用
 			fmt.Fprintf(os.Stderr, "Error: 词表里没有这个词：%s\n", w)
-			if near := wordmeta.NearKeys(m.Items, w); len(near) > 0 {
+			if near := words.NearKeys(m.Items, w); len(near) > 0 {
 				fmt.Fprintf(os.Stderr, "是不是想找：%s\n", strings.Join(near, " / "))
 			}
 			os.Exit(1)

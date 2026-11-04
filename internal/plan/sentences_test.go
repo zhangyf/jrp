@@ -11,7 +11,6 @@ import (
 	"github.com/zhangyf/jrp/internal/planconfig"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
-	"github.com/zhangyf/jrp/internal/sentencereview"
 )
 
 // fakeSentenceStore 是 SentenceStore 的内存替身：四份数据 + 各自可控的读取错误。
@@ -20,7 +19,7 @@ type fakeSentenceStore struct {
 	bank   *sentence.SentenceBank
 	hist   sentence.SentenceHistory
 	wrong  *sentence.SentenceWrong
-	review *sentencereview.ReviewBank
+	review *sentence.ReviewBank
 
 	bankErr   error
 	histErr   error
@@ -37,7 +36,7 @@ func (f *fakeSentenceStore) DownloadSentenceHistory(context.Context) (sentence.S
 func (f *fakeSentenceStore) DownloadSentenceWrong(context.Context) (*sentence.SentenceWrong, error) {
 	return f.wrong, f.wrongErr
 }
-func (f *fakeSentenceStore) DownloadReviewBank(context.Context) (*sentencereview.ReviewBank, error) {
+func (f *fakeSentenceStore) DownloadReviewBank(context.Context) (*sentence.ReviewBank, error) {
 	return f.review, f.reviewErr
 }
 
@@ -93,9 +92,9 @@ func composeFixture() (*fakeSentenceStore, *fakeMeta, planconfig.PlanConfig, tim
 	wrong := &sentence.SentenceWrong{Sentences: []sentence.WrongSentence{
 		{Answer: "忘れた文です。", Chinese: "忘掉的句子", Status: "open", NextDue: "2026-11-01", WrongCount: 2},
 	}}
-	reviewBank := &sentencereview.ReviewBank{
+	reviewBank := &sentence.ReviewBank{
 		Version: 1,
-		Sentences: []sentencereview.ReviewSentence{
+		Sentences: []sentence.ReviewSentence{
 			{ID: "r1", Word: "ほん(本)", Answer: "ほんは 新しいです。", Chinese: "书是新的"},
 			{ID: "r2", Word: "がくせい(学生)", Answer: "がくせいは 忙しいです。", Chinese: "学生很忙"},
 			{ID: "r3", Word: "せんせい(先生)", Answer: "せんせいは 優しいです。", Chinese: "老师很温柔"},
@@ -126,8 +125,8 @@ func referenceCompose(f *fakeSentenceStore, m *fakeMeta, cfg planconfig.PlanConf
 	for _, ps := range out {
 		exclude[sentence.Norm(ps.Answer)] = true
 	}
-	extra := sentencereview.BuildReviewSentences(f.review, f.hist, arc, today,
-		cfg.SentenceReviewCount, exclude, sentencereview.DefaultReviewIdleDays,
+	extra := sentence.BuildReviewSentences(f.review, f.hist, arc, today,
+		cfg.SentenceReviewCount, exclude, sentence.DefaultReviewIdleDays,
 		m.circle, planconfig.PlanCircleRatio(cfg))
 	for _, e := range extra {
 		out = append(out, sentence.PlanSentence{
@@ -304,7 +303,7 @@ func TestComposeSentencesReviewFailOpen(t *testing.T) {
 // 空回炉库 ≠ 没有回炉库：原编排照样读词性表、只是挑出 0 句。这条别「顺手优化」掉。
 func TestComposeSentencesEmptyReviewBankStillLoadsCircle(t *testing.T) {
 	store, meta, cfg, today := composeFixture()
-	store.review = &sentencereview.ReviewBank{}
+	store.review = &sentence.ReviewBank{}
 
 	res, err := ComposeSentences(context.Background(), store, meta, Params{Today: today})
 	if err != nil {

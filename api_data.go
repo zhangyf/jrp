@@ -7,7 +7,7 @@
 // 来源与顶层声明：
 // api_conjugation.go: ConjTask, ConjItem, handleConjugation
 // api_knowledge.go: KSpan, KItem, KBlock, handleKnowledge, knowledgeFullAccess
-// api_lexicon.go: LexiconItem, handleLexicon
+// api_words.go: LexiconItem, handleLexicon
 // api_words.go: handleAddWords
 package main
 
@@ -24,8 +24,8 @@ import (
 
 	"github.com/zhangyf/jrp/internal/conjugation"
 	"github.com/zhangyf/jrp/internal/knowledge"
-	"github.com/zhangyf/jrp/internal/lexicon"
 	"github.com/zhangyf/jrp/internal/review"
+	"github.com/zhangyf/jrp/internal/words"
 )
 
 // ==========================================================================
@@ -100,7 +100,7 @@ func (s *server) handleConjugation(w http.ResponseWriter, r *http.Request, st *S
 		if !has {
 			continue
 		}
-		kana, kanji, _ := lexicon.SplitLexiconWord(w.Word)
+		kana, kanji, _ := words.SplitLexiconWord(w.Word)
 		// 档案里有「あおい」和「あおい(青い)」这类同词异形（历史导入留下的），
 		// 出题按假名去重，免得同一批里出现两张一样的卡。
 		if seenKana[kana] {
@@ -375,13 +375,13 @@ func (s *server) knowledgeFullAccess(r *http.Request, ctx context.Context) bool 
 }
 
 // ==========================================================================
-// 原 api_lexicon.go
+// 原 api_words.go
 // ==========================================================================
 
-// LexiconItem 是词汇总表的一行，定义已迁 internal/lexicon（P2）。
+// LexiconItem 是词汇总表的一行，定义已迁 internal/words（P2）。
 // 根包只留别名 —— /api/lexicon、CLI dump-lexicon、体验版假数据、
 // 活用练习、查释义都继续用这个名字，JSON 序列化字节不变。
-type LexiconItem = lexicon.LexiconItem
+type LexiconItem = words.LexiconItem
 
 // handleLexicon —— 词汇总表。
 //
@@ -420,7 +420,7 @@ func (s *server) handleLexicon(w http.ResponseWriter, r *http.Request, st *Stora
 		meta.Items = map[string]WordPOS{}
 	}
 
-	items, posSummary, groups := lexicon.BuildLexicon(arc, meta)
+	items, posSummary, groups := words.BuildLexicon(arc, meta)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success":      true,

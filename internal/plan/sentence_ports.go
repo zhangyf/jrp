@@ -7,7 +7,6 @@ import (
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/planconfig"
 	"github.com/zhangyf/jrp/internal/sentence"
-	"github.com/zhangyf/jrp/internal/sentencereview"
 )
 
 // SentenceStore 造句出题要读的四份数据。由「用的人」（用例层）定义，
@@ -17,7 +16,7 @@ type SentenceStore interface {
 	DownloadSentenceBank(ctx context.Context) (*sentence.SentenceBank, error)
 	DownloadSentenceHistory(ctx context.Context) (sentence.SentenceHistory, error)
 	DownloadSentenceWrong(ctx context.Context) (*sentence.SentenceWrong, error)
-	DownloadReviewBank(ctx context.Context) (*sentencereview.ReviewBank, error)
+	DownloadReviewBank(ctx context.Context) (*sentence.ReviewBank, error)
 }
 
 // Meta 造句出题要用的外部配置与词性圆级表。
@@ -47,15 +46,15 @@ type Params struct {
 // 圆级分档 / 近 7 天重复 / 错句到期的只读自检；网页端与离线导出只用 Sentences。
 type Result struct {
 	Sentences   []sentence.PlanSentence
-	BaseCount   int                        // 加餐前的基础句数
-	ReviewCount int                        // 回炉加餐句数
-	CircleRatio int                        // 生效的三圆名额占比（无条件算好，CLI 输出要用）
-	Circle      map[string]string          // 本次用的圆级表；没加餐为 nil
-	ReviewBank  *sentencereview.ReviewBank // 本次读到的回炉库；没加餐为 nil
-	ReviewExtra []sentence.BankSentence    // 本次选中的回炉句
-	History     sentence.SentenceHistory   // 读到的轮换账本
-	Wrong       *sentence.SentenceWrong    // 读到的错句表
-	Bank        *sentence.SentenceBank     // 读到的句库
+	BaseCount   int                      // 加餐前的基础句数
+	ReviewCount int                      // 回炉加餐句数
+	CircleRatio int                      // 生效的三圆名额占比（无条件算好，CLI 输出要用）
+	Circle      map[string]string        // 本次用的圆级表；没加餐为 nil
+	ReviewBank  *sentence.ReviewBank     // 本次读到的回炉库；没加餐为 nil
+	ReviewExtra []sentence.BankSentence  // 本次选中的回炉句
+	History     sentence.SentenceHistory // 读到的轮换账本
+	Wrong       *sentence.SentenceWrong  // 读到的错句表
+	Bank        *sentence.SentenceBank   // 读到的句库
 }
 
 // 读库失败的阶段。入口靠它还原各自原有的错误文案（网页给句库错误加

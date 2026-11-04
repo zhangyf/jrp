@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/zhangyf/jrp/internal/lexicon"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/textutil"
+	"github.com/zhangyf/jrp/internal/words"
 )
 
 // Item 是一个词查回来的结果。Word 是建议录进档案的词形（可能带了括号汉字）。
@@ -61,7 +61,7 @@ func FindWordByKana(groups []review.WordGroup, kana string) *review.Word {
 	for gi := range groups {
 		for wi := range groups[gi].Words {
 			w := &groups[gi].Words[wi]
-			if k, _, _ := lexicon.SplitLexiconWord(w.Word); k == kana {
+			if k, _, _ := words.SplitLexiconWord(w.Word); k == kana {
 				return w
 			}
 		}

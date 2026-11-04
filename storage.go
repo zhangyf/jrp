@@ -11,7 +11,7 @@
 // storage_planconfig.go: planConfigKey, DownloadPlanConfig, UploadPlanConfig, DeletePlanConfig
 // storage_review.go: ReviewSnapshot, ReviewItem, reviewKey, UploadReview, mergeReview, DownloadReview, DeleteReview, validReviewMode
 // storage_users.go: User, userTable, authBase, usersKey, ListUsers, SaveUsers, cachedUsers, usersUnknown, invalidateUserCache, findUserByUID, ... (共 17 个顶层声明)
-// storage_wordmeta.go: wordMetaKey, DownloadWordMeta, UploadWordMeta
+// storage_words.go: wordMetaKey, DownloadWordMeta, UploadWordMeta
 package main
 
 import (
@@ -1352,10 +1352,10 @@ func newUID() string {
 }
 
 // ==========================================================================
-// 原 storage_wordmeta.go
+// 原 storage_words.go
 // ==========================================================================
 
-// WordMeta / WordPOS 类型已迁 internal/wordmeta（含完整字段注释），
+// WordMeta / WordPOS 类型已迁 internal/words（含完整字段注释），
 // 根包靠 types.go 的别名保持这两个名字不变；本文件只留 word_meta.json
 // 的 COS 读写。读不到就返回空表，绝不因此把词汇总表打不开。
 func (s *Storage) wordMetaKey() string {

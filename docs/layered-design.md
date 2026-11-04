@@ -1,6 +1,6 @@
 # jrp 分层设计
 
-> 日期：2026-11-04　状态：**三块已齐：用例清单（第 3 节）、接口定义（第 5 节）、改造顺序（第 6 节）**。改造已按第 6 节 P0→P5 开工，进度见提交历史。
+> 日期：2026-11-04　状态：**P0→P5 分层改造已落地；腿一（根目录物理合并）+ 腿二 2A（internal 小包合并）已收尾，见第 7 节**。用例清单（第 3 节）、接口定义（第 5 节）、改造顺序（第 6 节）为当时的设计依据。
 > 本文件只做设计记录，不承载生产代码。
 
 ## 0. 目标与范围
@@ -42,6 +42,8 @@
 │  *Storage（COS 档案、快照、配置）、LLM 网关、WX 接口     │
 └────────────────────────────────────────────────────────┘
 ```
+
+> 注：上图是 P0 设计时的分层示意（当时 12 个领域规则包）。截至腿二 2A 收尾，`internal/` 实际 17 个包：`sentencereview` / `lessonimport` 已并入 `sentence`，`wordmeta` / `lexicon` 已并入 `words`；当前包边界见第 7 节。
 
 **铁律**：用例层可 import 领域规则层，不可 import 入口层或 IO 层；IO 通过最小接口注入。这样用例能被任何入口引用，也能脱离 COS/HTTP 单测。
 
@@ -150,7 +152,7 @@ internal/words.AddWords(arc, group, items) Result   ← 纯规则，可单测
 
 ### 3.9 句库 / 回炉 sentence
 
-规则层已在 `internal/sentence` / `sentencereview` / `lessonimport`；根目录剩 CLI 编排与体检：
+规则层当时在 `internal/sentence` / `sentencereview` / `lessonimport`（三包现已并入 `internal/sentence`，见第 7 节）；根目录剩 CLI 编排与体检：
 
 | 用例（现状函数） | 位置 | 复用 | 现状形态 | 处理 |
 |---|---|---|---|---|
@@ -184,10 +186,10 @@ internal/words.AddWords(arc, group, items) Result   ← 纯规则，可单测
 
 接口签名里出现的类型分两类：
 
-- **已在 `internal/`、可直接用**：`Archive`(=`archive.Archive`)、`ReviewPlan`/`PlanWord`(=`offline.*`)、`WordMeta`(=`wordmeta.*`)、`PlanConfig`(=`planconfig.*`)、`SentenceBank`/`History`/`Wrong`(=`sentence.*`)、`ReviewBank`(=`sentencereview.*`)、`llm.Config`。**纯规则用例的入出参全是这些，所以它们能零阻力直接搬。**
+- **已在 `internal/`、可直接用**：`Archive`(=`archive.Archive`)、`ReviewPlan`/`PlanWord`(=`offline.*`)、`WordMeta`(当时 `wordmeta.*`，现 `words.*`)、`PlanConfig`(=`planconfig.*`)、`SentenceBank`/`History`/`Wrong`(=`sentence.*`)、`ReviewBank`(当时 `sentencereview.*`，现 `sentence.*`)、`llm.Config`。**纯规则用例的入出参全是这些，所以它们能零阻力直接搬。**
 - **仍定义在 `package main`**：`LangConfig`(types.go:14)、`RecordInput` / `RecordResultSummary`、`StatsResult` / `StatsSnapshot` / `StatsDetail` / `JlptProgress`、`WordDefItem`、`LexiconItem`、`WordToAdd` / `AddWordsOutcome`、`Draft`、`ReviewSnapshot`、`judgeResult`。
 
-结论：**规则+IO 用例搬进用例包时，输入输出 DTO 随之迁入该用例包**；纯规则用例无此负担。这是"接口定义"落地的前提，不是一个可选优化。另注：新用例包名要避开已存在的 12 个 internal 包（尤其 `internal/conjugation` 已有领域包，词形归一要么并入要么归到 `internal/words`，不能重名）。
+结论：**规则+IO 用例搬进用例包时，输入输出 DTO 随之迁入该用例包**；纯规则用例无此负担。这是"接口定义"落地的前提，不是一个可选优化。另注：新用例包名要避开当时已存在的 12 个 internal 包（现 17 个，见第 7 节）（尤其 `internal/conjugation` 已有领域包，词形归一要么并入要么归到 `internal/words`，不能重名）。
 
 ### 5.1 最小接口集（7 个端口 + 1 个 LLM）
 
@@ -292,4 +294,65 @@ type StatsArchiveReader interface {
 - **行为不变**的三条硬指标：HTTP 响应 JSON 字节、COS 存档字节（`archive.WriteArchive` 输出）、Excel 渲染字节——三项都不许因分层改变。用真数据快照前后对拍。
 - 一域一 commit，`git revert` 单批可退；数据不用回滚。
 
-**边界**：本文件是设计记录，不承载生产代码。截至 P5 收尾：P0→P5 的分层改造已完成并提交推送，全程**未部署**（部署单独确认）；维护域二期（circle、词库维护 CLI 一批、句库 import/体检）按老师本轮选择不做，留待以后需要时再排。两份 SKILL.md 包边界章节与工作日志随每批同步。
+**边界**：本文件是设计记录，不承载生产代码。截至 P5 收尾：P0→P5 的分层改造已完成并提交推送（后续腿一 / 腿二 2A 见第 7 节），全程**未部署**（部署单独确认）；维护域二期（circle、词库维护 CLI 一批、句库 import/体检）按老师本轮选择不做，留待以后需要时再排。两份 SKILL.md 包边界章节与工作日志随每批同步。
+
+
+## 7. 腿一 + 腿二 2A 落地（2026-11-04）
+
+P0→P5 完成后老师判定重构未达预期：**根目录文件数没减少**、不同功能平铺，`internal/` 小包过碎且功能相近。于是按老师选择做「腿一（根目录物理合并）+ 腿二 2A（internal 小包按功能相近合并）」，分步实现、每期单 commit 可 revert、**全程未部署**。
+
+### 7.1 腿一：根目录物理合并
+
+同 `package main` 内拼接文件，**函数体逐字不动**，只做 import 并集去重 + 文件头来源清单 + 每分区「原文件名」标注。目标文件均为标准 `import (` 块、无 `init()` / build tag / import 别名。
+
+| 批次 | 内容 | 结果 |
+|---|---|---|
+| R1 | 26 个 `cmd_*.go` → 4 个（`cmd_words` / `cmd_sentence` / `cmd_lesson` / `cmd_admin`） | 根生产 `.go` 64 → 42 |
+| R2 | 17 个 `api_*.go` + 7 个 `storage*.go` → 5 个（`api_practice` / `api_llm` / `api_auth` / `api_data` / `storage`） | 42 → 23 |
+| 收尾 | 22 个根 `*_test.go` → 5 个（按被测域） | 根测试 22 → 5 |
+
+根目录 `.go` 总数 **86 → 28**（生产 23 + 测试 5）。`main.go` 命令分发与 `serve.go` 路由一个字没改（同 package 内函数仍可见）。
+
+> 口径提醒：报「根目录文件数」要给**总数**（生产 + 测试），别只报生产 `.go`。
+
+### 7.2 腿二 2A：internal 小包合并
+
+按真实依赖降级后实做两组：
+
+| 合并 | 原包 | 目标 | 要点 |
+|---|---|---|---|
+| R3-A 句子域 | `sentence` + `sentencereview` + `lessonimport` | `internal/sentence` | 三包零符号重名；后两包原本反向 import `sentence`，合并后删该 import + 去 `sentence.` 前缀 |
+| R3-B 词条域 | `words` + `wordmeta` + `lexicon` | `internal/words` | `lexicon` 原本依赖 `wordmeta`，合并后去前缀；`worddef` 改指 `words`；根 `types.go` 5 条别名、`api_data.go` 的 `LexiconItem` 别名改前缀 |
+
+**降级不做**（按真实依赖，不硬合）：
+- `record` + `grading`：`grading → offline → grading` 成环，合并会造成循环依赖。
+- `planconfig → plan`：会让根文件反向依赖重包 `plan`，语义倒退。
+
+internal 包数 **21 → 17**。`archive` / `review` 不反向依赖这两个域，合并后 `sentence → archive,review`、`words → archive,review`、`worddef → words`，无环。
+
+### 7.3 当前 17 包边界
+
+| 组 | 包 | 职责 |
+|---|---|---|
+| 领域数据 / 规则 | `review` `archive` `sentence` `words` | 词与档案核心类型、档案存取、句子计划 + 回炉变形 + 课文导入、加词用例 + 词性/三圆 + 词汇总表 |
+| 主流程 | `grading` `offline` `plan` `planconfig` `record` `stats` | 判分、Excel 计划/渲染/回填、造句编排、配额配置、记录、统计 |
+| 辅助领域 | `conjugation` `knowledge` | 词形变形、知识点解析 |
+| LLM | `llm` `judge` `worddef` `vision` | 模型配置与请求、判句、查词义、拍照取词纯规则；冷却 / 限流 / 预算 / 配额仍留根 |
+| 公共纯规则 | `textutil` | `StripCodeFence`（worddef / vision 共用） |
+
+### 7.4 验证口径
+
+沿用第 6 节三条硬指标（HTTP 响应 JSON 字节、COS 存档 `archive.WriteArchive` 字节、Excel 渲染字节），另加：
+
+- 每个源文件 body 相对 HEAD 基线逐字对拍（前缀改写 / 必要重命名归一后，忽略 gofmt 对齐空白）；
+- 导出符号集合、测试函数集合前后对拍：句子域 **122 / 73**、词条域 **46 / 23**，零丢失；
+- 旧包前缀残留检查（`.go` 里不得再出现 `wordmeta.` / `lexicon.` / `sentencereview.` / `lessonimport.`）；
+- 全量 `go build ./...`、`go test -count=1 ./...`、`-shuffle=on -count=1 ./...`、`internal/... -shuffle=on -count=10`、`go vet ./...`、三平台 `CGO_ENABLED=0` 构建、LF 版 gofmt、`git diff --check`、CLI 冒烟。
+
+### 7.5 唯一的函数体改动（不是行为变化）
+
+R3-B 把 `wordmeta.X` / `lexicon.X` 改成 `words.X` 后，`api_practice.go` 的 `enrichWordMeta(..., words []PlanWord)` 参数名、以及 `api_practice_test.go` 里的同名局部变量与包名 `words` **遮蔽冲突** → 两处局部变量改名 `planWords`。编译期等价，逻辑零变化；其余所有函数体只改前缀，逐字对拍通过。
+
+### 7.6 边界
+
+腿一 / 腿二 2A 与 P0→P5 一样，全部提交推送到 feature 分支，**未部署**（部署单独确认）；不动 COS / 线上数据，不自动 merge。3 处存量 gofmt 差异（根测试合并时从 `api_admin_test.go` / `api_wordmeta_test.go` / `bootstrap_test.go` 继承）按「小步不夹带」保持原样，未顺手修。

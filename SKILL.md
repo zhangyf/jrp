@@ -1553,6 +1553,29 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 **收尾**：`docs/layered-design.md` 两处过时文字（15 行「均为纸面设计」、295 行「没有改任何生产代码…等老师点头」）改为 P0→P5 已落地的实际状态。两份 SKILL.md 同步。全量回归同 P4 口径（build / test / shuffle / internal×10 / vet / 三平台 / gofmt / diff-check）全绿。
 - **本轮不部署**。
 
+### 腿一 + 腿二 2A 收尾包边界（2026-11-04）
+
+老师判定 P0→P5 后「根文件没减、internal 小包过碎」→ 按「腿一 + 腿二 2A」分步重做，每期单 commit 可 revert，**全程未部署**。
+
+**腿一：根目录物理合并**（同 `package main` 内拼接，函数体逐字不动、import 并集去重、文件头来源清单 + 分区标注）
+- R1：26 个 `cmd_*.go` → 4（`cmd_words` / `cmd_sentence` / `cmd_lesson` / `cmd_admin`），根生产 `.go` 64→42。
+- R2：17 个 `api_*.go` + 7 个 `storage*.go` → 5（`api_practice` / `api_llm` / `api_auth` / `api_data` / `storage`），42→23。
+- 收尾：22 个根 `*_test.go` → 5（按被测域）。**根目录 `.go` 总数 86→28**（生产 23 + 测试 5）。`main.go` 分发 / `serve.go` 路由一字未改。
+- ⚠️ 报「根目录文件数」要给**总数**（生产 + 测试），别只报生产口径。
+
+**腿二 2A：internal 小包按功能相近合并**（21→17 包）
+- R3-A 句子域：`sentence` + `sentencereview` + `lessonimport` → `internal/sentence`。三包零符号重名；后两包原本反向 import `sentence`，合并后删该 import + 去 `sentence.` 前缀；导出符号 122 / 测试 73 零丢失。
+- R3-B 词条域：`words` + `wordmeta` + `lexicon` → `internal/words`。`lexicon` 原本依赖 `wordmeta`，合并后去前缀；`worddef` 改指 `words`；根 `types.go` 5 条别名、`api_data.go` 的 `LexiconItem` 别名改前缀；导出符号 46 / 测试 23 零丢失。
+- ⚠️ **降级不做**：`record` + `grading`（`grading → offline → grading` 成环）、`planconfig → plan`（根文件反向依赖重包，语义倒退）。
+- `archive` / `review` 不反向依赖这两个域，合并后无循环。
+
+**当前 17 包**：`review` `archive` `sentence` `words` `grading` `offline` `plan` `planconfig` `record` `stats` `conjugation` `knowledge` `llm` `judge` `worddef` `vision` `textutil`。模型链 / 冷却 / 限流 / 预算 / 配额仍留根。
+
+**唯一函数体改动**：R3-B 改前缀后，`api_practice.go` 的 `enrichWordMeta(..., words []PlanWord)` 参数名与 `api_practice_test.go` 同名局部变量跟包名 `words` 遮蔽冲突 → 两处改名 `planWords`（编译期等价，逻辑零变化）。其余只改前缀。
+
+**验证**：三硬指标（HTTP JSON / COS 存档 / Excel 渲染字节）+ body 逐字对拍 + 导出符号/测试函数集合对拍 + 旧包前缀残留检查 + 全量 build / test / shuffle / internal×10 / vet / 三平台 / gofmt / diff-check / CLI 冒烟。3 处存量 gofmt 差异（继承自 `api_admin_test.go` / `api_wordmeta_test.go` / `bootstrap_test.go`）按小步不夹带保持原样。
+- **本轮不部署**。
+
 ## Command Reference
 
 | Command | Flags | Description |

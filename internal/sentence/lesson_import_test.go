@@ -1,10 +1,8 @@
-package lessonimport
+package sentence
 
 import (
 	"strings"
 	"testing"
-
-	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 const sampleBasicDoc = `# 课本原文汇编 · 第5单元（第17-20课）基本课文
@@ -152,7 +150,7 @@ func TestBuildImportPlanAddsWithNextID(t *testing.T) {
 		{JP: "部屋の かぎを 忘れないで ください。", CN: "请别忘了房间钥匙。"},
 		{JP: "あの 人が 吉田課長ですよ。", CN: "那个人是吉田科长。"},
 	}
-	existing := []sentence.BankSentence{
+	existing := []BankSentence{
 		{ID: "L19B001", Lesson: "第19课", Source: "基本课文", Answer: "部屋の かぎを 忘れないで ください"},
 		{ID: "L19B009", Lesson: "第19课", Source: "基本课文", Answer: "早く 帰ります。"},
 	}
@@ -175,7 +173,7 @@ func TestBuildImportPlanAddsWithNextID(t *testing.T) {
 // 句号差异不算新句子，否则同一句会被录两遍。
 func TestBuildImportPlanIgnoresPunctuationDiff(t *testing.T) {
 	rows := []ImportedRow{{JP: "あの 人が 吉田課長ですよ", CN: "x"}}
-	existing := []sentence.BankSentence{{ID: "L19B001", Lesson: "第19课", Source: "基本课文", Answer: "あの 人が 吉田課長ですよ。"}}
+	existing := []BankSentence{{ID: "L19B001", Lesson: "第19课", Source: "基本课文", Answer: "あの 人が 吉田課長ですよ。"}}
 	plan := BuildImportPlan(rows, 19, LessonDocKinds[0], "x.md", existing)
 	if len(plan.Added) != 0 || plan.Skipped != 1 {
 		t.Errorf("仅句号差异应判重复：new=%d skip=%d", len(plan.Added), plan.Skipped)
@@ -199,7 +197,7 @@ func TestBuildImportPlanNeverOverwritesSimilarSentence(t *testing.T) {
 	rows := []ImportedRow{
 		{JP: "李さんは 今日 早く 帰らなくては なりません。", CN: "小李今天得早点回家。"},
 	}
-	existing := []sentence.BankSentence{
+	existing := []BankSentence{
 		{ID: "L18B002", Lesson: "第18课", Source: "基本课文", Type: "original", Answer: "李さんは 今日 早く 帰らなければ なりません。"},
 	}
 	plan := BuildImportPlan(rows, 18, LessonDocKinds[0], "x.md", existing)
@@ -216,7 +214,7 @@ func TestBuildImportPlanNeverOverwritesSimilarSentence(t *testing.T) {
 
 // 重复导入同一课不涨条目 —— 这是"入库前先查重"的底线。
 func TestBuildImportPlanIsIdempotent(t *testing.T) {
-	existing := []sentence.BankSentence{
+	existing := []BankSentence{
 		{ID: "L19B001", Lesson: "第19课", Source: "基本课文", Type: "original", Answer: "部屋の かぎを 忘れないで ください。"},
 		{ID: "L19B002", Lesson: "第19课", Source: "基本课文", Type: "original", Answer: "李さんは 今日 早く 帰らなければ なりません。"},
 	}

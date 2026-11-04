@@ -3,7 +3,7 @@
 // COS 读写（word_meta.json）、档案写回（applyCircle / unholdLesson）、
 // CLI 编排都留在根包；本包只放「给定数据 → 得到结果」的确定性逻辑，
 // 不碰 Storage / HTTP / 全局配置，方便独立单测。
-package wordmeta
+package words
 
 // WordMeta 是整份词库的词性表。
 //

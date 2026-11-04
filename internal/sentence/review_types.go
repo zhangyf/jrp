@@ -1,4 +1,4 @@
-package sentencereview
+package sentence
 
 // ReviewBank 回炉变形句库。
 type ReviewBank struct {
