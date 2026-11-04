@@ -2,52 +2,14 @@ package main
 
 import (
 	"net/http"
-	"regexp"
-	"strings"
+
+	"github.com/zhangyf/jrp/internal/lexicon"
 )
 
-// LexiconItem 是词汇总表的一行。
-//
-// 老师要的是「看着复习」的浏览表，所以这里把档案里挤在一列的
-// 「假名(汉字)」拆成 kana / kanji 两列，再加上词性和阶段。
-type LexiconItem struct {
-	Number   int    `json:"number"`
-	Word     string `json:"word"`      // 原始词形，做键用
-	Kana     string `json:"kana"`      // 假名（括号前）
-	Kanji    string `json:"kanji"`     // 汉字（半角括号里）
-	Note     string `json:"note"`      // 语法注释（全角括号里，如「敬称」「主题助词」）
-	WordNote string `json:"word_note"` // 近义区分备注（word_meta.json 的 note，跟练习卡片同一份）
-	Def      string `json:"def"`       // 中文释义
-	Pos      string `json:"pos"`       // 词性大类
-	Sub      string `json:"sub"`       // 细分：一类/二类/三类、い形/な形
-	Status   string `json:"status"`    // 🟢已掌握 / 🟡基本掌握 / 🔴待巩固 ...
-	Group    string `json:"group"`     // 课分组
-	Circle   string `json:"circle"`    // 手册分级：三圆 / 二圆 / 一圆（手册没收录则为空）
-	Hold     bool   `json:"hold"`      // true = 挂起，不进每日练习（还没学到）
-	Reviews  int    `json:"reviews"`   // 复习总次数
-	Errors   int    `json:"errors"`    // 答错次数
-	Last     string `json:"last"`      // 最近复习日期
-}
-
-// 半角括号 = 汉字标注（如 みず(水)）；全角括号 = 语法注释（如 さん（敬称））。
-// 这个区分是看实际数据得来的：930 词里半角 577 个、全角只有 4 个，全角那 4 个
-// 括号里是「敬称」「主题助词」这类说明，不是汉字写法。
-var (
-	lexKanjiRe = regexp.MustCompile(`^(.+?)[(](.+?)[)]$`)
-	lexNoteRe  = regexp.MustCompile(`^(.+?)[（](.+?)[）]$`)
-)
-
-// splitLexiconWord 把「假名(汉字)」拆成三份。没有括号时 kanji/note 都为空。
-func splitLexiconWord(w string) (kana, kanji, note string) {
-	w = strings.TrimSpace(w)
-	if m := lexKanjiRe.FindStringSubmatch(w); m != nil {
-		return strings.TrimSpace(m[1]), strings.TrimSpace(m[2]), ""
-	}
-	if m := lexNoteRe.FindStringSubmatch(w); m != nil {
-		return strings.TrimSpace(m[1]), "", strings.TrimSpace(m[2])
-	}
-	return w, "", ""
-}
+// LexiconItem 是词汇总表的一行，定义已迁 internal/lexicon（P2）。
+// 根包只留别名 —— /api/lexicon、CLI dump-lexicon、体验版假数据、
+// 活用练习、查释义都继续用这个名字，JSON 序列化字节不变。
+type LexiconItem = lexicon.LexiconItem
 
 // handleLexicon —— 词汇总表。
 //
@@ -86,7 +48,7 @@ func (s *server) handleLexicon(w http.ResponseWriter, r *http.Request, st *Stora
 		meta.Items = map[string]WordPOS{}
 	}
 
-	items, posSummary, groups := buildLexicon(arc, meta)
+	items, posSummary, groups := lexicon.BuildLexicon(arc, meta)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success":      true,

@@ -20,6 +20,7 @@ import (
 	"strconv"
 
 	"github.com/zhangyf/jrp/internal/conjugation"
+	"github.com/zhangyf/jrp/internal/lexicon"
 	"github.com/zhangyf/jrp/internal/review"
 )
 
@@ -91,7 +92,7 @@ func (s *server) handleConjugation(w http.ResponseWriter, r *http.Request, st *S
 		if !has {
 			continue
 		}
-		kana, kanji, _ := splitLexiconWord(w.Word)
+		kana, kanji, _ := lexicon.SplitLexiconWord(w.Word)
 		// 档案里有「あおい」和「あおい(青い)」这类同词异形（历史导入留下的），
 		// 出题按假名去重，免得同一批里出现两张一样的卡。
 		if seenKana[kana] {
