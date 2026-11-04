@@ -2,13 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
-	"github.com/zhangyf/jrp/internal/archive"
-	"github.com/zhangyf/jrp/internal/lexicon"
 	"github.com/zhangyf/jrp/internal/llm"
-	"github.com/zhangyf/jrp/internal/review"
+	"github.com/zhangyf/jrp/internal/worddef"
 )
 
 // 查中文意思 + 补汉字写法：录入新词时只用打假名，剩下的服务端补齐。
@@ -28,151 +27,42 @@ import (
 // ⚠️ 模型不可用（没配 JRP_LLM_*）不是错误：返回 enabled:false + 已有的那部分。
 // 前端看到缺释义就把条目留在列表里让老师补，不阻断录入。
 
-// WordDefItem 是一个词查回来的结果。word 是建议录进档案的词形（可能带了括号汉字）。
-type WordDefItem struct {
-	Input string `json:"input"` // 老师原来打的
-	Word  string `json:"word"`  // 建议录进去的（补了汉字）
-	Def   string `json:"def"`   // 中文释义
-}
+// WordDefItem 保根包名字，定义随迁到 internal/worddef（类型别名 = 同一类型，JSON 字节不变）。
+// api_vision.go 也用这个名字，故保留别名不改名。
+type WordDefItem = worddef.Item
 
-const wordDefPrompt = `你是日语词典。给下面这些日语词条补上汉字写法和中文释义。
+// hasParen 是给 api_vision.go 借用的薄壳；实现已在 internal/worddef。
+// vision 域（P4 后一域）合并薄壳时再一起收口。
+func hasParen(s string) bool { return worddef.HasParen(s) }
 
-词条：
-{words}
+// 编译期锁住接口实现关系：*Storage 读档案、wordDefCaller 问模型链。
+var _ worddef.ArchiveStore = (*Storage)(nil)
+var _ worddef.Caller = wordDefCaller{}
 
-要求：
-1. kanji 填这个词的汉字写法；这个词本来就不写汉字的（さん、ありがとう 这类）就填空字符串。
-2. def 填中文意思：只给这个词本身的意思，不要例句、不要读音、不要词性说明；
-   意思不止一个时用顿号并列最常见的两三个。
-3. 动词、形容词给基本形的意思。
-4. word 原样返回词条，不要改动。
+var errWordDefNoModel = errors.New("没配置大模型")
 
-只输出一行 JSON 数组，不要解释、不要代码块：
-[{"word": "みず", "kanji": "水", "def": "水"}, {"word": "さん", "kanji": "", "def": "先生、女士等称呼"}]`
+// wordDefCaller 把「模型是否可用 / 主备链 / 冷却 / 真正发请求」全留在根包 IO 层，
+// 与 llm_failover.go 的 judgeWithFallback 共用 llm.SkipModel / MarkResult 冷却状态。
+// 用例层只认 worddef.Caller，不认识 llm.Config / LoadConfig / llmChat。
+type wordDefCaller struct{}
 
-func fillWordDefPrompt(tpl string, words []string) string {
-	var b strings.Builder
-	for _, w := range words {
-		b.WriteString("- ")
-		b.WriteString(w)
-		b.WriteString("\n")
+func (wordDefCaller) Lookup(prompt string) (string, string, error) {
+	cfg, ok := llm.LoadConfig()
+	if !ok {
+		return "", "", errWordDefNoModel
 	}
-	return strings.ReplaceAll(tpl, "{words}", strings.TrimRight(b.String(), "\n"))
+	return llmChat(cfg, prompt)
 }
 
-// hasParen 判断词形里已经带了括号（老师自己写了汉字或注释），这种就别再补。
-func hasParen(s string) bool {
-	return strings.ContainsAny(s, "(（")
-}
-
-// findWordByKana 按假名部分找词：老师打「みず」，库里存的是「みず(水)」。
-func findWordByKana(groups []WordGroup, kana string) *Word {
-	for gi := range groups {
-		for wi := range groups[gi].Words {
-			w := &groups[gi].Words[wi]
-			if k, _, _ := lexicon.SplitLexiconWord(w.Word); k == kana {
-				return w
-			}
-		}
-	}
-	return nil
-}
-
-var errNoWordDefJSON = &wordDefError{"模型没按 JSON 回"}
-
-type wordDefError struct{ msg string }
-
-func (e *wordDefError) Error() string { return e.msg }
-
-// llmWordDef 模型返回的一行：word 原样 + kanji 汉字 + def 释义。
-type llmWordDef struct {
-	Word  string `json:"word"`
-	Kanji string `json:"kanji"`
-	Def   string `json:"def"`
-}
-
-// lookupWordDefs 批量查「中文释义 + 汉字写法」：先档案，档案没有再问模型。
-//
+// lookupWordDefs 是两入口（/api/word-def 与 /api/vision）共用的薄适配：
+// 注入 ctx / lang / 档案读取 / 模型调用，编排本体在 internal/worddef.Lookup。
 // 抽成函数是因为两处要用，口径必须一模一样：
 //   - POST /api/word-def（手打录入时补中文）
 //   - POST /api/vision（拍照认完词顺手补 —— 2026-10-21 老师反馈「认出来的词没有中文释义」）
 //
 // 返回按入参顺序排好的结果，以及生效的模型名。模型不可用时 Def 留空，不算错误。
 func (s *server) lookupWordDefs(st *Storage, words []string) ([]WordDefItem, string) {
-	var items []WordDefItem
-	var todo []string
-
-	// ① 档案优先：精确命中 → 按假名命中（顺带把汉字补上）
-	if data, _, err := st.DownloadLatestArchive(s.ctx()); err == nil {
-		if arc, err := archive.ParseArchive(string(data), st.lang); err == nil {
-			for _, w := range words {
-				if existing, _ := review.FindWord(arc.Groups, w); existing != nil &&
-					strings.TrimSpace(existing.Definition) != "" {
-					items = append(items, WordDefItem{Input: w, Word: existing.Word, Def: strings.TrimSpace(existing.Definition)})
-					continue
-				}
-				if !hasParen(w) {
-					if existing := findWordByKana(arc.Groups, w); existing != nil &&
-						strings.TrimSpace(existing.Definition) != "" {
-						items = append(items, WordDefItem{Input: w, Word: existing.Word, Def: strings.TrimSpace(existing.Definition)})
-						continue
-					}
-				}
-				todo = append(todo, w)
-			}
-		} else {
-			todo = words
-		}
-	} else {
-		todo = words
-	}
-
-	// ② 剩下的问模型
-	model := ""
-	if len(todo) > 0 {
-		if cfg, ok := llm.LoadConfig(); ok {
-			reply, used, err := llmChat(cfg, fillWordDefPrompt(wordDefPrompt, todo))
-			if err == nil {
-				model = used
-				var got []llmWordDef
-				if raw, perr := parseWordDefReplyRaw(reply); perr == nil {
-					got = raw
-				}
-				byWord := map[string]llmWordDef{}
-				for _, g := range got {
-					byWord[strings.TrimSpace(g.Word)] = g
-				}
-				for _, w := range todo {
-					it := WordDefItem{Input: w, Word: w}
-					if g, ok := byWord[w]; ok {
-						it.Def = strings.TrimSpace(g.Def)
-						// 汉字补进半角括号 —— 半角括号在档案里的含义就是「汉字写法」
-						if k := strings.TrimSpace(g.Kanji); k != "" && !hasParen(w) {
-							it.Word = w + "(" + k + ")"
-						}
-					}
-					items = append(items, it)
-				}
-			}
-		}
-		// 模型挂了 / 没配 / 回答里漏了某个词：都按「没有释义」补一条，
-		// 前端留给老师自己填，不阻断录入。
-	}
-
-	// 保序输出（档案命中和模型回答是分两批来的，要按请求的顺序还回去）
-	ordered := make([]WordDefItem, 0, len(words))
-	byInput := map[string]WordDefItem{}
-	for _, it := range items {
-		byInput[it.Input] = it
-	}
-	for _, w := range words {
-		it, ok := byInput[w]
-		if !ok {
-			it = WordDefItem{Input: w, Word: w}
-		}
-		ordered = append(ordered, it)
-	}
-	return ordered, model
+	return worddef.Lookup(s.ctx(), st, wordDefCaller{}, st.lang, words)
 }
 
 func (s *server) handleWordDef(w http.ResponseWriter, r *http.Request, st *Storage) {
@@ -236,19 +126,4 @@ func (s *server) handleWordDef(w http.ResponseWriter, r *http.Request, st *Stora
 		out["model"] = model
 	}
 	writeJSON(w, http.StatusOK, out)
-}
-
-// parseWordDefReplyRaw 抠模型返回的 JSON 数组（带 kanji 字段）。
-func parseWordDefReplyRaw(reply string) ([]llmWordDef, error) {
-	s := stripCodeFence(reply)
-	l := strings.Index(s, "[")
-	r := strings.LastIndex(s, "]")
-	if l < 0 || r <= l {
-		return nil, errNoWordDefJSON
-	}
-	var out []llmWordDef
-	if err := json.Unmarshal([]byte(s[l:r+1]), &out); err != nil {
-		return nil, err
-	}
-	return out, nil
 }

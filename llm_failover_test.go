@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/llm"
+	"github.com/zhangyf/jrp/internal/worddef"
 )
 
 // 固定过去时刻用于检查失败计数是否达到阈值；未来时刻用于注入仍有效的冷却。
@@ -224,7 +225,7 @@ func TestLLMChatSuccessBeforeDomainParsing(t *testing.T) {
 		{"词义", func(cfg llm.Config) (string, string, error) {
 			return llmChat(cfg, "prompt")
 		}, func(reply string) error {
-			_, err := parseWordDefReplyRaw(reply)
+			_, err := worddef.ParseReply(reply)
 			return err
 		}},
 		{"视觉", func(cfg llm.Config) (string, string, error) {
