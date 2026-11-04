@@ -4,6 +4,7 @@ import (
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/offline"
 	"github.com/zhangyf/jrp/internal/planconfig"
+	"github.com/zhangyf/jrp/internal/record"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
 	"github.com/zhangyf/jrp/internal/sentencereview"
@@ -68,10 +69,10 @@ type ReviewPlan = offline.ReviewPlan
 type PlanSentence = sentence.PlanSentence
 
 // RecordResult is one word's review result.
-type RecordResult struct {
-	Number  int  `json:"number"`
-	Correct bool `json:"correct"`
-}
+//
+// 定义已迁 internal/record，根包只保留别名 —— RecordInput.WordResults /
+// api_record_test.go 继续用 RecordResult 这个名字，JSON tag 与序列化形态不变。
+type RecordResult = record.RecordResult
 
 // RecordInput is the JSON input for the record command.
 //

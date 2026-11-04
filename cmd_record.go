@@ -7,8 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/zhangyf/jrp/internal/archive"
-	"github.com/zhangyf/jrp/internal/review"
+	"github.com/zhangyf/jrp/internal/record"
 )
 
 func runRecord(fs *flag.FlagSet, lang string) {
@@ -55,132 +54,35 @@ func runRecord(fs *flag.FlagSet, lang string) {
 }
 
 // RecordResultSummary is the outcome of applying review results to the archive.
-type RecordResultSummary struct {
-	Success     bool   `json:"success"`
-	Command     string `json:"command"`
-	PlanDate    string `json:"plan_date"`
-	Correct     int    `json:"correct"`
-	Wrong       int    `json:"wrong"`
-	NotFound    int    `json:"not_found"`
-	OldFilename string `json:"old_filename"`
-	NewFilename string `json:"new_filename"`
-	Version     string `json:"version"`
-	TotalWords  int    `json:"total_words"`
-	Hard        bool   `json:"hard,omitempty"`
-}
+//
+// 定义已迁 internal/record（那边叫 Result），根包只保留别名 ——
+// CLI / HTTP 两入口继续用 RecordResultSummary 这个名字，序列化形态不变。
+type RecordResultSummary = record.Result
+
+// 编译期断言：*Storage 隐式满足 record 用例层的最小接口。
+var (
+	_ record.ArchiveStore = (*Storage)(nil)
+	_ record.PlanStore    = (*Storage)(nil)
+)
 
 // ApplyRecord downloads the plan + latest archive, applies word/sentence
-// results, bumps the version, and uploads the updated archive to COS. It is a
-// pure function reused by both the CLI (runRecord) and the HTTP server.
+// results, bumps the version, and uploads the updated archive to COS.
 //
-// input.Hard selects the plan source. The signature is intentionally unchanged
-// so that the HTTP handler in cmd_serve.go keeps working untouched: clients that
-// omit "hard" get the daily-plan behaviour exactly as before.
+// 现在只是一个薄适配：把根包 RecordInput（还带 handler 层的
+// SentenceResults / ReviewItems / Language 字段）转成 record.Input 子集，
+// 从 LangConfigs 取 Format、注入当前时钟，再调 record.Apply。
+// 签名刻意不变，cmd_serve.go 的 HTTP handler 零改动。
 func ApplyRecord(ctx context.Context, storage *Storage, lang string, input RecordInput) (*RecordResultSummary, error) {
-	// Download the review plan (daily or hard-word)
-	var plan *ReviewPlan
-	var err error
-	if input.Hard {
-		plan, err = storage.DownloadHardPlan(ctx, input.PlanDate)
-	} else {
-		plan, err = storage.DownloadPlan(ctx, input.PlanDate)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("downloading plan for date %s (hard=%v): %w", input.PlanDate, input.Hard, err)
-	}
-
-	// Download latest archive
-	data, oldFilename, err := storage.DownloadLatestArchive(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("downloading latest archive: %w", err)
-	}
-
-	// Parse archive
-	arc, err := archive.ParseArchive(string(data), lang)
-	if err != nil {
-		return nil, fmt.Errorf("parsing archive: %w", err)
-	}
-
-	// Build number → word mapping from plan
-	planMap := make(map[int]string) // number → word text
-	for _, pw := range plan.Words {
-		planMap[pw.Number] = pw.Word
-	}
-
-	// Apply results
-	today := time.Now()
-	// reviewDate is the date the review actually belongs to (from the plan),
-	// NOT the execution/backfill day. The old code passed `today` straight into
-	// RecordCorrect/RecordWrong, which stamped every word's LastReview with the
-	// backfill day (e.g. 08/22) instead of the real review day. Versioning,
-	// changelog and filename still use `today` so a same-day backfill keeps
-	// bumping the minor version on the execution day.
-	reviewDate := today
-	if input.PlanDate != "" {
-		if d, err := time.Parse("2006-01-02", input.PlanDate); err == nil {
-			reviewDate = d
-		}
-	}
-	correctCount := 0
-	wrongCount := 0
-	notFound := 0
-
-	for _, r := range input.WordResults {
-		wordText, ok := planMap[r.Number]
-		if !ok {
-			notFound++
-			continue
-		}
-
-		w, _ := review.FindWord(arc.Groups, wordText)
-		if w == nil {
-			notFound++
-			continue
-		}
-
-		if r.Correct {
-			review.RecordCorrect(w, reviewDate)
-			correctCount++
-		} else {
-			review.RecordWrong(w, reviewDate)
-			wrongCount++
-		}
-	}
-
-	// Calculate version
-	oldDate, oldMajor, oldMinor, _ := archive.ParseFilename(oldFilename)
-	newMajor, newMinor := archive.NextVersion(oldDate, oldMajor, oldMinor, today, false)
-
-	// Add changelog entry
-	description := fmt.Sprintf("复习结果：%d词写对，%d词写错", correctCount, wrongCount)
-	if input.Hard {
-		description = "钉子户专项" + description
-	}
-	if notFound > 0 {
-		description += fmt.Sprintf("（%d词未找到）", notFound)
-	}
-	archive.AddChangelogEntry(arc, today, newMajor, newMinor, description)
-
-	// Write and upload archive
 	cfg := LangConfigs[lang]
-	newContent := archive.WriteArchive(arc, cfg.Name, cfg.WordColumn)
-	newFilename := archive.Filename(LangConfigs[lang].FilePrefix, today, newMajor, newMinor)
-
-	if err := storage.UploadArchive(ctx, newFilename, []byte(newContent)); err != nil {
-		return nil, fmt.Errorf("uploading archive: %w", err)
-	}
-
-	return &RecordResultSummary{
-		Success:     true,
-		Command:     "record",
+	in := record.Input{
 		PlanDate:    input.PlanDate,
-		Correct:     correctCount,
-		Wrong:       wrongCount,
-		NotFound:    notFound,
-		OldFilename: oldFilename,
-		NewFilename: newFilename,
-		Version:     fmt.Sprintf("v%d.%d", newMajor, newMinor),
-		TotalWords:  review.CountAllWords(arc.Groups),
+		WordResults: input.WordResults,
 		Hard:        input.Hard,
-	}, nil
+	}
+	format := record.Format{
+		Name:       cfg.Name,
+		WordColumn: cfg.WordColumn,
+		FilePrefix: cfg.FilePrefix,
+	}
+	return record.Apply(ctx, storage, storage, lang, format, in, time.Now())
 }
