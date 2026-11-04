@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/zhangyf/jrp/internal/lessonimport"
 )
@@ -78,5 +79,5 @@ func runSaveLesson(fs *flag.FlagSet, lang string) {
 }
 
 func lastSlash(s string) int {
-	return lastIndexOf(s, "/")
+	return strings.LastIndex(s, "/")
 }

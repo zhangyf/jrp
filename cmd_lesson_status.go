@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -187,6 +188,10 @@ func (s *lessonStatusSource) hasKnowledgeDoc(lesson int, must string) string {
 	}
 	return ""
 }
+
+// lessonRe 从字符串里抠「第N课」的课号（知识点文档名、分组名通用）。
+// 统计用例迁 internal/stats 后自带了私有副本，这里留给 lesson-status 用。
+var lessonRe = regexp.MustCompile(`第(\d+)课`)
 
 // maxKnownLesson 取知识点文档名 / 句库 / 档案里出现过的最大课号。
 func (s *lessonStatusSource) maxKnownLesson() int {

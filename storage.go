@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
+	"github.com/zhangyf/jrp/internal/stats"
 	"github.com/zhangyf/objstore"
 )
 
@@ -614,6 +615,30 @@ func (s *Storage) ListAllArchives(ctx context.Context) ([]objstore.ObjectInfo, e
 		return objs[i].LastModified.After(objs[j].LastModified)
 	})
 	return objs, nil
+}
+
+// ListArchiveRefs 列出所有档案引用（含解析出的日期），供统计用例使用。
+// 之前 computeStats 直接用 ListAllArchives 拿 []objstore.ObjectInfo，
+// 把底层对象存储类型渗进了用例签名；收口到本方法后，统计用例只认
+// stats.ArchiveRef（Key / Filename / Date），不必认识 objstore。
+func (s *Storage) ListArchiveRefs(ctx context.Context) ([]stats.ArchiveRef, error) {
+	objs, err := s.ListAllArchives(ctx)
+	if err != nil {
+		return nil, err
+	}
+	refs := make([]stats.ArchiveRef, 0, len(objs))
+	for _, obj := range objs {
+		fname := obj.Key
+		if idx := strings.LastIndex(fname, "/"); idx >= 0 {
+			fname = fname[idx+1:]
+		}
+		fdate, _, _, err := archive.ParseFilename(fname)
+		if err != nil {
+			continue
+		}
+		refs = append(refs, stats.ArchiveRef{Key: obj.Key, Filename: fname, Date: fdate})
+	}
+	return refs, nil
 }
 
 // ReadArchiveBlob 按完整 COS key 读取一份档案原文。
