@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
@@ -80,18 +81,18 @@ func TestBuildDuePlanSkipsHold(t *testing.T) {
 	today := time.Date(2026, 11, 2, 0, 0, 0, 0, time.Local)
 
 	// 不传 hold：两个词都在（ReviewCount=0 → 待测试 → IsDue）
-	plan := BuildDuePlan(arc, "ja", today, nil)
-	if len(plan.Words) != 2 {
-		t.Fatalf("不带 hold 时应出 2 词，实际 %d", len(plan.Words))
+	p := plan.BuildDuePlan(arc, "ja", today, nil)
+	if len(p.Words) != 2 {
+		t.Fatalf("不带 hold 时应出 2 词，实际 %d", len(p.Words))
 	}
 
 	// 传 hold：只剩没挂起的那个
-	plan = BuildDuePlan(arc, "ja", today, map[string]bool{"わたす(渡す)": true})
-	if len(plan.Words) != 1 {
-		t.Fatalf("带 hold 时应出 1 词，实际 %d", len(plan.Words))
+	p = plan.BuildDuePlan(arc, "ja", today, map[string]bool{"わたす(渡す)": true})
+	if len(p.Words) != 1 {
+		t.Fatalf("带 hold 时应出 1 词，实际 %d", len(p.Words))
 	}
-	if plan.Words[0].Word != "みず(水)" {
-		t.Errorf("不该把挂起的词出出来，实际 %q", plan.Words[0].Word)
+	if p.Words[0].Word != "みず(水)" {
+		t.Errorf("不该把挂起的词出出来，实际 %q", p.Words[0].Word)
 	}
 }
 

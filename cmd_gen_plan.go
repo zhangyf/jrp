@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/offline"
-	"github.com/zhangyf/jrp/internal/review"
+	"github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
@@ -90,7 +89,7 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 	// Find due words, assign categories, sort, and build the plan (reused by server)
 	dateStr := targetDate.Format("2006-01-02")
 	meta, _ := storage.DownloadWordMeta(ctx)
-	plan := BuildDuePlan(arc, lang, targetDate, wordmeta.HoldSet(meta))
+	plan := plan.BuildDuePlan(arc, lang, targetDate, wordmeta.HoldSet(meta))
 
 	// Sentences-only mode: drop the entire word section. Requires --sentences.
 	if *sentencesOnly {
@@ -244,40 +243,5 @@ func dueHold(ctx context.Context, st *Storage) *WordMeta {
 	return m
 }
 
-// BuildDuePlan finds all words due on targetDate, assigns review categories,
-// sorts by status priority (钉子户 > 待巩固 > 待测试 > 基本掌握 > 抽查), and
-// returns a numbered ReviewPlan (without sentences/Excel). Reused by the CLI
-// and the HTTP server.
-//
-// hold 里点名的词直接跳过（还没学到的课，2026-11-02 手册补录那批）。传 nil 表示不排除。
-func BuildDuePlan(arc *Archive, lang string, targetDate time.Time, hold map[string]bool) *ReviewPlan {
-	var dueWords []Word
-	for _, w := range review.AllWords(arc.Groups) {
-		if hold[w.Word] {
-			continue
-		}
-		if review.IsDue(w, targetDate) {
-			w.Status = review.GetReviewCategory(w)
-			dueWords = append(dueWords, w)
-		}
-	}
-
-	sort.SliceStable(dueWords, func(i, j int) bool {
-		return review.StatusPriority(dueWords[i].Status) < review.StatusPriority(dueWords[j].Status)
-	})
-
-	plan := &ReviewPlan{
-		Date:     targetDate.Format("2006-01-02"),
-		Language: lang,
-	}
-	for i, w := range dueWords {
-		plan.Words = append(plan.Words, PlanWord{
-			Number:     i + 1,
-			Word:       w.Word,
-			Definition: w.Definition,
-			Group:      w.Group,
-			Status:     w.Status,
-		})
-	}
-	return plan
-}
+// BuildDuePlan 已迁 internal/plan（P2），CLI gen-plan 与 HTTP /api/plan、
+// /api/export、明日预告共用同一份实现。

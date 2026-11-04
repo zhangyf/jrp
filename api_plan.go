@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
+	"github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/planconfig"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
@@ -101,10 +102,10 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request, st *Storage)
 		out["sentences"] = plan.Sentences
 
 	default:
-		plan := BuildDuePlan(arc, s.lang, targetDate, wordmeta.HoldSet(dueHold(ctx, st)))
+		duePlan := plan.BuildDuePlan(arc, s.lang, targetDate, wordmeta.HoldSet(dueHold(ctx, st)))
 		if !readOnly {
 			// plan JSON 供 /api/record 把序号映射回词
-			if err := st.UploadPlan(ctx, plan); err != nil {
+			if err := st.UploadPlan(ctx, duePlan); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 					"success": false, "error": fmt.Sprintf("upload plan: %v", err),
 				})
@@ -113,10 +114,10 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request, st *Storage)
 		}
 		// 词性 / 备注只在这里 join 给前端显示，不写进 plan 存档
 		// （存档只服务于 record 的序号映射，多塞字段没意义）。
-		s.enrichWordMeta(ctx, st, plan.Words)
-		out["due_count"] = len(plan.Words)
-		out["words"] = plan.Words
-		out["by_status"] = countByStatus(plan.Words)
+		s.enrichWordMeta(ctx, st, duePlan.Words)
+		out["due_count"] = len(duePlan.Words)
+		out["words"] = duePlan.Words
+		out["by_status"] = plan.CountByStatus(duePlan.Words)
 	}
 
 	writeJSON(w, http.StatusOK, out)
@@ -153,7 +154,7 @@ func (s *server) handleHard(w http.ResponseWriter, r *http.Request, st *Storage)
 		return
 	}
 
-	plan := BuildHardPlan(arc, s.lang, targetDate, minAcc, minRev)
+	plan := plan.BuildHardPlan(arc, s.lang, targetDate, minAcc, minRev)
 	// 未来日期不写：避免污染 hard plan 之外，也避免无谓的写
 	if !targetDate.After(time.Now()) {
 		if err := st.UploadHardPlan(ctx, plan); err != nil {
@@ -206,7 +207,7 @@ func (s *server) buildSentencePlan(st *Storage, targetDate time.Time, upload boo
 
 	if upload {
 		if old, err := st.DownloadSentencePlan(ctx, targetDate.Format("2006-01-02")); err == nil &&
-			sentencePlanLocked(old, targetDate.Format("2006-01-02")) {
+			plan.SentencePlanLocked(old, targetDate.Format("2006-01-02")) {
 			return old, nil
 		}
 	}
@@ -261,15 +262,7 @@ func (s *server) buildSentencePlan(st *Storage, targetDate time.Time, upload boo
 	return plan, nil
 }
 
-// sentencePlanLocked 判断 COS 上已存的造句 plan 能不能直接复用 —— 「不提交就不换题」。
-//
-// 三个条件缺一不可：
-//   - 读到了对象（下载失败时 old 是 nil，必须重新出题）
-//   - 日期对得上（陈年 plan 绝不能当成今天的）
-//   - 里面真有句子（空 plan 等于没出过题）
-func sentencePlanLocked(old *ReviewPlan, date string) bool {
-	return old != nil && old.Date == date && len(old.Sentences) > 0
-}
+// SentencePlanLocked 已迁 internal/plan（P2）。
 
 // enrichWordMeta 把词性 / 备注 / 圆级 join 到计划里的每个词上。
 //
@@ -307,13 +300,4 @@ func (s *server) enrichReviewMeta(ctx context.Context, st *Storage, snap *Review
 	}
 }
 
-func countByStatus(words []PlanWord) map[string]int {
-	out := map[string]int{}
-	for _, w := range words {
-		if w.Status == "" {
-			continue
-		}
-		out[w.Status]++
-	}
-	return out
-}
+// CountByStatus 已迁 internal/plan（P2）。
