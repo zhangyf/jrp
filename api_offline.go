@@ -13,10 +13,7 @@ import (
 	"github.com/zhangyf/jrp/internal/grading"
 	"github.com/zhangyf/jrp/internal/offline"
 	"github.com/zhangyf/jrp/internal/plan"
-	"github.com/zhangyf/jrp/internal/planconfig"
 	"github.com/zhangyf/jrp/internal/review"
-	"github.com/zhangyf/jrp/internal/sentence"
-	"github.com/zhangyf/jrp/internal/sentencereview"
 	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
@@ -221,39 +218,16 @@ func (s *server) handleImport(w http.ResponseWriter, r *http.Request, st *Storag
 // 要是少了回炉句，等于白加这个功能。
 func BuildSentencePlanFrom(st *Storage, today time.Time, n int, arc *Archive) []PlanSentence {
 	ctx := bgctx()
-	bank, err := st.DownloadSentenceBank(ctx)
+	// 回炉配额跟着网页端走同一份配置 —— 离线 Excel 少了回炉句等于白加这个功能。
+	res, err := plan.ComposeSentences(ctx, st, sentenceMeta{st}, plan.Params{
+		Today:     today,
+		Arc:       arc,
+		BaseCount: n,
+	})
 	if err != nil {
 		return nil
 	}
-	hist, err := st.DownloadSentenceHistory(ctx)
-	if err != nil {
-		return nil
-	}
-	wrong, err := st.DownloadSentenceWrong(ctx)
-	if err != nil {
-		return nil
-	}
-	out := sentence.BuildSentencePlan(bank, hist, wrong, today, n)
-
-	if rb, rerr := st.DownloadReviewBank(ctx); rerr == nil && rb != nil {
-		exclude := make(map[string]bool, len(out))
-		for _, p := range out {
-			exclude[sentence.Norm(p.Answer)] = true
-		}
-		// 回炉配额跟着网页端走同一份配置 —— 离线 Excel 少了回炉句等于白加这个功能。
-		cfg, _ := resolvePlanConfig(ctx, st)
-		extra := sentencereview.BuildReviewSentences(rb, hist, arc, today,
-			cfg.SentenceReviewCount, exclude, sentencereview.DefaultReviewIdleDays,
-			reviewCircle(ctx, st), planconfig.PlanCircleRatio(cfg))
-		for _, e := range extra {
-			out = append(out, PlanSentence{
-				Number:  len(out) + 1,
-				Chinese: e.Chinese,
-				Answer:  e.Answer,
-			})
-		}
-	}
-	return out
+	return res.Sentences
 }
 
 // saveMultipartFile 把上传的文件落到磁盘。

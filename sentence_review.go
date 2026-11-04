@@ -7,6 +7,8 @@ import (
 	"log"
 	"strings"
 
+	"github.com/zhangyf/jrp/internal/plan"
+	"github.com/zhangyf/jrp/internal/planconfig"
 	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
@@ -63,3 +65,24 @@ func reviewCircle(ctx context.Context, st *Storage) map[string]string {
 	}
 	return wordmeta.CircleMap(meta)
 }
+
+// sentenceMeta 把根包两个带缓存 / 日志的编排函数适配成 internal/plan.Meta。
+// 只做转发：resolvePlanConfig 的 60 秒缓存 / COS 坏了用内置 / source 日志，
+// reviewCircle 的词性表读取 / fail-open 日志，全部一行不动留在上面两个函数里。
+// 用的人（用例层）定义接口，被用的人（根包 IO 层）做适配 —— 跟 P0 的
+// StatsArchiveReader 同一形态，第三方类型（*Storage）不渗进用例签名。
+type sentenceMeta struct{ st *Storage }
+
+func (m sentenceMeta) PlanConfig(ctx context.Context) planconfig.PlanConfig {
+	cfg, _ := resolvePlanConfig(ctx, m.st)
+	return cfg
+}
+
+func (m sentenceMeta) Circle(ctx context.Context) map[string]string {
+	return reviewCircle(ctx, m.st)
+}
+
+var (
+	_ plan.Meta          = sentenceMeta{}
+	_ plan.SentenceStore = (*Storage)(nil)
+)

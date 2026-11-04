@@ -2,16 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/plan"
-	"github.com/zhangyf/jrp/internal/planconfig"
 	"github.com/zhangyf/jrp/internal/review"
-	"github.com/zhangyf/jrp/internal/sentence"
-	"github.com/zhangyf/jrp/internal/sentencereview"
 	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
@@ -212,54 +210,32 @@ func (s *server) buildSentencePlan(st *Storage, targetDate time.Time, upload boo
 		}
 	}
 
-	bank, err := st.DownloadSentenceBank(ctx)
+	res, err := plan.ComposeSentences(ctx, st, sentenceMeta{st}, plan.Params{
+		Today: targetDate,
+		Arc:   arc,
+		// BaseCount 留 0：网页端基础句数跟配置 SentenceBaseCount 走。
+	})
 	if err != nil {
-		return nil, fmt.Errorf("读取句库失败（还没建库？）：%w", err)
-	}
-	hist, err := st.DownloadSentenceHistory(ctx)
-	if err != nil {
+		var le *plan.LoadError
+		if errors.As(err, &le) && le.Stage == plan.StageBank {
+			return nil, fmt.Errorf("读取句库失败（还没建库？）：%w", le.Err)
+		}
 		return nil, err
 	}
-	wrong, err := st.DownloadSentenceWrong(ctx)
-	if err != nil {
-		return nil, err
-	}
 
-	cfg, _ := resolvePlanConfig(ctx, st)
-	sentences := sentence.BuildSentencePlan(bank, hist, wrong, targetDate, cfg.SentenceBaseCount)
-
-	// 回炉变形句。拿不到句库 / 解析失败就当今天没有加餐 —— 新功能绝不能
-	// 把整个造句练习弄没，20 句原文该怎么出还怎么出。
-	if rb, rerr := st.DownloadReviewBank(ctx); rerr == nil && rb != nil {
-		exclude := make(map[string]bool, len(sentences))
-		for _, p := range sentences {
-			exclude[sentence.Norm(p.Answer)] = true
-		}
-		extra := sentencereview.BuildReviewSentences(rb, hist, arc, targetDate,
-			cfg.SentenceReviewCount, exclude, sentencereview.DefaultReviewIdleDays,
-			reviewCircle(ctx, st), planconfig.PlanCircleRatio(cfg))
-		for _, e := range extra {
-			sentences = append(sentences, PlanSentence{
-				Number:  len(sentences) + 1,
-				Chinese: e.Chinese,
-				Answer:  e.Answer,
-			})
-		}
-	}
-
-	plan := &ReviewPlan{
+	rp := &ReviewPlan{
 		Date:      targetDate.Format("2006-01-02"),
 		Language:  s.lang,
 		Kind:      "sentences",
-		Sentences: sentences,
+		Sentences: res.Sentences,
 	}
 
 	if upload {
-		if err := st.UploadSentencePlan(ctx, plan); err != nil {
+		if err := st.UploadSentencePlan(ctx, rp); err != nil {
 			return nil, fmt.Errorf("上传造句 plan 失败：%w", err)
 		}
 	}
-	return plan, nil
+	return rp, nil
 }
 
 // SentencePlanLocked 已迁 internal/plan（P2）。
