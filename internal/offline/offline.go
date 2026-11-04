@@ -1,5 +1,6 @@
-// Package offline 迁走离线练习册的解析侧：读取老师填好的 Excel，
-// 重做判分并返回预览。渲染侧（生成 Excel）仍留在根包。
+// Package offline 承载离线练习册的完整闭环：解析侧读取老师填好的 Excel、
+// 重做判分并返回预览；渲染侧按同一套布局生成练习版/答案版工作簿。
+// 两侧共用 PlanWord / ReviewPlan / ExcelMeta 与 sheet 名常量。
 package offline
 
 import (

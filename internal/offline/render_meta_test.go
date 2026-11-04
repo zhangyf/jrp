@@ -1,27 +1,17 @@
-package main
+package offline
 
 import (
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/xuri/excelize/v2"
 	"github.com/zhangyf/jrp/internal/grading"
-	"github.com/zhangyf/jrp/internal/offline"
+	"github.com/zhangyf/jrp/internal/sentence"
 )
 
-// col / sentenceNumRe 原属根包，迁往 internal/offline 后在此保留等价的
-// 测试本地 helper，仅用于读取校验，断言与夹具不变。
-func col(r []string, i int) string {
-	if i < len(r) {
-		return strings.TrimSpace(r[i])
-	}
-	return ""
-}
-
-var sentenceNumRe = regexp.MustCompile(`^S(\d+)$`)
+// col / sentenceNumRe 直接复用本包 offline.go 里逐字等价的实现，
+// 不再另起本地副本（同包同名会冲突）。断言与夹具不变。
 
 // 造一份练习计划，生成 Excel，模拟老师填几个答案，再解析回来。
 //
@@ -37,7 +27,7 @@ func TestExcelRoundTrip(t *testing.T) {
 			{Number: 4, Word: "てぶくろ(手袋)", Definition: "手套", Status: "🔴待巩固"},
 			{Number: 5, Word: "としょかん(図書館)", Definition: "图书馆", Status: "🔄待测试"},
 		},
-		Sentences: []PlanSentence{
+		Sentences: []sentence.PlanSentence{
 			{Number: 1, Chinese: "小李每天喝咖啡。", Answer: "李さんは 毎日 コーヒーを 飲みます。"},
 			{Number: 2, Chinese: "这里是便利店。", Answer: "ここは コンビニです。"},
 		},
@@ -45,7 +35,7 @@ func TestExcelRoundTrip(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "review_2026-09-20_v1.0.xlsx")
-	meta := &offline.ExcelMeta{PlanDate: "2026-09-20", Language: "ja", Mode: "daily"}
+	meta := &ExcelMeta{PlanDate: "2026-09-20", Language: "ja", Mode: "daily"}
 	if err := GenerateExcelWithMeta(plan, path, meta); err != nil {
 		t.Fatalf("生成 Excel 失败：%v", err)
 	}
@@ -55,9 +45,9 @@ func TestExcelRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("打开失败：%v", err)
 	}
-	mrows, err := f.GetRows(offline.MetaSheetName)
+	mrows, err := f.GetRows(MetaSheetName)
 	if err != nil {
-		t.Fatalf("读不到 %s：%v", offline.MetaSheetName, err)
+		t.Fatalf("读不到 %s：%v", MetaSheetName, err)
 	}
 	got := map[string]string{}
 	for _, r := range mrows {
@@ -78,12 +68,12 @@ func TestExcelRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows, err := f2.GetRows(offline.ExerciseSheetName)
+	rows, err := f2.GetRows(ExerciseSheetName)
 	if err != nil {
 		t.Fatal(err)
 	}
 	writeAt := func(rowIdx int, colLetter, val string) {
-		if err := f2.SetCellValue(offline.ExerciseSheetName, colLetter+itoa(rowIdx), val); err != nil {
+		if err := f2.SetCellValue(ExerciseSheetName, colLetter+itoa(rowIdx), val); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -118,7 +108,7 @@ func TestExcelRoundTrip(t *testing.T) {
 	f2.Close()
 
 	// --- 解析回来 ---
-	prev, err := offline.ParseExerciseFile(path, grading.GradeKana)
+	prev, err := ParseExerciseFile(path, grading.GradeKana)
 	if err != nil {
 		t.Fatalf("解析失败：%v", err)
 	}
@@ -133,7 +123,7 @@ func TestExcelRoundTrip(t *testing.T) {
 	if len(prev.Words) != 5 {
 		t.Fatalf("解析出 %d 个词，want 5", len(prev.Words))
 	}
-	byNum := map[int]offline.ImportWord{}
+	byNum := map[int]ImportWord{}
 	for _, w := range prev.Words {
 		byNum[w.Number] = w
 	}
@@ -197,7 +187,7 @@ func TestParseExerciseFileFallbackDate(t *testing.T) {
 	if err := GenerateExcel(plan, path); err != nil {
 		t.Fatal(err)
 	}
-	prev, err := offline.ParseExerciseFile(path, grading.GradeKana)
+	prev, err := ParseExerciseFile(path, grading.GradeKana)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +204,10 @@ func TestParseExerciseFileFallbackDate(t *testing.T) {
 }
 
 // 汉字档 / 完整档要能在导入预览里生效（老师在预览页可以切档重判）。
-func TestParseExerciseFileGradeModes(t *testing.T) {
+// 与 offline_test.go 的表格驱动版角度不同：这里走 GenerateExcelWithMeta →
+// 填 C3 → ParseExerciseFile 的完整往返，锁的是渲染布局与解析约定一致，
+// 故改名保留（原同名在根包分属两个文件不冲突，同包会重复声明）。
+func TestExcelRoundTripGradeModes(t *testing.T) {
 	plan := &ReviewPlan{
 		Date:     "2026-09-20",
 		Language: "ja",
@@ -225,7 +218,7 @@ func TestParseExerciseFileGradeModes(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "m.xlsx")
 	if err := GenerateExcelWithMeta(plan, path,
-		&offline.ExcelMeta{PlanDate: "2026-09-20", Language: "ja", Mode: "daily"}); err != nil {
+		&ExcelMeta{PlanDate: "2026-09-20", Language: "ja", Mode: "daily"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -235,7 +228,7 @@ func TestParseExerciseFileGradeModes(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer f.Close()
-		if err := f.SetCellValue(offline.ExerciseSheetName, "C3", v); err != nil {
+		if err := f.SetCellValue(ExerciseSheetName, "C3", v); err != nil {
 			t.Fatal(err)
 		}
 		if err := f.Save(); err != nil {
@@ -245,22 +238,22 @@ func TestParseExerciseFileGradeModes(t *testing.T) {
 
 	// 只写汉字：假名档判错，汉字档判对，任一档判对
 	fill("音楽")
-	p, _ := offline.ParseExerciseFile(path, grading.GradeKana)
+	p, _ := ParseExerciseFile(path, grading.GradeKana)
 	if len(p.Words) != 1 || p.Words[0].AutoCorrect {
 		t.Errorf("假名档下只写汉字应判错：%+v", p.Words)
 	}
-	p, _ = offline.ParseExerciseFile(path, grading.GradeKanji)
+	p, _ = ParseExerciseFile(path, grading.GradeKanji)
 	if len(p.Words) != 1 || !p.Words[0].AutoCorrect {
 		t.Errorf("汉字档下只写汉字应判对：%+v", p.Words)
 	}
-	p, _ = offline.ParseExerciseFile(path, grading.GradeEither)
+	p, _ = ParseExerciseFile(path, grading.GradeEither)
 	if len(p.Words) != 1 || !p.Words[0].AutoCorrect {
 		t.Errorf("任一档下只写汉字应判对：%+v", p.Words)
 	}
 
 	// 写假名：任一档判对；grade_mode 字段透传
 	fill("おんがく")
-	p, _ = offline.ParseExerciseFile(path, grading.GradeEither)
+	p, _ = ParseExerciseFile(path, grading.GradeEither)
 	if len(p.Words) != 1 || !p.Words[0].AutoCorrect {
 		t.Errorf("任一档下写假名应判对：%+v", p.Words)
 	}
@@ -270,7 +263,7 @@ func TestParseExerciseFileGradeModes(t *testing.T) {
 
 	// 写全形：完整档判对
 	fill("おんがく(音楽)")
-	p, _ = offline.ParseExerciseFile(path, grading.GradeFull)
+	p, _ = ParseExerciseFile(path, grading.GradeFull)
 	if len(p.Words) != 1 || !p.Words[0].AutoCorrect {
 		t.Errorf("完整档下写全形应判对：%+v", p.Words)
 	}

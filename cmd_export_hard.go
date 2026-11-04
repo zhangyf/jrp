@@ -10,18 +10,18 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
+	"github.com/zhangyf/jrp/internal/offline"
 	"github.com/zhangyf/jrp/internal/review"
 )
 
 // Hard-word severity sections, split by accuracy rate.
+// 值与分区顺序的唯一来源在 internal/offline（渲染侧同包持有 hardCategories），
+// 根包只留常量别名给 hardSeverity / 计数 switch 用，避免两份字面量各写一遍。
 const (
-	HardSevere   = "🔥重度钉子户（正确率<30%）"
-	HardModerate = "⚠️中度钉子户（正确率30~45%）"
-	HardMild     = "💤轻度钉子户（正确率45~60%）"
+	HardSevere   = offline.HardSevere
+	HardModerate = offline.HardModerate
+	HardMild     = offline.HardMild
 )
-
-// hardCategories is the section order for the hard-word Excel.
-var hardCategories = []string{HardSevere, HardModerate, HardMild}
 
 // Severity boundaries.
 const (
@@ -197,7 +197,7 @@ func runExportHard(fs *flag.FlagSet, lang string) {
 		os.MkdirAll(dir, 0755)
 	}
 
-	if err := GenerateHardExcel(plan, *outputPath); err != nil {
+	if err := offline.GenerateHardExcel(plan, *outputPath); err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating Excel: %v\n", err)
 		os.Exit(1)
 	}

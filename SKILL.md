@@ -1395,9 +1395,9 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 ### 离线练习册解析侧包边界（2026-11-03）
 
 - 只迁解析侧：`internal/offline/offline.go` 承接 `ExcelMeta`、`ImportWord`、`ImportSentence`、`ImportPreview`、三个 sheet 名常量（`MetaSheetName`/`ExerciseSheetName`/`AnswerSheetName`）、`ParseExerciseFile` 及 `col`/`firstNonEmpty`/`sortedKeys`/`dateFromFilename` 与三个正则。判分仍走 `internal/grading`，归一化仍走 `internal/sentence`。
-- **渲染侧留在根包**：`excelWriter` 全套、四个 `Generate*`、`writeTwoSheetWorkbook`、`groupPlanWordsByStatus`、`reviewCategories`、`defaultExcelLayout`、以及 `(w *excelWriter) writeMetaSheet`（receiver 不能搬）。原因是渲染侧吃 `ReviewPlan`/`PlanWord`（COS 契约类型），且 `hardCategories` 反向定义在 cmd 层，整体搬会牵动计划类型与多个 handler，风险大于收益。
+- **渲染侧留在根包（本批结论；2026-11-04 后续批次已推翻）**：`excelWriter` 全套、四个 `Generate*`、`writeTwoSheetWorkbook`、`groupPlanWordsByStatus`、`reviewCategories`、`defaultExcelLayout`、以及 `(w *excelWriter) writeMetaSheet`（当时判断 receiver 不能搬，实际把整个 writer 类型连同方法一起搬即可）。原因是渲染侧吃 `ReviewPlan`/`PlanWord`（COS 契约类型），且 `hardCategories` 反向定义在 cmd 层，整体搬会牵动计划类型与多个 handler，风险大于收益。⇒ 上批把两个类型搬进 `internal/offline` 后本约束即解除，见「Excel 渲染侧包边界（2026-11-04）」。
 - `api_offline.go` 的 HTTP 下载与 Storage、cmd 两处入口只改符号引用；离线文件结构与 `_meta` 内容不变。
-- 测试：`internal/offline/offline_test.go` 覆盖解析各分支与四档判分（11 函数 / 103 子用例）；根包新增 `excel_test.go` 补原先零覆盖的钉子户导出、nil/空句子、左右分栏、句子区块与 `_meta` 可见性/活动表复位（5 函数 / 12 子用例）；原有 `excel_meta_test.go` 往返用例留根包不动。
+- 测试：`internal/offline/offline_test.go` 覆盖解析各分支与四档判分（11 函数 / 103 子用例）；根包新增 `excel_test.go` 补原先零覆盖的钉子户导出、nil/空句子、左右分栏、句子区块与 `_meta` 可见性/活动表复位（5 函数 / 12 子用例）；原有 `excel_meta_test.go` 往返用例留根包不动。（2026-11-04 后续批次已随渲染侧全部迁入 `internal/offline`，见下节。）
 - 按实现保留的行为（测试已固定）：`GenerateHardExcelWithMeta` 内部写死传 nil 句子；hard 过滤是 `Status` 精确匹配三个常量；分栏为前 `(n+1)/2` 个在左栏；`ExcelMeta.Kind` 写入 `_meta` 但 `ImportPreview` 不读回；`dateFromFilename` 会扫整条路径且取最左日期。
 
 ### 汇编导入包边界（2026-11-03）
@@ -1486,13 +1486,25 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 
 ### 复习计划数据模型包边界（2026-11-04）
 
-- 这是**第一批动「COS 存档契约类型」的拆包**：`PlanWord` / `ReviewPlan` 原定义在根 `types.go`，为让离线 Excel 渲染侧能进 `internal/offline`（`package main` 不可被 import），先把这两个类型的家搬进包内、根留别名。**本批只搬类型，渲染函数仍在根 `excel.go`，下一批再迁。**
+- 这是**第一批动「COS 存档契约类型」的拆包**：`PlanWord` / `ReviewPlan` 原定义在根 `types.go`，为让离线 Excel 渲染侧能进 `internal/offline`（`package main` 不可被 import），先把这两个类型的家搬进包内、根留别名。**本批只搬类型，渲染函数仍在根 `excel.go`；下一批已迁完，见「Excel 渲染侧包边界」。**
 - `internal/offline/plan.go`：两个 struct 逐字搬迁，字段、顺序、JSON tag、`omitempty` 全原样；唯一符号变化是 `ReviewPlan.Sentences` 从根别名 `[]PlanSentence` 改成 `[]sentence.PlanSentence`（`offline.go` 已 import `internal/sentence`，无循环依赖）。⚠️ `ReviewPlan` 是存进 COS 的存档 JSON，`storage.go` 的 `UploadPlan`/`DownloadPlan`/`UploadHardPlan`/`UploadSentencePlan` 都吃它；`PlanWord.Accuracy` 用 `*float64 + omitempty` 保真真正的 0%。改字段/顺序/tag 会静默改变线上存档格式。
 - 根 `types.go`：加 `type PlanWord = offline.PlanWord` / `type ReviewPlan = offline.ReviewPlan` 两条别名 + 1 行 import；删两个 struct 定义。`PlanSentence = sentence.PlanSentence` 别名与其注释原样保留。15 个引用文件（`storage.go` / `api_plan.go` / `api_record.go` / `api_trial.go` / `cmd_gen_plan.go` / `cmd_export_hard.go` / `cmd_record.go` / `excel.go` / 各测试）**零改动**。
 - 类型别名是同一类型而非新类型，`json.Marshal`/`Unmarshal` 走同一份结构定义与 tag ⇒ 存档 JSON 字节严格不变；无签名变更、无新依赖、无数据迁移、无 COS key 变化。
 - 测试：`internal/offline/plan_test.go` 锁住契约——最小 `PlanWord` 的字节级 JSON 基线、日常 plan 的 `omitempty` 省略、`Accuracy=0` 指针不被吞、`ReviewPlan` 全字段形态与 `sentences` 嵌套、零值可选项省略、round-trip 等价。固定输入，不连 COS/模型。单包验证：`go test ./internal/offline`。
 - 等价核对：两个 struct 与 `main` 基线块级逐行等价（43 行，去空白 + 还原 `sentence.PlanSentence` 前缀后 `diff` 为空）；`git diff --name-only main` 只有 `types.go`，其余引用文件 0 漂移。
-- ⚠️ `internal/offline/offline.go` 包注释「渲染侧（生成 Excel）仍留在根包」本批仍成立，下一批迁渲染函数时要同步改这句。
+- ✅ `internal/offline/offline.go` 包注释「渲染侧（生成 Excel）仍留在根包」本批仍成立；下一批迁渲染函数时已按要求同步改成解析侧 + 渲染侧同包。
+- 本批纯目录重构，线上行为不变；提交推送与部署继续分别确认。
+
+### Excel 渲染侧包边界（2026-11-04）
+
+- 承接上批的编译前提（`package main` 不可被 import），把根 `excel.go` 渲染侧整体并入 `internal/offline`，与解析侧同包共用 `PlanWord`/`ReviewPlan`/`ExcelMeta` 及 sheet 名常量。**线上行为、Excel 字节、COS 存档全不变**，纯目录重构。
+- `internal/offline/render.go`（新）：12 个函数 + `excelWriter`/`excelStyles`/`excelLayout`/`defaultExcelLayout` + `reviewCategories`/`hardCategories` + `HardSevere/Moderate/Mild` 三常量。⚠️ 三常量与 `hardCategories` 原定义在根 `cmd_export_hard.go`（判档逻辑用），现迁入渲染包作唯一数据源；根改留 `const HardSevere = offline.HardSevere` 等别名，删掉根里已无使用者的 `hardCategories`。
+- `internal/offline/render_meta.go`（新）：`(w *excelWriter) writeMetaSheet` 随 `excelWriter` 一起搬（receiver 类型必须同包），根 `excel_meta.go` 删除。
+- 根调用点改前缀：`api_offline.go` 三处 `offline.Generate*WithMeta`、`cmd_gen_plan.go` → `offline.GenerateExcel`、`cmd_export_hard.go` → `offline.GenerateHardExcel`；删根 `excel.go`/`excel_meta.go`/`excel_test.go`/`excel_meta_test.go` 四个文件。
+- 测试随迁：`excel_test.go`→`render_test.go`、`excel_meta_test.go`→`render_meta_test.go`。⚠️ 同包后两处撞名，按「不丢覆盖」处理：① `col`/`sentenceNumRe` 本地 helper 删除，直接复用 `offline.go` 逐字等价的包内符号；② `TestParseExerciseFileGradeModes` 与 `offline_test.go` 表格驱动版同名但角度不同（这份是 生成→填答→解析 完整往返），改名 `TestExcelRoundTripGradeModes` 保留。两个测试补 `internal/sentence` import。
+- `internal/offline/offline.go` 包注释按老师要求改掉「渲染侧（生成 Excel）仍留在根包」，改为解析侧 + 渲染侧同包。
+- 等价核对：`excel.go`+`excel_meta.go` vs `render.go`+`render_meta.go` 归一化（去包声明/import/注释/空白、`offline.` 前缀、`PlanSentence` 别名）后 **330 行逐行零漂移**；唯一差异是有意迁入的 6 行 Hard 常量组，值与 `cmd_export_hard.go` 逐字一致。
+- 验证全绿：13 包 go test -count=1 / -shuffle=on -count=1 / internal -count=10 / go vet；三平台 CGO_ENABLED=0 构建；gofmt（Windows 用 LF 版判读）；git diff --check。`go test ./internal/offline` 的字节敏感布局断言与完整往返测试全部通过。
 - 本批纯目录重构，线上行为不变；提交推送与部署继续分别确认。
 
 ## Command Reference
