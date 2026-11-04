@@ -1,15 +1,19 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/zhangyf/jrp/internal/worddef"
+)
 
 // 模型爱在 JSON 外面套 ```json 和前后废话，抠 JSON 这层必须稳。
 func TestParseWordDefReply(t *testing.T) {
 	cases := []struct {
-		name   string
-		reply  string
-		word   string
-		kanji  string
-		def    string
+		name  string
+		reply string
+		word  string
+		kanji string
+		def   string
 	}{
 		{"纯 JSON", `[{"word":"みず","kanji":"水","def":"水"}]`, "みず", "水", "水"},
 		{"代码块", "```json\n[{\"word\":\"みず\",\"kanji\":\"水\",\"def\":\"水\"}]\n```", "みず", "水", "水"},
@@ -17,7 +21,7 @@ func TestParseWordDefReply(t *testing.T) {
 		{"没汉字的词", `[{"word":"さん","kanji":"","def":"称呼"}]`, "さん", "", "称呼"},
 	}
 	for _, c := range cases {
-		got, err := parseWordDefReplyRaw(c.reply)
+		got, err := worddef.ParseReply(c.reply)
 		if err != nil {
 			t.Errorf("%s：解析失败：%v", c.name, err)
 			continue
@@ -31,13 +35,13 @@ func TestParseWordDefReply(t *testing.T) {
 		}
 	}
 
-	if _, err := parseWordDefReplyRaw("我没有找到答案"); err == nil {
+	if _, err := worddef.ParseReply("我没有找到答案"); err == nil {
 		t.Error("没有 JSON 时应该报错")
 	}
 }
 
 func TestFillWordDefPrompt(t *testing.T) {
-	p := fillWordDefPrompt(wordDefPrompt, []string{"みず", "たべもの"})
+	p := worddef.FillPrompt(worddef.Prompt, []string{"みず", "たべもの"})
 	if !contains(p, "- みず") || !contains(p, "- たべもの") {
 		t.Error("词条没进 prompt：" + p)
 	}
@@ -52,10 +56,10 @@ func TestFillWordDefPrompt(t *testing.T) {
 
 // 老师自己写了括号（みず(水) 或 さん（敬称））就别再补一层括号。
 func TestHasParen(t *testing.T) {
-	if !hasParen("みず(水)") || !hasParen("さん（敬称）") {
+	if !worddef.HasParen("みず(水)") || !worddef.HasParen("さん（敬称）") {
 		t.Error("带括号的词形应该被认出来")
 	}
-	if hasParen("みず") {
+	if worddef.HasParen("みず") {
 		t.Error("没括号的不该被认成有")
 	}
 }
@@ -66,13 +70,13 @@ func TestFindWordByKana(t *testing.T) {
 		{Word: "みず(水)", Definition: "水"},
 		{Word: "たべもの", Definition: "食物"},
 	}}}
-	if w := findWordByKana(groups, "みず"); w == nil || w.Word != "みず(水)" {
+	if w := worddef.FindWordByKana(groups, "みず"); w == nil || w.Word != "みず(水)" {
 		t.Errorf("按假名没找到 みず(水)：%+v", w)
 	}
-	if w := findWordByKana(groups, "たべもの"); w == nil || w.Word != "たべもの" {
+	if w := worddef.FindWordByKana(groups, "たべもの"); w == nil || w.Word != "たべもの" {
 		t.Errorf("没汉字的词也要能找到：%+v", w)
 	}
-	if w := findWordByKana(groups, "でんわ"); w != nil {
+	if w := worddef.FindWordByKana(groups, "でんわ"); w != nil {
 		t.Error("库里没有的不该找到")
 	}
 }

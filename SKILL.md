@@ -1507,6 +1507,31 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 - 验证全绿：13 包 go test -count=1 / -shuffle=on -count=1 / internal -count=10 / go vet；三平台 CGO_ENABLED=0 构建；gofmt（Windows 用 LF 版判读）；git diff --check。`go test ./internal/offline` 的字节敏感布局断言与完整往返测试全部通过。
 - 本批纯目录重构，线上行为不变；提交推送与部署继续分别确认。
 
+### P4 LLM 三域包边界（2026-11-04）
+
+分层改造 P4：判句 / 查释义 / 拍照取词三域各单 commit，可单独 revert。**共同铁律**：用例层不 import `net/http` / `flag` / `*Storage` / COS / `internal/llm`；`llm.LoadConfig` / `llmChat` / `judgeWithFallback` / `visionChat` 的主备链与 `llm.SkipModel`/`MarkResult` 共享冷却全部留根包 IO 层，用例层只认最小接口。行为不变（HTTP 响应 JSON / COS 存档 / Excel 字节均不动）。
+
+**判句 `internal/judge`（`ConfigStore` + `Caller`）**
+- `ports.go`：`ConfigStore.DownloadJudgePrompt(ctx)`、`Caller.Judge(prompt)`。⚠️ 接口**不带 `llm.Config`** —— 配置由根包 `judgeCaller{cfg}` 持有，用例层不 import `internal/llm`（曾自校正过一版）。
+- `prompt.go`：内置模板 `BuiltinPrompt` 全文 + `JudgePrompt`/`FillPrompt`/`ValidatePrompt`/`EnsureJSONRule`/`PromptVersion`/`ChoosePrompt`/`RenderPrompt`/`ParseReply`/`CacheKey` 与 `Result` DTO。保守判句口径（汉字↔假名/敬简算对、**助词缺失判错、替换判对**）有护栏单测盯着。
+- `judge.go`：`ResolvePrompt` + `JudgeWithCache`；`promptTTL=60s` 与两个进程内内存缓存随用例搬入，不注入接口（设计文档 5.1）。
+- 根包：`type judgeResult = judge.Result` 让 `llm_failover.go` 零改动；`judgeCaller` 调 `judgeWithFallback`；`resolveJudgePrompt`/`judgeWithCache` 薄适配；两个 HTTP handler 函数体与基线逐字一致。CLI `cmd_judgeprompt.go` 改 `judge.*` 前缀。
+
+**查释义 `internal/worddef`（`ArchiveStore` + `Caller`）**
+- `ports.go`：`ArchiveStore.DownloadLatestArchive(ctx)`、`Caller.Lookup(prompt) (reply, model, err)`。没配模型 / 全链失败都用 `err` 表达，用例层 `if err == nil` 才填 model 与解析 —— 与原 `llm.LoadConfig()` 的 `ok` 分支严格等价。
+- `rules.go`：`Item`（根 `type WordDefItem = worddef.Item` 别名保 JSON）、`LLMItem`、`Prompt`、`FillPrompt`/`HasParen`/`FindWordByKana`/`ParseReply` + 私有 `stripCodeFence`。
+- `lookup.go`：`Lookup(ctx, store, caller, lang, words)`，档案优先（精确 → 按假名，顺带补汉字）、剩下问模型、保序输出，分支逐字保留；`ctx`/`lang` 显式传参。
+- 根包：`wordDefCaller` 持有 `LoadConfig`+`llmChat`（与判句共用冷却）；`s.lookupWordDefs` 薄适配给 `/api/word-def` 与 `/api/vision` 两入口共用；`hasParen` 留委托薄壳给 `api_vision.go` 借用；`handleWordDef` 函数体逐字一致。
+
+**拍照取词 `internal/vision`（纯规则 + DTO，无 IO）**
+- ⚠️ **形态与 judge/worddef 不同，按设计文档 3.7**：vision 的 `visionConfig`/`loadVisionConfig`/`visionChat`/`askVision`/`visionRetryable`/`visionHumanError` 带着共享冷却、`time.Sleep` 退避、并发 2 限流、120s 总预算、pending 每日 2 图配额 `takeQuota`，全是进程级时序状态，**注入接口反而会拆散冷却** ⇒ 全留根；`internal/vision` 只收纯解析规则，属 P2 那类规则包。
+- `types.go`：`Candidate` / `ImageResult`（根 `VisionCandidate`/`VisionImageResult` 类型别名，tag 与 `omitempty` 逐字保留，HTTP JSON 字节不变）；`rules.go`：`Prompt`、`ParseReply`/`CleanCandidates`/`HasJapanese` + 私有 `stripCodeFence`。
+- 根包 `api_vision.go` 只改 4 处（import / 两个 DTO 别名 / `const visionPrompt = vision.Prompt` / `askVision` 一处 `vision.ParseReply` 前缀）；`handleVision`/`askVision`/`visionChat`/`visionRetryable`/`visionHumanError`/`loadVisionConfig` 六个函数与基线字节级对拍 **全部 IDENTICAL**。
+- ⚠️ `stripCodeFence` 在 worddef / vision 各一份逐字一致的私有副本（纯函数、无状态）。按老师「2 选 A」，**P5 尾部薄壳合并那个独立 commit 再统一收敛**，P4 不为此新建公共包。
+
+**验证**：三域各 `go build ./...` / `go test -mod=readonly -count=1 ./...` / `go vet ./...` / LF 版 gofmt / `git diff --check` 全绿；handler 与关键函数字节级对拍；新增 `internal/judge/{judge,prompt}_test.go`、`internal/worddef/{lookup,rules}_test.go`、`internal/vision/rules_test.go`（含 prompt 护栏、DTO JSON 字节、fake 接口不连 COS/HTTP/LLM）。收尾再加 `-shuffle=on -count=1 ./...`、`internal/... -shuffle=on -count=10`、三平台 `CGO_ENABLED=0` 构建，全绿。
+- 本批纯目录重构，线上行为不变；提交推送与部署继续分别确认（本轮**不部署**）。
+
 ## Command Reference
 
 | Command | Flags | Description |

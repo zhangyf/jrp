@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/zhangyf/jrp/internal/judge"
 )
 
 // runJudgePrompt 管理造句判定的 prompt 模板（存在 COS 上，改它不用重新部署）。
@@ -27,8 +29,8 @@ func runJudgePrompt(fs *flag.FlagSet, lang string) {
 
 	// 内置模板纯本地，不用连 COS
 	if *builtin {
-		fmt.Print(builtinJudgePrompt)
-		if !strings.HasSuffix(builtinJudgePrompt, "\n") {
+		fmt.Print(judge.BuiltinPrompt)
+		if !strings.HasSuffix(judge.BuiltinPrompt, "\n") {
 			fmt.Println()
 		}
 		return
@@ -52,7 +54,7 @@ func runJudgePrompt(fs *flag.FlagSet, lang string) {
 			os.Exit(1)
 		}
 		text := strings.TrimSpace(string(data))
-		if err := validateJudgePrompt(text); err != nil {
+		if err := judge.ValidatePrompt(text); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: 模板不能用（%v）—— 没写进 COS\n", err)
 			os.Exit(1)
 		}
@@ -61,7 +63,7 @@ func runJudgePrompt(fs *flag.FlagSet, lang string) {
 			os.Exit(1)
 		}
 		fmt.Printf("已上传模板（%d 字符，版本 %s），即时生效，不用重启服务\n",
-			len(text), promptVersion(text))
+			len(text), judge.PromptVersion(text))
 		if !strings.Contains(strings.ToLower(text), "correct") {
 			fmt.Println("注意：模板里没提 JSON 输出，判定前会自动补上输出格式要求")
 		}
@@ -74,14 +76,14 @@ func runJudgePrompt(fs *flag.FlagSet, lang string) {
 			fmt.Fprintf(os.Stderr, "Error: 删除失败：%v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("已删除 COS 模板，回退内置（版本 %s）\n", promptVersion(builtinJudgePrompt))
+		fmt.Printf("已删除 COS 模板，回退内置（版本 %s）\n", judge.PromptVersion(judge.BuiltinPrompt))
 		return
 	}
 
 	// 查看
 	cosText, err := storage.DownloadJudgePrompt(ctx)
-	tpl, source := chooseJudgePrompt(cosText, err)
-	fmt.Printf("来源：%s\n版本：%s\n字符数：%d\n\n", source, promptVersion(tpl), len(tpl))
+	tpl, source := judge.ChoosePrompt(cosText, err)
+	fmt.Printf("来源：%s\n版本：%s\n字符数：%d\n\n", source, judge.PromptVersion(tpl), len(tpl))
 	fmt.Println(tpl)
 	if source == "builtin" && strings.TrimSpace(cosText) != "" {
 		fmt.Println("\n（COS 上有一份模板，但校验没过，当前实际用的是内置模板）")
