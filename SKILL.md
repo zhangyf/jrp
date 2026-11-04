@@ -1467,10 +1467,22 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 - `internal/sentencereview/types.go`：`ReviewBank`、`ReviewSentence`、`ProtoSuggest`（原私有 `protoSuggest`）；根 `types.go` 只保留 `ReviewBank` / `ReviewSentence` 两个类型别名，字段、顺序、JSON tag 与序列化形态逐字不变，不留转发 wrapper。
 - `internal/sentencereview/review.go`：回炉挑句纯规则——`DefaultReviewIdleDays`、`CircleRank`（原 `circle.go` 的 `circleRank`）、`WordIdleDays`（原 `wordIdleDays`）、`wordIdleMap`、`BuildReviewSentences`。五条筛选（exclude / 原型句 exclude / 闲置过滤 / 最久没出过排序 / 同原型去重）+ 圆级分层逐字保留；`arc=nil` 跳过闲置过滤，`circle=nil` 或 `circleRatio<=0` 退回旧行为。只依赖 `internal/archive`、`internal/review`、`internal/sentence`，不碰 Storage/COS。
 - `internal/sentencereview/prototype.go`：原型句挑选纯规则——`GroupLesson`、`LessonLabel`、`RoundAcc`、`JpLen`、`GroupProtosByLesson`、`ProtoScore`、`PickPrototypes`、`ProtoList`、`LoadReviewFile`、`NextReviewIDNum`。「长句优先 / 14-26 字 +15 / <10 字重扣」「跨课先往高课扩」「基本课文优先」等既有打分与排序规则原样保留。
-- 根包只留 I/O 与编排：`sentence_review.go` 的 `DownloadReviewBank` / `UploadReviewBank` / `reviewCircle`，`circle.go` 的 `circleMap` / `applyCircle` / `unholdLesson`，`cmd_sentence_review.go` 的 `run*` / `checkReviewSentences` / `reportReviewCheck`。消费方（`api_plan.go` / `api_offline.go` / `cmd_sentence.go` / `cmd_lesson_status.go`）只改符号引用。
+- 根包只留 I/O 与编排：`sentence_review.go` 的 `DownloadReviewBank` / `UploadReviewBank` / `reviewCircle`，`circle.go` 的 `circleMap` / `applyCircle` / `unholdLesson`，`cmd_sentence_review.go` 的 `run*` / `checkReviewSentences` / `reportReviewCheck`。消费方（`api_plan.go` / `api_offline.go` / `cmd_sentence.go` / `cmd_lesson_status.go`）只改符号引用。（2026-11-04 注：`circleMap` 已在 wordmeta 批次迁往 `internal/wordmeta.CircleMap`，见下节；此处记录的是当时的边界。）
 - 测试：`internal/sentencereview/review_test.go`、`prototype_test.go` 覆盖闲置天数跨年/非法值/边界、挑句各条筛选与圆级配额、长度三档打分、跨课扩展、两格式文件读取与序号推进；固定 `testToday`，不 sleep、不连 COS/模型。根 `sentence_review_test.go` 保留 `circleMap` 等根边界测试。单包验证：`go test ./internal/sentencereview`。
 - 等价核对：14 个迁出函数与基线块级逐行等价（`ALL EQUIVALENT`）；`cmd_sentence_review.go` 编排代码去空白+还原前缀后按序匹配基线，0 行漂移（8 行差异仅为 `[]sentencereview.ProtoSuggest` 拉宽后的 gofmt 字段列对齐）。
 - 本批纯目录重构，线上行为不变；不改 JSON / COS key / 数据格式，提交推送与部署继续分别确认。
+
+### 词性表与三圆规则层包边界（2026-11-04）
+
+- 这是**第一批动「共享类型归属」的拆包**：5 个类型跟着一起迁进新包，所以 6 个纯函数的函数体能逐字照搬、零类型前缀，只把函数名首字母大写导出。类型通过根 `types.go` 的别名压住引用面，十几个引用文件零改动。
+- `internal/wordmeta/types.go`：`WordMeta` / `WordPOS`（原 `storage_wordmeta.go`）、`CircleItem` / `CircleInput` / `CircleOutcome`（原 `circle.go`）。字段、顺序、JSON tag、`omitempty` 逐字不变。根 `types.go` 加 5 条 `type X = wordmeta.X` 别名 —— `storage_wordmeta.go`、API、CLI、圆级、词性表 I/O、测试继续用原名，不留转发 wrapper。
+- `internal/wordmeta/rules.go`：6 个纯函数 `CircleGroupOf` / `LessonOfGroup` / `CircleMap` / `LookupWordMeta` / `HoldSet` / `NearKeys`。只依赖标准库 `fmt`/`sort`/`strconv`/`strings`。语义原样：课号→分组「第N课 手册补录」、`CircleMap`/`HoldSet` 读不到或全空返回 **nil**（fail-open，不能因读不到词表就少出题）、`LookupWordMeta` 词形对不上不猜、`NearKeys` 去括号后子串匹配排序截断 5 个。
+- 留根：`storage_wordmeta.go` 的 COS key `sharedBase()/word_meta.json` 与 `DownloadWordMeta`/`UploadWordMeta`（读不到返回空表兜底）；`circle.go` 的 `applyCircle`/`unholdLesson`（写档案）；`cmd_gen_plan.go` 的 `dueHold`（吃 `*Storage`）；`cmd_lexicon.go` 的 `buildLexicon`（依赖根包 `LexiconItem` DTO）；`sentence_review.go` 的 `reviewCircle`（改调 `wordmeta.CircleMap`，只加前缀）；CLI 全部留根。
+- `circleMap` 归 `wordmeta`、`sentencereview.CircleRank` 归回炉句规则，**方向不反**：`CircleRank` 只吃 `CircleMap` 摊好的 `map[string]string`，不反向依赖。
+- 本批无签名变更、无新依赖、无数据迁移；COS key、写回顺序、nil 语义、JSON 形态全部原样。
+- 测试：`internal/wordmeta/rules_test.go`（6 函数边界：分组优先级、课号解析非法值、`CircleMap`/`HoldSet` 的 nil 与 trim、`LookupWordMeta` 裸假名不命中、`NearKeys` 排序截断）+ `types_test.go`（JSON tag / `omitempty` 形态与 round-trip）。根 `circle_test.go` / `api_wordmeta_test.go` / `sentence_review_test.go` 改前缀保留，**断言消息字符串里的旧函数名保留原样**（前几批口径）。固定输入，不连 COS/模型。单包验证：`go test ./internal/wordmeta`。
+- 等价核对：6 个迁出函数 + 5 个类型 struct 与 `main` 基线块级逐行等价；12 个根文件还原前缀后按序匹配基线 **0 漂移**；`types.go` 5 行别名为唯一预期新增。
+- 本批纯目录重构，线上行为不变；提交推送与部署继续分别确认。
 
 ## Command Reference
 

@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
 // 词性 / 备注 / 圆级 join 到练习题上（老师 2026-09-28 要的：卡片上不能只有中文释义；
@@ -16,13 +18,13 @@ func TestLookupWordMeta(t *testing.T) {
 	}}
 
 	// 四样齐全
-	pos, sub, note, circle := lookupWordMeta(meta, "とおります(通ります)")
+	pos, sub, note, circle := wordmeta.LookupWordMeta(meta, "とおります(通ります)")
 	if pos != "动词" || sub != "一类" || note != "空间上从某处穿过；過ぎます 是时间流逝" || circle != "三圆" {
 		t.Errorf("词性/细分/备注/圆级应同时取到，got %q %q %q %q", pos, sub, note, circle)
 	}
 
 	// 没细分的（名词/副词没有 sub）
-	pos, sub, note, circle = lookupWordMeta(meta, "なかなか")
+	pos, sub, note, circle = wordmeta.LookupWordMeta(meta, "なかなか")
 	if pos != "副词" || sub != "" || note != "程度副词，比预想要高" || circle != "二圆" {
 		t.Errorf("没细分时 sub 应为空，got %q %q %q %q", pos, sub, note, circle)
 	}
@@ -30,29 +32,29 @@ func TestLookupWordMeta(t *testing.T) {
 	// 没备注 → note 空着。这不是缺数据：词义明确的词本来就不用写，
 	// 页面会拿释义括号里那截兜底（前端 app.defParts）。
 	// 手册没收的词 circle 也空着 —— 页面不显示这一格，不是「没标」。
-	pos, sub, note, circle = lookupWordMeta(meta, "おふろ(お風呂)")
+	pos, sub, note, circle = wordmeta.LookupWordMeta(meta, "おふろ(お風呂)")
 	if pos != "名词" || sub != "" || note != "" || circle != "" {
 		t.Errorf("没备注/没分级的应返回空，got %q %q %q %q", pos, sub, note, circle)
 	}
 
 	// 词性表里没有这个词（比如新导入还没标注）→ 全空，页面显示「—」
-	pos, sub, note, circle = lookupWordMeta(meta, "あたらしい(新しい)")
+	pos, sub, note, circle = wordmeta.LookupWordMeta(meta, "あたらしい(新しい)")
 	if pos != "" || sub != "" || note != "" || circle != "" {
 		t.Errorf("未标注的词应返回空，got %q %q %q %q", pos, sub, note, circle)
 	}
 
 	// 词形对不上（裸假名 vs 带汉字）不猜 —— 猜错会把另一个词的词性贴上来
-	pos, sub, note, circle = lookupWordMeta(meta, "とおります")
+	pos, sub, note, circle = wordmeta.LookupWordMeta(meta, "とおります")
 	if pos != "" || sub != "" || note != "" || circle != "" {
 		t.Errorf("裸假名不该命中带汉字的条目，got %q %q %q %q", pos, sub, note, circle)
 	}
 
 	// 词性表整个读不到（COS 挂了 / 还没上传）→ 不能炸，整批留空
-	pos, sub, note, circle = lookupWordMeta(nil, "とおります(通ります)")
+	pos, sub, note, circle = wordmeta.LookupWordMeta(nil, "とおります(通ります)")
 	if pos != "" || sub != "" || note != "" || circle != "" {
 		t.Errorf("meta 为 nil 应返回空，got %q %q %q %q", pos, sub, note, circle)
 	}
-	pos, sub, note, circle = lookupWordMeta(&WordMeta{}, "とおります(通ります)")
+	pos, sub, note, circle = wordmeta.LookupWordMeta(&WordMeta{}, "とおります(通ります)")
 	if pos != "" || sub != "" || note != "" || circle != "" {
 		t.Errorf("空表应返回空，got %q %q %q %q", pos, sub, note, circle)
 	}
@@ -68,7 +70,7 @@ func TestEnrichWordMetaCarriesCircle(t *testing.T) {
 	words := []PlanWord{{Word: "とおります(通ります)"}, {Word: "おふろ(お風呂)"}, {Word: "なかなか"}}
 	for i := range words {
 		words[i].Pos, words[i].Sub, words[i].Note, words[i].Circle =
-			lookupWordMeta(meta, words[i].Word)
+			wordmeta.LookupWordMeta(meta, words[i].Word)
 	}
 	want := []string{"三圆", "一圆", ""}
 	for i, w := range words {

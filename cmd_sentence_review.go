@@ -12,6 +12,7 @@ import (
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/sentence"
 	"github.com/zhangyf/jrp/internal/sentencereview"
+	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
 // runSentenceReviewTodo 只读体检：列出「够格回炉、但还没做变形句」的词，
@@ -96,7 +97,7 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 				acc = float64(w.ReviewCount-w.ErrorCount) / float64(w.ReviewCount)
 			}
 			idle := sentencereview.WordIdleDays(w, today)
-			pos, _, _, _ := lookupWordMeta(meta, w.Word)
+			pos, _, _, _ := wordmeta.LookupWordMeta(meta, w.Word)
 			ln := sentencereview.GroupLesson(w.Group)
 			it := item{
 				Word: w.Word, Pos: pos, Def: w.Definition,

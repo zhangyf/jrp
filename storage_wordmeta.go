@@ -4,46 +4,9 @@ import (
 	"context"
 )
 
-// WordMeta 是整份词库的词性表。
-//
-// 为什么不直接给档案加一列「词性」：档案表格是 7 列，改列数会牵动
-// ParseArchive / WriteArchive / Excel 导出 / 导入解析全链，风险太大。
-// 词性只是「看着复习」用的附加信息，独立成一份 JSON 最省事 ——
-// 丢了也不影响任何练习功能，最多页面上词性那列空着。
-//
-// 键用档案里的完整词形「假名(汉字)」，因为那是唯一标识
-// （同假名不同汉字的词要分开：かきます(書きます) 写 / かきます 画）。
-type WordMeta struct {
-	Version int                `json:"version"`
-	Updated string             `json:"updated"`
-	Note    string             `json:"note"`
-	Items   map[string]WordPOS `json:"items"`
-}
-
-// WordPOS 一个词的词性。Sub 是细分：
-// 动词 → 一类(五段) / 二类(一段) / 三类(サ変・カ変)
-// 形容词 → い形 / な形
-//
-// Note 是备注：主要写「跟哪个近义词怎么区分」（老师 2026-09-28 要的），
-// 比如 通ります 的备注写「空间上从某处穿过；過ぎます 是时间流逝/超过某点」。
-// 词义明确、不会跟别的词混的就空着 —— 空着是正常的，不是缺数据。
-type WordPOS struct {
-	Pos  string `json:"pos"`
-	Sub  string `json:"sub"`
-	Note string `json:"note,omitempty"`
-
-	// Circle 是《标日初上 三圆词汇速记手册》给的分级：三圆 / 二圆 / 一圆。
-	// 空串 = 手册里没有这个词（老师课外补录的，或者手册没收）。
-	Circle string `json:"circle,omitempty"`
-
-	// Hold = true 的词不进每日练习计划。
-	//
-	// 2026-11-02：按手册批量补录了 21–24 课的词，这些课根本还没学到，
-	// 让它们涌进待复习列表毫无意义。挂起的词在词汇总表里照常显示，
-	// 学到那一课时用 `jrp circle unhold --lesson N` 放开。
-	Hold bool `json:"hold,omitempty"`
-}
-
+// WordMeta / WordPOS 类型已迁 internal/wordmeta（含完整字段注释），
+// 根包靠 types.go 的别名保持这两个名字不变；本文件只留 word_meta.json
+// 的 COS 读写。读不到就返回空表，绝不因此把词汇总表打不开。
 func (s *Storage) wordMetaKey() string {
 	return s.sharedBase() + "/word_meta.json"
 }

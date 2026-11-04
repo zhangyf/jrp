@@ -6,6 +6,7 @@ import (
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
 	"github.com/zhangyf/jrp/internal/sentencereview"
+	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
 // LangConfig holds language-specific configuration.
@@ -41,6 +42,16 @@ type PlanConfig = planconfig.PlanConfig
 // 继续用 ReviewBank / ReviewSentence 这两个名字，不用跟着改。
 type ReviewBank = sentencereview.ReviewBank
 type ReviewSentence = sentencereview.ReviewSentence
+
+// 词性表与三圆分级类型已迁 internal/wordmeta，根包只保留别名 ——
+// storage_wordmeta.go 的 COS 读写、circle.go 的 applyCircle / unholdLesson、
+// 以及十几个引用文件都继续用 WordMeta / WordPOS / CircleItem / CircleInput /
+// CircleOutcome 这些名字，序列化形态不变。
+type WordMeta = wordmeta.WordMeta
+type WordPOS = wordmeta.WordPOS
+type CircleItem = wordmeta.CircleItem
+type CircleInput = wordmeta.CircleInput
+type CircleOutcome = wordmeta.CircleOutcome
 
 // PlanWord is a word entry in a review plan.
 //

@@ -16,6 +16,7 @@ import (
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
 	"github.com/zhangyf/jrp/internal/sentencereview"
+	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
 // 离线闭环：导出 Excel 拿去离线练，练完把填好的文件传回来自动解析。
@@ -100,7 +101,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request, st *Storag
 		})
 
 	default: // daily：到期词 + 20 句造句
-		plan := BuildDuePlan(arc, s.lang, targetDate, holdSet(dueHold(ctx, st)))
+		plan := BuildDuePlan(arc, s.lang, targetDate, wordmeta.HoldSet(dueHold(ctx, st)))
 		plan.Sentences = BuildSentencePlanFrom(st, targetDate, 20, arc)
 		filename = fmt.Sprintf("review_%s.xlsx", dateStr)
 		genErr = GenerateExcelWithMeta(plan, tmp.Name(), &offline.ExcelMeta{
