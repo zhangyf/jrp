@@ -6,9 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"sort"
 
-	"github.com/zhangyf/jrp/internal/review"
+	"github.com/zhangyf/jrp/internal/lexicon"
 )
 
 // runDumpLexicon 导出词汇总表（跟 GET /api/lexicon 同一份数据、同一个拼装函数），
@@ -38,7 +37,7 @@ func runDumpLexicon(fs *flag.FlagSet, lang string) {
 		meta.Items = map[string]WordPOS{}
 	}
 
-	items, posSummary, groups := buildLexicon(arc, meta)
+	items, posSummary, groups := lexicon.BuildLexicon(arc, meta)
 
 	payload := map[string]interface{}{
 		"success":      true,
@@ -69,50 +68,5 @@ func runDumpLexicon(fs *flag.FlagSet, lang string) {
 	}
 }
 
-// buildLexicon 把档案 + 词性表拼成词汇总表的行。
-// /api/lexicon 和 CLI dump-lexicon 共用这一份，两边不会对不上。
-func buildLexicon(arc *Archive, meta *WordMeta) ([]LexiconItem, map[string]int, []string) {
-	words := review.AllWords(arc.Groups)
-	items := make([]LexiconItem, 0, len(words))
-	posSummary := map[string]int{}
-	groupSet := map[string]bool{}
-
-	for i, w := range words {
-		kana, kanji, note := splitLexiconWord(w.Word)
-		pos := meta.Items[w.Word]
-		items = append(items, LexiconItem{
-			Number:   i + 1,
-			Word:     w.Word,
-			Kana:     kana,
-			Kanji:    kanji,
-			Note:     note,
-			WordNote: pos.Note,
-			Def:      w.Definition,
-			Pos:      pos.Pos,
-			Sub:      pos.Sub,
-			Status:   w.Status,
-			Group:    w.Group,
-			Circle:   pos.Circle,
-			Hold:     pos.Hold,
-			Reviews:  w.ReviewCount,
-			Errors:   w.ErrorCount,
-			Last:     w.LastReview,
-		})
-
-		key := pos.Pos
-		if key == "" {
-			key = "未标注"
-		}
-		posSummary[key]++
-		if w.Group != "" {
-			groupSet[w.Group] = true
-		}
-	}
-
-	groups := make([]string, 0, len(groupSet))
-	for g := range groupSet {
-		groups = append(groups, g)
-	}
-	sort.Strings(groups)
-	return items, posSummary, groups
-}
+// BuildLexicon 已迁 internal/lexicon（P2），CLI dump-lexicon 与
+// GET /api/lexicon 共用同一份实现。

@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/zhangyf/jrp/internal/plan"
+)
 
 // 造句「不提交就不换题」的判定。换题只能发生在回写成功之后
 // （api_record.go 里 DeleteSentencePlan 清掉当天 plan），在此之前
@@ -24,8 +28,8 @@ func TestSentencePlanLocked(t *testing.T) {
 				Sentences: []PlanSentence{{Number: 1, Answer: "あ"}}}, today, false},
 	}
 	for _, c := range cases {
-		if got := sentencePlanLocked(c.old, c.date); got != c.want {
-			t.Errorf("%s: sentencePlanLocked() = %v, want %v", c.name, got, c.want)
+		if got := plan.SentencePlanLocked(c.old, c.date); got != c.want {
+			t.Errorf("%s: plan.SentencePlanLocked() = %v, want %v", c.name, got, c.want)
 		}
 	}
 }

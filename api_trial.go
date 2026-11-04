@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/zhangyf/jrp/internal/lexicon"
 )
 
 // 体验版（试用账号）—— 2026-10-28 老师要求。
@@ -183,7 +185,7 @@ func writeTrialStats(w http.ResponseWriter, days int) {
 }
 
 // trialLexiconWords 词汇总表的 10 行：5 个基础词 + 5 个钉子户，跟练习里是同一批。
-// 词形拆分复用 splitLexiconWord，别在这儿另写一套括号规则。
+// 词形拆分复用 lexicon.SplitLexiconWord，别在这儿另写一套括号规则。
 func trialLexiconWords() []LexiconItem {
 	type row struct {
 		word, pos, sub, status string
@@ -211,7 +213,7 @@ func trialLexiconWords() []LexiconItem {
 
 	items := make([]LexiconItem, 0, len(rows))
 	for i, r := range rows {
-		kana, kanji, note := splitLexiconWord(r.word)
+		kana, kanji, note := lexicon.SplitLexiconWord(r.word)
 		items = append(items, LexiconItem{
 			Number: i + 1, Word: r.word, Kana: kana, Kanji: kanji, Note: note,
 			Def: def[r.word], Pos: r.pos, Sub: r.sub, Status: r.status,

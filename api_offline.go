@@ -12,6 +12,7 @@ import (
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/grading"
 	"github.com/zhangyf/jrp/internal/offline"
+	"github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/planconfig"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
@@ -74,7 +75,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request, st *Storag
 
 	switch mode {
 	case "hard":
-		plan := BuildHardPlan(arc, s.lang, targetDate, review.DefaultHardMinAccuracy, review.DefaultHardMinReviews)
+		plan := plan.BuildHardPlan(arc, s.lang, targetDate, review.DefaultHardMinAccuracy, review.DefaultHardMinReviews)
 		filename = fmt.Sprintf("hard_words_%s.xlsx", dateStr)
 		genErr = offline.GenerateHardExcelWithMeta(plan, tmp.Name(), &offline.ExcelMeta{
 			PlanDate: dateStr, Language: s.lang, Mode: "hard", Kind: "hard",
@@ -101,7 +102,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request, st *Storag
 		})
 
 	default: // daily：到期词 + 20 句造句
-		plan := BuildDuePlan(arc, s.lang, targetDate, wordmeta.HoldSet(dueHold(ctx, st)))
+		plan := plan.BuildDuePlan(arc, s.lang, targetDate, wordmeta.HoldSet(dueHold(ctx, st)))
 		plan.Sentences = BuildSentencePlanFrom(st, targetDate, 20, arc)
 		filename = fmt.Sprintf("review_%s.xlsx", dateStr)
 		genErr = offline.GenerateExcelWithMeta(plan, tmp.Name(), &offline.ExcelMeta{

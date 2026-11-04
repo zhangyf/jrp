@@ -6,97 +6,25 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/offline"
+	"github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/review"
 )
 
-// Hard-word severity sections, split by accuracy rate.
-// 值与分区顺序的唯一来源在 internal/offline（渲染侧同包持有 hardCategories），
-// 根包只留常量别名给 hardSeverity / 计数 switch 用，避免两份字面量各写一遍。
+// 钉子户分区常量。值与分区顺序的唯一来源在 internal/offline
+// （渲染侧同包持有 hardCategories），根包只留别名给 runExportHard
+// 的分区计数 switch 用，避免两份字面量各写一遍。
 const (
 	HardSevere   = offline.HardSevere
 	HardModerate = offline.HardModerate
 	HardMild     = offline.HardMild
 )
 
-// Severity boundaries.
-const (
-	hardSevereMax   = 0.30
-	hardModerateMax = 0.45
-)
-
-// hardSeverity buckets a word by accuracy.
-//
-// NOTE: the boundaries are independent of --min-accuracy. If the user lowers
-// the threshold to 0.45, the MILD bucket simply ends up empty.
-func hardSeverity(acc float64) string {
-	switch {
-	case acc < hardSevereMax:
-		return HardSevere
-	case acc < hardModerateMax:
-		return HardModerate
-	default:
-		return HardMild
-	}
-}
-
-// BuildHardPlan collects ALL hard words from the archive — deliberately without
-// any IsDue() filtering, which is the essential difference from BuildDuePlan:
-// gen-plan only surfaces words due today, whereas this is a full census.
-//
-// Words are sorted by accuracy ascending. Because the severity boundaries depend
-// monotonically on accuracy, this ordering also yields the
-// severe → moderate → mild section order for free. Numbering is continuous
-// across sections.
-func BuildHardPlan(arc *Archive, lang string, targetDate time.Time,
-	minAcc float64, minRev int) *ReviewPlan {
-
-	var hard []Word
-	for _, w := range review.AllWords(arc.Groups) {
-		if review.IsHardWord(w, minAcc, minRev) {
-			hard = append(hard, w)
-		}
-	}
-
-	sort.SliceStable(hard, func(i, j int) bool {
-		ai, _ := review.Accuracy(hard[i])
-		aj, _ := review.Accuracy(hard[j])
-		if ai != aj {
-			return ai < aj // lower accuracy first
-		}
-		if hard[i].ErrorCount != hard[j].ErrorCount {
-			return hard[i].ErrorCount > hard[j].ErrorCount // more errors first
-		}
-		return hard[i].Word < hard[j].Word // stable tie-break
-	})
-
-	plan := &ReviewPlan{
-		Date:        targetDate.Format("2006-01-02"),
-		Language:    lang,
-		Kind:        "hard",
-		MinAccuracy: minAcc,
-		MinReviews:  minRev,
-	}
-	for i, w := range hard {
-		acc, _ := review.Accuracy(w)
-		accVal := acc // take address of a per-iteration copy
-		plan.Words = append(plan.Words, PlanWord{
-			Number:      i + 1,
-			Word:        w.Word,
-			Definition:  w.Definition,
-			Group:       w.Group,
-			Status:      hardSeverity(acc),
-			ErrorCount:  w.ErrorCount,
-			ReviewCount: w.ReviewCount,
-			Accuracy:    &accVal,
-		})
-	}
-	return plan
-}
+// BuildHardPlan / hardSeverity 已迁 internal/plan（P2），
+// CLI export-hard 与 HTTP /api/hard、/api/export 共用同一份实现。
 
 func runExportHard(fs *flag.FlagSet, lang string) {
 	outputPath := fs.String("output", "", "Output Excel file path (default: outputs/hard_words_<date>_vA.B.xlsx)")
@@ -160,7 +88,7 @@ func runExportHard(fs *flag.FlagSet, lang string) {
 	}
 
 	dateStr := targetDate.Format("2006-01-02")
-	plan := BuildHardPlan(arc, lang, targetDate, *minAcc, *minRev)
+	plan := plan.BuildHardPlan(arc, lang, targetDate, *minAcc, *minRev)
 
 	if len(plan.Words) == 0 {
 		outputResult(map[string]interface{}{

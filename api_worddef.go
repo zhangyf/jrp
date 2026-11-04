@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/zhangyf/jrp/internal/archive"
+	"github.com/zhangyf/jrp/internal/lexicon"
 	"github.com/zhangyf/jrp/internal/llm"
 	"github.com/zhangyf/jrp/internal/review"
 )
@@ -69,7 +70,7 @@ func findWordByKana(groups []WordGroup, kana string) *Word {
 	for gi := range groups {
 		for wi := range groups[gi].Words {
 			w := &groups[gi].Words[wi]
-			if k, _, _ := splitLexiconWord(w.Word); k == kana {
+			if k, _, _ := lexicon.SplitLexiconWord(w.Word); k == kana {
 				return w
 			}
 		}

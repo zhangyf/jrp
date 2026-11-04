@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
+	"github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/sentence"
 	"github.com/zhangyf/jrp/internal/wordmeta"
 )
@@ -120,12 +121,12 @@ func (s *server) handleRecord(w http.ResponseWriter, r *http.Request, st *Storag
 		// 老师当天分几次写都行；全部交完才删 plan，下一次 GET 才出全新的一批。
 		// 2026-10-08 之前是只要回写就删 plan，部分提交后刷新，没写的句子直接没了。
 		remaining := 0
-		plan, perr := st.DownloadSentencePlan(s.ctx(), input.PlanDate)
-		if perr == nil && plan != nil {
-			remaining = pruneSentencePlan(plan, input.SentenceResults)
+		sentPlan, perr := st.DownloadSentencePlan(s.ctx(), input.PlanDate)
+		if perr == nil && sentPlan != nil {
+			remaining = plan.PruneSentencePlan(sentPlan, input.SentenceResults)
 			if remaining > 0 {
 				// 写失败不报错 —— 最坏结果是下一批还是这几句，不会丢数据。
-				_ = st.UploadSentencePlan(s.ctx(), plan)
+				_ = st.UploadSentencePlan(s.ctx(), sentPlan)
 			} else {
 				_ = st.DeleteSentencePlan(s.ctx(), input.PlanDate)
 			}
@@ -170,11 +171,11 @@ func (s *server) tomorrowPreview(st *Storage) map[string]interface{} {
 	if err != nil {
 		return map[string]interface{}{"error": err.Error()}
 	}
-	plan := BuildDuePlan(arc, s.lang, tomorrow, wordmeta.HoldSet(dueHold(ctx, st)))
+	previewPlan := plan.BuildDuePlan(arc, s.lang, tomorrow, wordmeta.HoldSet(dueHold(ctx, st)))
 	return map[string]interface{}{
 		"date":      tomorrow.Format("2006-01-02"),
-		"due_count": len(plan.Words),
-		"by_status": countByStatus(plan.Words),
+		"due_count": len(previewPlan.Words),
+		"by_status": plan.CountByStatus(previewPlan.Words),
 	}
 }
 
@@ -202,20 +203,4 @@ func intParam(r *http.Request, name string, def int) int {
 	return v
 }
 
-// pruneSentencePlan 把已提交的句子从 plan 里摘掉，返回还剩几句。
-// 部分提交时剩下的句子留在 plan 里，刷新页面还是这批（题号保持原编号，
-// 前端草稿按 number+原句指纹回填，对得上）。
-func pruneSentencePlan(plan *ReviewPlan, results []sentence.SentenceResult) int {
-	submitted := make(map[int]bool, len(results))
-	for _, sr := range results {
-		submitted[sr.Number] = true
-	}
-	left := plan.Sentences[:0]
-	for _, ps := range plan.Sentences {
-		if !submitted[ps.Number] {
-			left = append(left, ps)
-		}
-	}
-	plan.Sentences = left
-	return len(left)
-}
+// PruneSentencePlan 已迁 internal/plan（P2）。
