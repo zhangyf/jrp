@@ -29,13 +29,11 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
-	"github.com/zhangyf/jrp/internal/lessonimport"
 	"github.com/zhangyf/jrp/internal/lexicon"
 	"github.com/zhangyf/jrp/internal/offline"
 	"github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
-	"github.com/zhangyf/jrp/internal/sentencereview"
 	"github.com/zhangyf/jrp/internal/stats"
 )
 
@@ -48,7 +46,7 @@ import (
 // importDoc 一份要抽句子的汇编文档。
 type importDoc struct {
 	Name string
-	Kind lessonimport.LessonDocKind
+	Kind sentence.LessonDocKind
 }
 
 type importReport struct {
@@ -62,27 +60,27 @@ type importReport struct {
 
 // resolveImportDocs 找第N课的两份汇编文档（基本课文 + 应用课文）。
 // --doc 指定单份时只抽那一份，kind 按文档名里的「应用课文」判断。
-func resolveImportDocs(fetch lessonimport.DocFetcher, lesson int, onlyDoc string) (unit int, docs []importDoc, found bool) {
+func resolveImportDocs(fetch sentence.DocFetcher, lesson int, onlyDoc string) (unit int, docs []importDoc, found bool) {
 	if onlyDoc != "" {
-		kind := lessonimport.LessonDocKinds[0]
+		kind := sentence.LessonDocKinds[0]
 		if strings.Contains(onlyDoc, "应用课文") {
-			kind = lessonimport.LessonDocKinds[1]
+			kind = sentence.LessonDocKinds[1]
 		}
-		return lessonimport.UnitOfLesson(lesson), []importDoc{{Name: onlyDoc, Kind: kind}}, true
+		return sentence.UnitOfLesson(lesson), []importDoc{{Name: onlyDoc, Kind: kind}}, true
 	}
-	u, basic, applied, ok := lessonimport.ResolveLessonDocs(fetch, lesson)
+	u, basic, applied, ok := sentence.ResolveLessonDocs(fetch, lesson)
 	if !ok {
-		return lessonimport.UnitOfLesson(lesson), nil, false
+		return sentence.UnitOfLesson(lesson), nil, false
 	}
 	return u, []importDoc{
-		{Name: basic, Kind: lessonimport.LessonDocKinds[0]},
-		{Name: applied, Kind: lessonimport.LessonDocKinds[1]},
+		{Name: basic, Kind: sentence.LessonDocKinds[0]},
+		{Name: applied, Kind: sentence.LessonDocKinds[1]},
 	}, true
 }
 
 // collectImport 从给定的文档里抽第 lesson 课的句子，只留句库里没有的。
 // all 传进来时是句库现有全部条目，返回时已把新条目追加在后面（供连续导多课时查重）。
-func collectImport(fetch lessonimport.DocFetcher, all []sentence.BankSentence, lesson int, docs []importDoc) (newAll, added []sentence.BankSentence, reports []importReport) {
+func collectImport(fetch sentence.DocFetcher, all []sentence.BankSentence, lesson int, docs []importDoc) (newAll, added []sentence.BankSentence, reports []importReport) {
 	for _, d := range docs {
 		content, ok := fetch(d.Name)
 		if !ok {
@@ -91,8 +89,8 @@ func collectImport(fetch lessonimport.DocFetcher, all []sentence.BankSentence, l
 			})
 			continue
 		}
-		rows := lessonimport.ExtractLessonRows(content, lesson)
-		plan := lessonimport.BuildImportPlan(rows, lesson, d.Kind, d.Name, all)
+		rows := sentence.ExtractLessonRows(content, lesson)
+		plan := sentence.BuildImportPlan(rows, lesson, d.Kind, d.Name, all)
 		all = append(all, plan.Added...)
 		added = append(added, plan.Added...)
 		reports = append(reports, importReport{
@@ -105,7 +103,7 @@ func collectImport(fetch lessonimport.DocFetcher, all []sentence.BankSentence, l
 
 // cosFetcher 按文档名从 COS 取内容，取过的缓存起来（导多课不会重复下载）。
 // seed 可预置刚上传、还没落盘的内容（save-lesson 自动入库用）。
-func cosFetcher(ctx context.Context, storage *Storage, seed map[string]string) lessonimport.DocFetcher {
+func cosFetcher(ctx context.Context, storage *Storage, seed map[string]string) sentence.DocFetcher {
 	cache := map[string]string{}
 	for k, v := range seed {
 		cache[k] = v
@@ -204,7 +202,7 @@ func runSentenceImport(fs *flag.FlagSet, lang string) {
 			"language":  lang,
 			"lesson":    *lesson,
 			"new_count": 0,
-			"note":      "没找到这一课的汇编文档（试过第1-" + strconv.Itoa(lessonimport.MaxUnit) + "单元），先 save-lesson 把课文存进 COS",
+			"note":      "没找到这一课的汇编文档（试过第1-" + strconv.Itoa(sentence.MaxUnit) + "单元），先 save-lesson 把课文存进 COS",
 		})
 		return
 	}
@@ -396,7 +394,7 @@ func newLessonStatusSource(ctx context.Context, storage *Storage, lang string) (
 	if data, _, err := storage.DownloadLatestArchive(ctx); err == nil {
 		if arc, err := archive.ParseArchive(string(data), lang); err == nil {
 			for _, w := range review.AllWords(arc.Groups) {
-				if n := sentencereview.GroupLesson(w.Group); n > 0 {
+				if n := sentence.GroupLesson(w.Group); n > 0 {
 					s.words[n]++
 				}
 			}
@@ -443,7 +441,7 @@ func (s *lessonStatusSource) maxKnownLesson() int {
 		}
 	}
 	for _, sen := range s.bank.Sentences {
-		if v := sentencereview.GroupLesson(sen.Lesson); v > max {
+		if v := sentence.GroupLesson(sen.Lesson); v > max {
 			max = v
 		}
 	}
@@ -459,30 +457,30 @@ func (s *lessonStatusSource) docStatus(name string, lesson int) lessonDocStatus 
 	st := lessonDocStatus{Name: name}
 	if c, ok := s.fetchDoc(name); ok {
 		st.Exists = true
-		st.Section = lessonimport.HasLessonSection(c, lesson)
-		st.Sentences = len(lessonimport.ExtractLessonRows(c, lesson))
+		st.Section = sentence.HasLessonSection(c, lesson)
+		st.Sentences = len(sentence.ExtractLessonRows(c, lesson))
 	}
 	return st
 }
 
 func (s *lessonStatusSource) report(lesson int) lessonStatusReport {
 	r := lessonStatusReport{Lesson: lesson}
-	label := lessonimport.LessonLabelOf(lesson)
+	label := sentence.LessonLabelOf(lesson)
 
 	r.KnowledgeDoc = s.hasKnowledgeDoc(lesson, "知识点")
 
 	// 单元与课的对应关系不固定（第3单元塞了7-12课），按内容定位而不是按算术。
-	unit, basic, applied, found := lessonimport.ResolveLessonDocs(s.fetchDoc, lesson)
+	unit, basic, applied, found := sentence.ResolveLessonDocs(s.fetchDoc, lesson)
 	r.Unit = unit
 	if r.Unit <= 0 {
-		r.Unit = lessonimport.UnitOfLesson(lesson) // 没定位到就显示按 4 课一单元猜的，至少不是 0
+		r.Unit = sentence.UnitOfLesson(lesson) // 没定位到就显示按 4 课一单元猜的，至少不是 0
 	}
 	if found {
 		r.BasicDoc = s.docStatus(basic, lesson)
 		r.AppliedDoc = s.docStatus(applied, lesson)
 	} else {
-		r.BasicDoc = lessonDocStatus{Name: lessonimport.LessonDocName(r.Unit, lessonimport.LessonDocKinds[0])}
-		r.AppliedDoc = lessonDocStatus{Name: lessonimport.LessonDocName(r.Unit, lessonimport.LessonDocKinds[1])}
+		r.BasicDoc = lessonDocStatus{Name: sentence.LessonDocName(r.Unit, sentence.LessonDocKinds[0])}
+		r.AppliedDoc = lessonDocStatus{Name: sentence.LessonDocName(r.Unit, sentence.LessonDocKinds[1])}
 	}
 	r.Words = s.words[lesson]
 
@@ -592,7 +590,7 @@ func runSaveLesson(fs *flag.FlagSet, lang string) {
 	// 汇编文档 = 课文句子入口，存完直接把里面每一课的句子导进句库（查重后只加没有的）。
 	// 第19课（2026-10-16）就是存了汇编却没进句库，造句一直练不到那一课 ——
 	// 这条自动链路就是为了不再靠人记得补这一步。
-	if lessons := lessonimport.LessonSectionsIn(string(data)); len(lessons) > 0 {
+	if lessons := sentence.LessonSectionsIn(string(data)); len(lessons) > 0 {
 		out["lessons_in_doc"] = lessons
 		added, perLesson, err := autoImportLessons(ctx, storage, lessons, map[string]string{*name: string(data)})
 		if err != nil {

@@ -5,7 +5,6 @@ import (
 
 	"github.com/zhangyf/jrp/internal/planconfig"
 	"github.com/zhangyf/jrp/internal/sentence"
-	"github.com/zhangyf/jrp/internal/sentencereview"
 )
 
 // ComposeSentences 挑出某天的造句题：基础句库挑句 + 回炉变形句加餐，编号连续。
@@ -73,8 +72,8 @@ func ComposeSentences(ctx context.Context, store SentenceStore, meta Meta, p Par
 
 	// 懒：到这里才读词性表（reviewCircle 会打日志、失败 fail-open）。
 	circle := meta.Circle(ctx)
-	extra := sentencereview.BuildReviewSentences(rb, hist, p.Arc, p.Today,
-		cfg.SentenceReviewCount, exclude, sentencereview.DefaultReviewIdleDays,
+	extra := sentence.BuildReviewSentences(rb, hist, p.Arc, p.Today,
+		cfg.SentenceReviewCount, exclude, sentence.DefaultReviewIdleDays,
 		circle, planconfig.PlanCircleRatio(cfg))
 	res.ReviewExtra = extra
 	res.Circle = circle

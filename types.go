@@ -7,7 +7,6 @@ import (
 	"github.com/zhangyf/jrp/internal/record"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
-	"github.com/zhangyf/jrp/internal/sentencereview"
 	"github.com/zhangyf/jrp/internal/stats"
 	"github.com/zhangyf/jrp/internal/wordmeta"
 )
@@ -40,11 +39,11 @@ type ChangelogEntry = archive.ChangelogEntry
 // 60 秒缓存和 CLI 继续用 PlanConfig 这个名字，序列化形态不变。
 type PlanConfig = planconfig.PlanConfig
 
-// 回炉变形句库类型已迁 internal/sentencereview，根包只保留别名 ——
+// 回炉变形句库类型已迁 internal/sentence，根包只保留别名 ——
 // sentence_review.go 的 *Storage 方法与 cmd_sentence_review.go 的编排
 // 继续用 ReviewBank / ReviewSentence 这两个名字，不用跟着改。
-type ReviewBank = sentencereview.ReviewBank
-type ReviewSentence = sentencereview.ReviewSentence
+type ReviewBank = sentence.ReviewBank
+type ReviewSentence = sentence.ReviewSentence
 
 // 词性表与三圆分级类型已迁 internal/wordmeta，根包只保留别名 ——
 // storage_wordmeta.go 的 COS 读写、circle.go 的 applyCircle / unholdLesson、

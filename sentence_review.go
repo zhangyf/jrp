@@ -15,7 +15,7 @@ import (
 // 回炉变形句库的 COS 读写与圆级加权（编排层，留根包）。
 //
 // 纯规则层（句库类型、挑句 BuildReviewSentences、闲置天数、圆级分档、
-// 挑原型句打分与骨架挑选）已迁 internal/sentencereview；类型通过 types.go
+// 挑原型句打分与骨架挑选）已迁 internal/sentence；类型通过 types.go
 // 的别名保持 ReviewBank / ReviewSentence 这两个名字不变。
 //
 // 背景（2026-10-09 老师提的）：档案里有一大批正确率≥80%、但 30 天以上没复习的词。

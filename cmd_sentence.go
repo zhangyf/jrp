@@ -22,7 +22,6 @@ import (
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/sentence"
-	"github.com/zhangyf/jrp/internal/sentencereview"
 	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
@@ -316,7 +315,7 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 		}
 		rankName := []string{"三圆", "二圆", "一圆", "没标"}
 		for _, e := range res.ReviewExtra {
-			circleStat[rankName[sentencereview.CircleRank(res.Circle, wordOf[sentence.Norm(e.Answer)])]]++
+			circleStat[rankName[sentence.CircleRank(res.Circle, wordOf[sentence.Norm(e.Answer)])]]++
 		}
 	}
 
@@ -449,7 +448,7 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 		fmt.Fprintf(os.Stderr, "Error: 读取句库失败：%v\n", err)
 		os.Exit(1)
 	}
-	byLesson := sentencereview.GroupProtosByLesson(bank.Sentences)
+	byLesson := sentence.GroupProtosByLesson(bank.Sentences)
 
 	data, _, err := storage.DownloadLatestArchive(ctx)
 	if err != nil {
@@ -465,15 +464,15 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 
 	today := time.Now()
 	type item struct {
-		Word     string                        `json:"word"`
-		Pos      string                        `json:"pos"`
-		Def      string                        `json:"def"`
-		Lesson   string                        `json:"lesson"`
-		Reviews  int                           `json:"reviews"`
-		Accuracy float64                       `json:"accuracy"`
-		IdleDays int                           `json:"idle_days"`
-		DueIn    int                           `json:"days_to_qualify,omitempty"` // 仅"在路上"的词有
-		Protos   []sentencereview.ProtoSuggest `json:"prototypes,omitempty"`
+		Word     string                  `json:"word"`
+		Pos      string                  `json:"pos"`
+		Def      string                  `json:"def"`
+		Lesson   string                  `json:"lesson"`
+		Reviews  int                     `json:"reviews"`
+		Accuracy float64                 `json:"accuracy"`
+		IdleDays int                     `json:"idle_days"`
+		DueIn    int                     `json:"days_to_qualify,omitempty"` // 仅"在路上"的词有
+		Protos   []sentence.ProtoSuggest `json:"prototypes,omitempty"`
 	}
 	var qualified, pending []item
 	var young, weak, qualifiedTotal, coveredCount int
@@ -489,29 +488,29 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 			if w.ReviewCount > 0 {
 				acc = float64(w.ReviewCount-w.ErrorCount) / float64(w.ReviewCount)
 			}
-			idle := sentencereview.WordIdleDays(w, today)
+			idle := sentence.WordIdleDays(w, today)
 			pos, _, _, _ := wordmeta.LookupWordMeta(meta, w.Word)
-			ln := sentencereview.GroupLesson(w.Group)
+			ln := sentence.GroupLesson(w.Group)
 			it := item{
 				Word: w.Word, Pos: pos, Def: w.Definition,
-				Lesson: sentencereview.LessonLabel(ln), Reviews: w.ReviewCount,
-				Accuracy: sentencereview.RoundAcc(acc), IdleDays: idle,
+				Lesson: sentence.LessonLabel(ln), Reviews: w.ReviewCount,
+				Accuracy: sentence.RoundAcc(acc), IdleDays: idle,
 			}
 			switch {
 			case w.ReviewCount < 2:
 				young++
 			case acc < 0.8:
 				weak++
-			case idle >= sentencereview.DefaultReviewIdleDays:
+			case idle >= sentence.DefaultReviewIdleDays:
 				qualifiedTotal++
 				if covered[w.Word] {
 					coveredCount++
 					break
 				}
-				it.Protos = sentencereview.ProtoList(sentencereview.PickPrototypes(byLesson, ln, *nproto, pos))
+				it.Protos = sentence.ProtoList(sentence.PickPrototypes(byLesson, ln, *nproto, pos))
 				qualified = append(qualified, it)
 			default:
-				it.DueIn = sentencereview.DefaultReviewIdleDays - idle
+				it.DueIn = sentence.DefaultReviewIdleDays - idle
 				pending = append(pending, it)
 			}
 		}
@@ -534,7 +533,7 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 		"criteria": map[string]interface{}{
 			"min_reviews":   2,
 			"min_accuracy":  0.8,
-			"min_idle_days": sentencereview.DefaultReviewIdleDays,
+			"min_idle_days": sentence.DefaultReviewIdleDays,
 		},
 		"summary": map[string]interface{}{
 			"archive_words": len(seen),
@@ -621,11 +620,11 @@ func runSentenceReviewStats(fs *flag.FlagSet, lang string) {
 		if s.Answer == "" {
 			continue
 		}
-		n := sentencereview.GroupLesson(s.Lesson)
+		n := sentence.GroupLesson(s.Lesson)
 		if bankBy[n] == nil {
 			bankBy[n] = &lessonStat{}
 		}
-		l := sentencereview.JpLen(s.Answer)
+		l := sentence.JpLen(s.Answer)
 		bankBy[n].Count++
 		bankBy[n].Len += l
 		bankTotal++
@@ -642,12 +641,12 @@ func runSentenceReviewStats(fs *flag.FlagSet, lang string) {
 		if s.Answer == "" {
 			continue
 		}
-		n := sentencereview.GroupLesson(s.Lesson)
+		n := sentence.GroupLesson(s.Lesson)
 		if revBy[n] == nil {
 			revBy[n] = &lessonStat{}
 			words[n] = map[string]bool{}
 		}
-		l := sentencereview.JpLen(s.Answer)
+		l := sentence.JpLen(s.Answer)
 		revBy[n].Count++
 		revBy[n].Len += l
 		if s.Word != "" {
@@ -688,7 +687,7 @@ func runSentenceReviewStats(fs *flag.FlagSet, lang string) {
 
 	rows := make([]map[string]interface{}, 0, len(lessons))
 	for _, n := range lessons {
-		name := sentencereview.LessonLabel(n)
+		name := sentence.LessonLabel(n)
 		if n == 0 {
 			name = "未标课"
 		}
@@ -700,11 +699,11 @@ func runSentenceReviewStats(fs *flag.FlagSet, lang string) {
 		if r != nil && r.Count > 0 {
 			row["review"] = r.Count
 			row["review_words"] = len(words[n])
-			row["review_avg_len"] = sentencereview.RoundAcc(float64(r.Len) / float64(r.Count))
+			row["review_avg_len"] = sentence.RoundAcc(float64(r.Len) / float64(r.Count))
 		}
 		if b != nil && b.Count > 0 {
 			row["bank"] = b.Count
-			row["bank_avg_len"] = sentencereview.RoundAcc(float64(b.Len) / float64(b.Count))
+			row["bank_avg_len"] = sentence.RoundAcc(float64(b.Len) / float64(b.Count))
 		}
 		rows = append(rows, row)
 	}
@@ -713,7 +712,7 @@ func runSentenceReviewStats(fs *flag.FlagSet, lang string) {
 		if n == 0 {
 			return 0
 		}
-		return sentencereview.RoundAcc(float64(total) / float64(n))
+		return sentence.RoundAcc(float64(total) / float64(n))
 	}
 
 	outputResult(map[string]interface{}{
@@ -769,7 +768,7 @@ func runSentenceReviewBank(fs *flag.FlagSet, lang string) {
 		return
 
 	case *file != "":
-		nb, err := sentencereview.LoadReviewFile(*file)
+		nb, err := sentence.LoadReviewFile(*file)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: 读取本地文件失败：%v\n", err)
 			os.Exit(1)
@@ -806,7 +805,7 @@ func runSentenceReviewBank(fs *flag.FlagSet, lang string) {
 			fmt.Fprintf(os.Stderr, "Error: 读取回炉句库失败：%v\n", err)
 			os.Exit(1)
 		}
-		add, err := sentencereview.LoadReviewFile(*merge)
+		add, err := sentence.LoadReviewFile(*merge)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: 读取本地文件失败：%v\n", err)
 			os.Exit(1)
@@ -827,7 +826,7 @@ func runSentenceReviewBank(fs *flag.FlagSet, lang string) {
 			fmt.Fprintln(os.Stderr, "Error: 校验没过，没有上传（改完再来）")
 			os.Exit(1)
 		}
-		nextN := sentencereview.NextReviewIDNum(cur.Sentences)
+		nextN := sentence.NextReviewIDNum(cur.Sentences)
 		var added []ReviewSentence
 		var skipped []string
 		for _, s := range add.Sentences {

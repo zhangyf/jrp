@@ -1,15 +1,13 @@
-package lessonimport
+package sentence
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // MaxBankSeq 已有条目里 L<n><tag>xxx 的最大序号，新条目从它后面接着编。
-func MaxBankSeq(existing []sentence.BankSentence, lesson int, tag string) int {
+func MaxBankSeq(existing []BankSentence, lesson int, tag string) int {
 	prefix := fmt.Sprintf("L%d%s", lesson, tag)
 	max := 0
 	for _, s := range existing {
@@ -34,8 +32,8 @@ func MaxBankSeq(existing []sentence.BankSentence, lesson int, tag string) int {
 // 课本可能两句都教 —— 相似度说得出"很像"，说不出"就是同一句"，
 // 自动覆盖会把真句子盖没。所以现在的规则就这么简单。
 type ImportPlan struct {
-	Added   []sentence.BankSentence `json:"added"`
-	Skipped int                     `json:"skipped"`
+	Added   []BankSentence `json:"added"`
+	Skipped int            `json:"skipped"`
 }
 
 // BuildImportPlan 把抽出来的行变成导入方案：
@@ -45,10 +43,10 @@ type ImportPlan struct {
 //  2. 其他一律追加，ID 接着已有最大号编
 //
 // 不做覆盖、不做相似度判断、不做待定清单 —— 老师明确不要这套复杂度。
-func BuildImportPlan(rows []ImportedRow, lesson int, kind LessonDocKind, doc string, existing []sentence.BankSentence) ImportPlan {
+func BuildImportPlan(rows []ImportedRow, lesson int, kind LessonDocKind, doc string, existing []BankSentence) ImportPlan {
 	have := make(map[string]bool, len(existing))
 	for _, s := range existing {
-		if n := sentence.Norm(s.Answer); n != "" {
+		if n := Norm(s.Answer); n != "" {
 			have[n] = true
 		}
 	}
@@ -57,7 +55,7 @@ func BuildImportPlan(rows []ImportedRow, lesson int, kind LessonDocKind, doc str
 	seq := MaxBankSeq(existing, lesson, kind.IDTag)
 	seen := make(map[string]bool, len(rows))
 	for _, r := range rows {
-		n := sentence.Norm(r.JP)
+		n := Norm(r.JP)
 		if n == "" || seen[n] || have[n] {
 			plan.Skipped++
 			continue
@@ -69,8 +67,8 @@ func BuildImportPlan(rows []ImportedRow, lesson int, kind LessonDocKind, doc str
 	return plan
 }
 
-func NewBankSentence(lesson int, kind LessonDocKind, doc string, seq int, r ImportedRow) sentence.BankSentence {
-	return sentence.BankSentence{
+func NewBankSentence(lesson int, kind LessonDocKind, doc string, seq int, r ImportedRow) BankSentence {
+	return BankSentence{
 		ID:        fmt.Sprintf("L%d%s%03d", lesson, kind.IDTag, seq),
 		Lesson:    LessonLabelOf(lesson),
 		Source:    kind.Source,

@@ -1,4 +1,4 @@
-package sentencereview
+package sentence
 
 import (
 	"encoding/json"
@@ -9,7 +9,6 @@ import (
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
-	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // 固定「今天」，不依赖真实时钟、不 sleep。所有天数期望为手写常量（用真实日历
@@ -153,14 +152,14 @@ func TestBuildReviewSentencesFiltersAndOrder(t *testing.T) {
 		mk("R6", "w6", "P6", "おの文です。"), // 原型句被 exclude
 		mk("R7", "w7", "P1", "かの文です。"), // 与 R1 同原型 → 当天只留一条
 	)
-	hist := sentence.SentenceHistory{
+	hist := SentenceHistory{
 		"2026-10-20": {"いの文です。"}, // R2 最近 10/20
 		"2026-10-28": {"うの文です。"}, // R3 最近 10/28（比 R2 近 → R2 先）
 		"bad-date":   {"あの文です。"}, // 非法日期跳过
 	}
 	exclude := map[string]bool{
-		sentence.Norm("えの文です。"): true,
-		sentence.Norm("P6"):     true,
+		Norm("えの文です。"): true,
+		Norm("P6"):     true,
 	}
 	got := BuildReviewSentences(bank, hist, nil, testToday, 10, exclude, 0, nil, 0)
 	// R5/R6/R4 被过滤；R7 与 R1 同原型去重 → 剩 R1,R2,R3

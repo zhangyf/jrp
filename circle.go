@@ -27,7 +27,7 @@ import (
 //
 // 词性表 / 圆级纯规则（CircleGroupOf / LessonOfGroup / CircleMap 及 5 个类型）
 // 已迁 internal/wordmeta，根包靠 types.go 的别名保持 WordMeta 等名字不变。
-// 圆级分档 CircleRank 归 internal/sentencereview，只吃摊好的 map。
+// 圆级分档 CircleRank 归 internal/sentence，只吃摊好的 map。
 // applyCircle / unholdLesson 要写档案，留根；编排照旧。
 
 // applyCircle 是批量导入/打标的唯一实现。

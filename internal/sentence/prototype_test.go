@@ -1,9 +1,7 @@
-package sentencereview
+package sentence
 
 import (
 	"testing"
-
-	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // ---------- GroupLesson / LessonLabel ----------
@@ -73,9 +71,9 @@ func TestJpLen(t *testing.T) {
 // ---------- ProtoScore：长度三档 + 各词性槽位 + 基本课文加分 ----------
 
 func TestProtoScoreLengthBands(t *testing.T) {
-	short := sentence.BankSentence{Answer: "はい。"}               // <10 字
-	mid := sentence.BankSentence{Answer: "これは とても 長い 文で あります。"} // 14-26 字
-	long := sentence.BankSentence{Answer: "これは 本当に とても とても 長くて 助詞が たくさん 並んで いる 文です。"}
+	short := BankSentence{Answer: "はい。"}               // <10 字
+	mid := BankSentence{Answer: "これは とても 長い 文で あります。"} // 14-26 字
+	long := BankSentence{Answer: "これは 本当に とても とても 長くて 助詞が たくさん 並んで いる 文です。"}
 	// 纯长度（pos 不给 → 不进任何词性分支）：short 应被重扣、mid 应加分、long 轻扣
 	if !(ProtoScore(mid, "") > ProtoScore(long, "") && ProtoScore(long, "") > ProtoScore(short, "")) {
 		t.Errorf("长度档位顺序错：short=%d mid=%d long=%d",
@@ -93,18 +91,18 @@ func TestProtoScoreLengthBands(t *testing.T) {
 }
 
 func TestProtoScorePosAndSource(t *testing.T) {
-	base := sentence.BankSentence{Answer: "李さんは 毎日 コーヒーを 飲みます。"}
+	base := BankSentence{Answer: "李さんは 毎日 コーヒーを 飲みます。"}
 	// 名词槽：含「は 」「を 」「に 」等多个助词，应累计加分
 	if ProtoScore(base, "名词") <= ProtoScore(base, "") {
 		t.Errorf("名词应因槽位加分：%d vs %d", ProtoScore(base, "名词"), ProtoScore(base, ""))
 	}
-	masu := sentence.BankSentence{Answer: "李さんは 毎日 コーヒーを 飲みます。"}
-	desu := sentence.BankSentence{Answer: "これは 本です。"}
+	masu := BankSentence{Answer: "李さんは 毎日 コーヒーを 飲みます。"}
+	desu := BankSentence{Answer: "これは 本です。"}
 	if ProtoScore(masu, "动词") <= ProtoScore(desu, "动词") {
 		t.Errorf("动词应优先ます结尾：%d vs %d", ProtoScore(masu, "动词"), ProtoScore(desu, "动词"))
 	}
-	iAdj := sentence.BankSentence{Answer: "四川料理は 辛いです。"}
-	nAdj := sentence.BankSentence{Answer: "これは 本です。"}
+	iAdj := BankSentence{Answer: "四川料理は 辛いです。"}
+	nAdj := BankSentence{Answer: "これは 本です。"}
 	if ProtoScore(iAdj, "形容词") <= ProtoScore(nAdj, "形容词") {
 		t.Errorf("形容词应优先い形：%d vs %d", ProtoScore(iAdj, "形容词"), ProtoScore(nAdj, "形容词"))
 	}
@@ -118,7 +116,7 @@ func TestProtoScorePosAndSource(t *testing.T) {
 // ---------- GroupProtosByLesson：分组 + 基本课文优先 + 长句优先 ----------
 
 func TestGroupProtosByLesson(t *testing.T) {
-	ss := []sentence.BankSentence{
+	ss := []BankSentence{
 		{ID: "A1", Lesson: "第3课", Source: "应用课文", Answer: "とても 長い アプリの 文です。"},
 		{ID: "B1", Lesson: "第3课", Source: "基本课文", Answer: "ここは デパートです。"},
 		{ID: "B2", Lesson: "第3课", Source: "基本课文", Answer: "トイレは どこに ありますか。"},
@@ -139,7 +137,7 @@ func TestGroupProtosByLesson(t *testing.T) {
 // ---------- PickPrototypes：同课优先、先高课后低课、未知课兜底、n<=0 ----------
 
 func TestPickPrototypes(t *testing.T) {
-	ss := []sentence.BankSentence{
+	ss := []BankSentence{
 		{ID: "P1", Lesson: "第4课", Source: "基本课文", Answer: "部屋に 机と 椅子が あります。"},
 		{ID: "P2", Lesson: "第4课", Source: "基本课文", Answer: "机の 上に 猫が います。"},
 		{ID: "Q1", Lesson: "第2课", Source: "基本课文", Answer: "これは 本です。"},
@@ -161,7 +159,7 @@ func TestPickPrototypes(t *testing.T) {
 		t.Errorf("课号未知应给满 2 条，实际 %d", len(gotUnknown))
 	}
 	// 跨课先往高课扩
-	ss2 := []sentence.BankSentence{
+	ss2 := []BankSentence{
 		{ID: "H1", Lesson: "第8课", Answer: "高い課の 文です。"},
 		{ID: "L1", Lesson: "第6课", Answer: "低い課の 文です。"},
 	}
@@ -181,7 +179,7 @@ func TestPickPrototypes(t *testing.T) {
 		t.Error("n<0 应返回 nil")
 	}
 	// 空库
-	if PickPrototypes(map[int][]sentence.BankSentence{}, 4, 3, "名词") != nil {
+	if PickPrototypes(map[int][]BankSentence{}, 4, 3, "名词") != nil {
 		t.Error("空库应返回 nil")
 	}
 }
@@ -189,7 +187,7 @@ func TestPickPrototypes(t *testing.T) {
 // ---------- ProtoList：全字段映射 ----------
 
 func TestProtoList(t *testing.T) {
-	in := []sentence.BankSentence{
+	in := []BankSentence{
 		{ID: "P1", Lesson: "第4课", Source: "基本课文", Answer: "文です。", Chinese: "是句子。"},
 	}
 	got := ProtoList(in)
