@@ -166,7 +166,7 @@ func computeStats(ctx context.Context, storage *Storage, lang string, days int) 
 	var snapshots []StatsSnapshot
 	var lastArchive *Archive
 	for _, e := range entries {
-		data, err := storage.store.GetAll(ctx, e.key)
+		data, err := storage.ReadArchiveBlob(ctx, e.key)
 		if err != nil {
 			continue
 		}
