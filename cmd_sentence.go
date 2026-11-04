@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -9,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zhangyf/jrp/internal/planconfig"
+	"github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/sentence"
 	"github.com/zhangyf/jrp/internal/sentencereview"
 )
@@ -269,58 +270,40 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 		}
 	}
 
-	bank, err := storage.DownloadSentenceBank(ctx)
+	res, err := plan.ComposeSentences(ctx, storage, sentenceMeta{storage}, plan.Params{
+		Today:     today,
+		Arc:       nil, // 预检拿不到档案，不按闲置过滤，宁可全列出来看过全貌
+		BaseCount: *count,
+	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: 读取句库失败：%v\n", err)
-		os.Exit(1)
-	}
-	hist, err := storage.DownloadSentenceHistory(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-	wrong, err := storage.DownloadSentenceWrong(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	picked := sentence.BuildSentencePlan(bank, hist, wrong, today, *count)
-	baseCount := len(picked)
-
-	// 回炉变形句：跟网页端同一套加餐逻辑（arc 传 nil → 不按闲置过滤，
-	// 预检场景拿不到档案，宁可全列出来让人看过全貌）。
-	circleStat := map[string]int{}
-	cfgNow, _ := resolvePlanConfig(ctx, storage)
-	if rb, rerr := storage.DownloadReviewBank(ctx); rerr == nil && rb != nil {
-		exclude := make(map[string]bool, len(picked))
-		for _, p := range picked {
-			exclude[sentence.Norm(p.Answer)] = true
+		var le *plan.LoadError
+		if errors.As(err, &le) && le.Stage == plan.StageBank {
+			fmt.Fprintf(os.Stderr, "Error: 读取句库失败：%v\n", le.Err)
+		} else {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		}
-		cfg := cfgNow
-		circle := reviewCircle(ctx, storage)
-		extra := sentencereview.BuildReviewSentences(rb, hist, nil, today,
-			cfg.SentenceReviewCount, exclude, sentencereview.DefaultReviewIdleDays,
-			circle, planconfig.PlanCircleRatio(cfg))
-		// 回炉句挑中了几句三圆 —— 圆级加权有没有生效，看这里。
-		// sentence.BankSentence 不带锚点词，只能拿 answer 反查回炉库。
-		wordOf := make(map[string]string, len(rb.Sentences))
-		for _, s := range rb.Sentences {
+		os.Exit(1)
+	}
+	picked := res.Sentences
+	baseCount := res.BaseCount
+	reviewCount := res.ReviewCount
+	hist := res.History
+	wrong := res.Wrong
+	bank := res.Bank
+
+	// 回炉句挑中了几句三圆 —— 圆级加权有没有生效，看这里。
+	// sentence.BankSentence 不带锚点词，只能拿 answer 反查回炉库。
+	circleStat := map[string]int{}
+	if res.ReviewBank != nil {
+		wordOf := make(map[string]string, len(res.ReviewBank.Sentences))
+		for _, s := range res.ReviewBank.Sentences {
 			wordOf[sentence.Norm(s.Answer)] = s.Word
 		}
 		rankName := []string{"三圆", "二圆", "一圆", "没标"}
-		for _, e := range extra {
-			circleStat[rankName[sentencereview.CircleRank(circle, wordOf[sentence.Norm(e.Answer)])]]++
-		}
-		for _, e := range extra {
-			picked = append(picked, PlanSentence{
-				Number:  len(picked) + 1,
-				Chinese: e.Chinese,
-				Answer:  e.Answer,
-			})
+		for _, e := range res.ReviewExtra {
+			circleStat[rankName[sentencereview.CircleRank(res.Circle, wordOf[sentence.Norm(e.Answer)])]]++
 		}
 	}
-	reviewCount := len(picked) - baseCount
 
 	// 自检：近 7 天重复
 	cutoff := today.AddDate(0, 0, -7)
@@ -379,7 +362,7 @@ func runSentencePreview(fs *flag.FlagSet, lang string) {
 		"review_circle": map[string]interface{}{
 			"三圆": circleStat["三圆"], "二圆": circleStat["二圆"],
 			"一圆": circleStat["一圆"], "没标": circleStat["没标"],
-			"ratio": planconfig.PlanCircleRatio(cfgNow),
+			"ratio": res.CircleRatio,
 		},
 		"self_check": map[string]interface{}{
 			"recent_7d_repeat": recentDup, // 应为 0（错句除外）
