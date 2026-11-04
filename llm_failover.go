@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/judge"
 	"github.com/zhangyf/jrp/internal/llm"
 )
 
@@ -81,7 +82,7 @@ func judgeWithFallback(cfg llm.Config, prompt string) (judgeResult, string, erro
 		reply, err := llm.Call(c, prompt)
 		if err == nil {
 			var res judgeResult
-			if res, err = parseJudgeReply(reply); err == nil {
+			if res, err = judge.ParseReply(reply); err == nil {
 				llm.MarkResult(m, true, now)
 				return res, m, nil
 			}

@@ -4,11 +4,13 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/zhangyf/jrp/internal/judge"
 )
 
 // 内置模板渲染：占位符换成实际句子，中文那行按中文在不在决定留不留。
 func TestFillJudgePrompt(t *testing.T) {
-	p := fillJudgePrompt(builtinJudgePrompt, "明日、京都へ行きます", "明天去京都", "あした京都に行く")
+	p := judge.FillPrompt(judge.BuiltinPrompt, "明日、京都へ行きます", "明天去京都", "あした京都に行く")
 	for _, must := range []string{
 		"参考答案：明日、京都へ行きます",
 		"中文意思：明天去京都",
@@ -23,7 +25,7 @@ func TestFillJudgePrompt(t *testing.T) {
 	}
 
 	// 中文为空：整行删掉，不留「中文意思：」空壳，也不留连续空行
-	p2 := fillJudgePrompt(builtinJudgePrompt, "甲", "", "乙")
+	p2 := judge.FillPrompt(judge.BuiltinPrompt, "甲", "", "乙")
 	if strings.Contains(p2, "中文意思") {
 		t.Error("中文为空时不该出现「中文意思」行")
 	}
@@ -46,7 +48,7 @@ func TestValidateJudgePrompt(t *testing.T) {
 		{"一个占位符都没有", "随便写点什么", true},
 	}
 	for _, c := range cases {
-		err := validateJudgePrompt(c.tpl)
+		err := judge.ValidatePrompt(c.tpl)
 		if c.bad && err == nil {
 			t.Errorf("%s：应当判坏", c.name)
 		}
@@ -60,13 +62,13 @@ func TestValidateJudgePrompt(t *testing.T) {
 // 少了这段模型自由发挥，parseJudgeReply 抠不出结论，判分全线失灵。
 func TestEnsureJSONRule(t *testing.T) {
 	bare := "参考答案：{answer}\n学生写的：{input}"
-	got := ensureJSONRule(bare)
+	got := judge.EnsureJSONRule(bare)
 	if !strings.Contains(got, `"correct"`) {
 		t.Error("没提 JSON 的模板必须补上输出格式要求")
 	}
 	// 已经写了输出要求的，不许再追加一遍
 	withRule := bare + "\n只输出一行 JSON：{\"correct\": true}"
-	if ensureJSONRule(withRule) != withRule {
+	if judge.EnsureJSONRule(withRule) != withRule {
 		t.Error("已经有 JSON 要求时不该再追加")
 	}
 }
@@ -75,23 +77,23 @@ func TestEnsureJSONRule(t *testing.T) {
 func TestChooseJudgePrompt(t *testing.T) {
 	good := "你是日语老师。\n参考答案：{answer}\n学生写的：{input}"
 
-	tpl, src := chooseJudgePrompt("", nil)
-	if src != "builtin" || tpl != builtinJudgePrompt {
+	tpl, src := judge.ChoosePrompt("", nil)
+	if src != "builtin" || tpl != judge.BuiltinPrompt {
 		t.Error("COS 上没有时应该用内置模板")
 	}
-	tpl, src = chooseJudgePrompt("", errors.New("网络炸了"))
+	tpl, src = judge.ChoosePrompt("", errors.New("网络炸了"))
 	if src != "builtin" {
 		t.Error("COS 读失败时应该用内置模板")
 	}
-	tpl, src = chooseJudgePrompt("     ", nil)
+	tpl, src = judge.ChoosePrompt("     ", nil)
 	if src != "builtin" {
 		t.Error("空模板应该用内置")
 	}
-	tpl, src = chooseJudgePrompt("这句话对吗？{answer}", nil)
+	tpl, src = judge.ChoosePrompt("这句话对吗？{answer}", nil)
 	if src != "builtin" {
 		t.Error("缺 {input} 的坏模板必须回退内置")
 	}
-	tpl, src = chooseJudgePrompt(good, nil)
+	tpl, src = judge.ChoosePrompt(good, nil)
 	if src != "cos" || tpl != good {
 		t.Error("正常模板应该用 COS 上的")
 	}
@@ -99,14 +101,14 @@ func TestChooseJudgePrompt(t *testing.T) {
 
 // 版本：内容改一个字版本就得变，草稿里的旧结论据此作废重判。
 func TestPromptVersion(t *testing.T) {
-	a := promptVersion(builtinJudgePrompt)
+	a := judge.PromptVersion(judge.BuiltinPrompt)
 	if a == "" || len(a) != 12 {
 		t.Fatalf("版本格式不对：%q", a)
 	}
-	if a != promptVersion(builtinJudgePrompt) {
+	if a != judge.PromptVersion(judge.BuiltinPrompt) {
 		t.Error("同一份模板版本必须稳定")
 	}
-	if a == promptVersion(builtinJudgePrompt+"\n7. 例外的例外。") {
+	if a == judge.PromptVersion(judge.BuiltinPrompt+"\n7. 例外的例外。") {
 		t.Error("模板改了版本必须变")
 	}
 }
@@ -114,7 +116,7 @@ func TestPromptVersion(t *testing.T) {
 // 端到端：外置模板走完整链路渲染出来的 prompt，占位符换掉、JSON 要求补上。
 func TestRenderJudgePromptWithCustomTemplate(t *testing.T) {
 	tpl := "判断一下。\n参考：{answer}\n中文：{chinese}\n学生：{input}"
-	p := renderJudgePrompt(tpl, "甲", "乙", "丙")
+	p := judge.RenderPrompt(tpl, "甲", "乙", "丙")
 	if !strings.Contains(p, "参考：甲") || !strings.Contains(p, "学生：丙") {
 		t.Errorf("占位符没渲染：%q", p)
 	}
