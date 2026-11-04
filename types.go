@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/zhangyf/jrp/internal/archive"
+	"github.com/zhangyf/jrp/internal/offline"
 	"github.com/zhangyf/jrp/internal/planconfig"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
@@ -53,56 +54,18 @@ type CircleItem = wordmeta.CircleItem
 type CircleInput = wordmeta.CircleInput
 type CircleOutcome = wordmeta.CircleOutcome
 
-// PlanWord is a word entry in a review plan.
-//
-// ErrorCount/ReviewCount/Accuracy are only populated for hard-word plans
-// (export-hard); they are omitted from daily review plans so that existing
-// consumers (web UI, record) see byte-identical JSON.
-//
-// Accuracy is a POINTER on purpose: a genuine 0% accuracy (wrong every single
-// time) is the most important case in a hard-word list, and a plain float64 with
-// omitempty would silently drop it. ErrorCount stays a plain int because a hard
-// word always has at least one error, but ReviewCount/Accuracy must survive.
-type PlanWord struct {
-	Number      int      `json:"number"`
-	Word        string   `json:"word"`
-	Definition  string   `json:"definition"`
-	Group       string   `json:"group"`
-	Status      string   `json:"status"` // review category: ☠️钉子户 / 🔴待巩固 / 🔄待测试 / 🟡基本掌握 / 🟢抽查
-	ErrorCount  int      `json:"error_count,omitempty"`
-	ReviewCount int      `json:"review_count,omitempty"`
-	Accuracy    *float64 `json:"accuracy,omitempty"`
-	// 词性 / 备注 / 圆级不在档案里，也不进 plan 存档 —— 只在 API 返回时按词形
-	// 从 word_meta.json join 上来（enrichWordMeta），给页面显示用。
-	// 塞进 plan 存档会牵动 record 的序号映射和存档体积，没必要。
-	Pos  string `json:"pos,omitempty"`
-	Sub  string `json:"sub,omitempty"`
-	Note string `json:"note,omitempty"`
-	// Circle 是三圆手册分级：三圆 / 二圆 / 一圆（手册没收录则空，页面不显示）。
-	// 2026-11-03 老师要「单词复习时展示圆级」，跟词性同一路 join。
-	Circle string `json:"circle,omitempty"`
-}
+// 复习计划数据模型已迁 internal/offline，根包只保留别名 ——
+// storage.go 的 COS 存档读写、api_plan.go / api_trial.go / cmd_gen_plan.go
+// 的构造逻辑，以及 excel.go 渲染侧都继续用 PlanWord / ReviewPlan 这两个名字，
+// JSON tag 与序列化形态不变。
+type PlanWord = offline.PlanWord
+type ReviewPlan = offline.ReviewPlan
 
 // PlanSentence is a sentence exercise in a review plan.
 //
 // 定义已迁 internal/sentence，根包只保留别名 —— ReviewPlan / RecordInput /
 // excel.go / api_trial.go 继续用 PlanSentence 这个名字，不用跟着改。
 type PlanSentence = sentence.PlanSentence
-
-// ReviewPlan is the JSON saved alongside each Excel for record tracking.
-//
-// Kind distinguishes plan types: "" (or absent) = daily review plan,
-// "hard" = hard-word deep-dive plan produced by export-hard. The two are stored
-// under different COS keys so they never overwrite each other.
-type ReviewPlan struct {
-	Date        string         `json:"date"`
-	Language    string         `json:"language"`
-	Words       []PlanWord     `json:"words"`
-	Sentences   []PlanSentence `json:"sentences"`
-	Kind        string         `json:"kind,omitempty"`
-	MinAccuracy float64        `json:"min_accuracy,omitempty"`
-	MinReviews  int            `json:"min_reviews,omitempty"`
-}
 
 // RecordResult is one word's review result.
 type RecordResult struct {
