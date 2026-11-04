@@ -1484,6 +1484,17 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 - 等价核对：6 个迁出函数 + 5 个类型 struct 与 `main` 基线块级逐行等价；12 个根文件还原前缀后按序匹配基线 **0 漂移**；`types.go` 5 行别名为唯一预期新增。
 - 本批纯目录重构，线上行为不变；提交推送与部署继续分别确认。
 
+### 复习计划数据模型包边界（2026-11-04）
+
+- 这是**第一批动「COS 存档契约类型」的拆包**：`PlanWord` / `ReviewPlan` 原定义在根 `types.go`，为让离线 Excel 渲染侧能进 `internal/offline`（`package main` 不可被 import），先把这两个类型的家搬进包内、根留别名。**本批只搬类型，渲染函数仍在根 `excel.go`，下一批再迁。**
+- `internal/offline/plan.go`：两个 struct 逐字搬迁，字段、顺序、JSON tag、`omitempty` 全原样；唯一符号变化是 `ReviewPlan.Sentences` 从根别名 `[]PlanSentence` 改成 `[]sentence.PlanSentence`（`offline.go` 已 import `internal/sentence`，无循环依赖）。⚠️ `ReviewPlan` 是存进 COS 的存档 JSON，`storage.go` 的 `UploadPlan`/`DownloadPlan`/`UploadHardPlan`/`UploadSentencePlan` 都吃它；`PlanWord.Accuracy` 用 `*float64 + omitempty` 保真真正的 0%。改字段/顺序/tag 会静默改变线上存档格式。
+- 根 `types.go`：加 `type PlanWord = offline.PlanWord` / `type ReviewPlan = offline.ReviewPlan` 两条别名 + 1 行 import；删两个 struct 定义。`PlanSentence = sentence.PlanSentence` 别名与其注释原样保留。15 个引用文件（`storage.go` / `api_plan.go` / `api_record.go` / `api_trial.go` / `cmd_gen_plan.go` / `cmd_export_hard.go` / `cmd_record.go` / `excel.go` / 各测试）**零改动**。
+- 类型别名是同一类型而非新类型，`json.Marshal`/`Unmarshal` 走同一份结构定义与 tag ⇒ 存档 JSON 字节严格不变；无签名变更、无新依赖、无数据迁移、无 COS key 变化。
+- 测试：`internal/offline/plan_test.go` 锁住契约——最小 `PlanWord` 的字节级 JSON 基线、日常 plan 的 `omitempty` 省略、`Accuracy=0` 指针不被吞、`ReviewPlan` 全字段形态与 `sentences` 嵌套、零值可选项省略、round-trip 等价。固定输入，不连 COS/模型。单包验证：`go test ./internal/offline`。
+- 等价核对：两个 struct 与 `main` 基线块级逐行等价（43 行，去空白 + 还原 `sentence.PlanSentence` 前缀后 `diff` 为空）；`git diff --name-only main` 只有 `types.go`，其余引用文件 0 漂移。
+- ⚠️ `internal/offline/offline.go` 包注释「渲染侧（生成 Excel）仍留在根包」本批仍成立，下一批迁渲染函数时要同步改这句。
+- 本批纯目录重构，线上行为不变；提交推送与部署继续分别确认。
+
 ## Command Reference
 
 | Command | Flags | Description |
