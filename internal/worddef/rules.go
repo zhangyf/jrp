@@ -6,6 +6,7 @@ import (
 
 	"github.com/zhangyf/jrp/internal/lexicon"
 	"github.com/zhangyf/jrp/internal/review"
+	"github.com/zhangyf/jrp/internal/textutil"
 )
 
 // Item 是一个词查回来的结果。Word 是建议录进档案的词形（可能带了括号汉字）。
@@ -76,7 +77,7 @@ func (e *wordDefError) Error() string { return e.msg }
 
 // ParseReply 抠模型返回的 JSON 数组（带 kanji 字段）。
 func ParseReply(reply string) ([]LLMItem, error) {
-	s := stripCodeFence(reply)
+	s := textutil.StripCodeFence(reply)
 	l := strings.Index(s, "[")
 	r := strings.LastIndex(s, "]")
 	if l < 0 || r <= l {
@@ -87,26 +88,4 @@ func ParseReply(reply string) ([]LLMItem, error) {
 		return nil, err
 	}
 	return out, nil
-}
-
-// stripCodeFence 去掉 ```json ... ``` 外壳。
-//
-// 与 internal/vision 的 stripCodeFence 是同一份纯规则（逐字一致），各放一份私有副本
-// 是为了让两个用例包互不依赖；按老师「2 选 A」，P5 尾部薄壳合并那个独立 commit
-// 再统一收敛到一处，P4 不为此新建公共包。
-func stripCodeFence(s string) string {
-	s = strings.TrimSpace(s)
-	i := strings.Index(s, "```")
-	if i < 0 {
-		return s
-	}
-	s = s[i+3:]
-	if j := strings.Index(s, "```"); j >= 0 {
-		s = s[:j]
-	}
-	s = strings.TrimSpace(s)
-	if strings.HasPrefix(strings.ToLower(s), "json") {
-		s = strings.TrimSpace(s[4:])
-	}
-	return s
 }
