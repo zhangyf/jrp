@@ -1,4 +1,4 @@
-package lexicon
+package words
 
 import (
 	"encoding/json"
@@ -7,7 +7,6 @@ import (
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
-	"github.com/zhangyf/jrp/internal/wordmeta"
 )
 
 func TestSplitLexiconWord(t *testing.T) {
@@ -61,7 +60,7 @@ func TestBuildLexicon(t *testing.T) {
 			}},
 		},
 	}
-	meta := &wordmeta.WordMeta{Items: map[string]wordmeta.WordPOS{
+	meta := &WordMeta{Items: map[string]WordPOS{
 		"はし(橋)": {Pos: "名词", Note: "跟箸区分", Circle: "二圆"},
 	}}
 

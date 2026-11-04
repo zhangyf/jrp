@@ -22,7 +22,7 @@ import (
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/sentence"
-	"github.com/zhangyf/jrp/internal/wordmeta"
+	"github.com/zhangyf/jrp/internal/words"
 )
 
 // ==========================================================================
@@ -489,7 +489,7 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 				acc = float64(w.ReviewCount-w.ErrorCount) / float64(w.ReviewCount)
 			}
 			idle := sentence.WordIdleDays(w, today)
-			pos, _, _, _ := wordmeta.LookupWordMeta(meta, w.Word)
+			pos, _, _, _ := words.LookupWordMeta(meta, w.Word)
 			ln := sentence.GroupLesson(w.Group)
 			it := item{
 				Word: w.Word, Pos: pos, Def: w.Definition,

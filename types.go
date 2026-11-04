@@ -8,7 +8,7 @@ import (
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
 	"github.com/zhangyf/jrp/internal/stats"
-	"github.com/zhangyf/jrp/internal/wordmeta"
+	"github.com/zhangyf/jrp/internal/words"
 )
 
 // LangConfig holds language-specific configuration.
@@ -45,15 +45,15 @@ type PlanConfig = planconfig.PlanConfig
 type ReviewBank = sentence.ReviewBank
 type ReviewSentence = sentence.ReviewSentence
 
-// 词性表与三圆分级类型已迁 internal/wordmeta，根包只保留别名 ——
-// storage_wordmeta.go 的 COS 读写、circle.go 的 applyCircle / unholdLesson、
+// 词性表与三圆分级类型已迁 internal/words，根包只保留别名 ——
+// storage_words.go 的 COS 读写、circle.go 的 applyCircle / unholdLesson、
 // 以及十几个引用文件都继续用 WordMeta / WordPOS / CircleItem / CircleInput /
 // CircleOutcome 这些名字，序列化形态不变。
-type WordMeta = wordmeta.WordMeta
-type WordPOS = wordmeta.WordPOS
-type CircleItem = wordmeta.CircleItem
-type CircleInput = wordmeta.CircleInput
-type CircleOutcome = wordmeta.CircleOutcome
+type WordMeta = words.WordMeta
+type WordPOS = words.WordPOS
+type CircleItem = words.CircleItem
+type CircleInput = words.CircleInput
+type CircleOutcome = words.CircleOutcome
 
 // 复习计划数据模型已迁 internal/offline，根包只保留别名 ——
 // storage.go 的 COS 存档读写、api_plan.go / api_trial.go / cmd_gen_plan.go

@@ -9,7 +9,7 @@ import (
 
 	"github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/planconfig"
-	"github.com/zhangyf/jrp/internal/wordmeta"
+	"github.com/zhangyf/jrp/internal/words"
 )
 
 // 回炉变形句库的 COS 读写与圆级加权（编排层，留根包）。
@@ -63,7 +63,7 @@ func reviewCircle(ctx context.Context, st *Storage) map[string]string {
 		log.Printf("sentence-review: 词性表读不了（%v），回炉句不按圆级分层", err)
 		return nil
 	}
-	return wordmeta.CircleMap(meta)
+	return words.CircleMap(meta)
 }
 
 // sentenceMeta 把根包两个带缓存 / 日志的编排函数适配成 internal/plan.Meta。

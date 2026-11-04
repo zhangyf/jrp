@@ -20,7 +20,7 @@ import (
 	"github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/planconfig"
 	"github.com/zhangyf/jrp/internal/sentence"
-	"github.com/zhangyf/jrp/internal/wordmeta"
+	"github.com/zhangyf/jrp/internal/words"
 )
 
 // ==========================================================================
@@ -302,7 +302,7 @@ func TestCircleMapAndRank(t *testing.T) {
 		"いす(椅子)":  {Pos: "名词"},
 		"でんわ(電話)": {Pos: "名词", Circle: "3圆"}, // 手写分级写歪了 → 落「没标」
 	}}
-	m := wordmeta.CircleMap(meta)
+	m := words.CircleMap(meta)
 	if got := sentence.CircleRank(m, "みず(水)"); got != 0 {
 		t.Errorf("三圆 rank=%d，要 0", got)
 	}
@@ -318,10 +318,10 @@ func TestCircleMapAndRank(t *testing.T) {
 	if got := sentence.CircleRank(m, "でんわ(電話)"); got != 3 {
 		t.Errorf("写歪的分级（3圆）rank=%d，要 3（不参与优先）", got)
 	}
-	if wordmeta.CircleMap(nil) != nil {
+	if words.CircleMap(nil) != nil {
 		t.Error("词表为 nil 时 circleMap 应返回 nil")
 	}
-	if wordmeta.CircleMap(&WordMeta{}) != nil {
+	if words.CircleMap(&WordMeta{}) != nil {
 		t.Error("空词表 circleMap 应返回 nil")
 	}
 }
@@ -393,7 +393,7 @@ func TestCircleGroupOf(t *testing.T) {
 		{CircleItem{Lesson: 5, Group: "自定义组"}, "自定义组"},
 	}
 	for _, c := range cases {
-		if got := wordmeta.CircleGroupOf(c.in); got != c.want {
+		if got := words.CircleGroupOf(c.in); got != c.want {
 			t.Errorf("circleGroupOf(%+v) = %q, want %q", c.in, got, c.want)
 		}
 	}
@@ -412,7 +412,7 @@ func TestLessonOfGroup(t *testing.T) {
 		{"第课", 0},
 	}
 	for _, c := range cases {
-		if got := wordmeta.LessonOfGroup(c.title); got != c.want {
+		if got := words.LessonOfGroup(c.title); got != c.want {
 			t.Errorf("lessonOfGroup(%q) = %d, want %d", c.title, got, c.want)
 		}
 	}
@@ -420,17 +420,17 @@ func TestLessonOfGroup(t *testing.T) {
 
 func TestHoldSet(t *testing.T) {
 	// meta 为 nil → 一个都不排除（fail-open：读不到配置不能把计划清空）
-	if got := wordmeta.HoldSet(nil); got != nil {
+	if got := words.HoldSet(nil); got != nil {
 		t.Errorf("holdSet(nil) = %v, want nil", got)
 	}
 	// 没有 hold → 也是 nil
 	m := &WordMeta{Items: map[string]WordPOS{"あ": {Pos: "名词"}}}
-	if got := wordmeta.HoldSet(m); got != nil {
+	if got := words.HoldSet(m); got != nil {
 		t.Errorf("holdSet(no hold) = %v, want nil", got)
 	}
 	// 有 hold → 只收 hold 的
 	m.Items["ほーるど"] = WordPOS{Hold: true}
-	got := wordmeta.HoldSet(m)
+	got := words.HoldSet(m)
 	if !got["ほーるど"] {
 		t.Error("holdSet 应该包含 hold 的词")
 	}

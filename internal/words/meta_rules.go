@@ -1,4 +1,4 @@
-package wordmeta
+package words
 
 import (
 	"fmt"

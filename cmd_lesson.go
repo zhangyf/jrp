@@ -10,7 +10,7 @@
 // cmd_save_lesson.go           runSaveLesson, lastSlash
 // cmd_import.go                runImport
 // cmd_export_hard.go           runExportHard
-// cmd_lexicon.go               runDumpLexicon
+// cmd_words.go               runDumpLexicon
 // cmd_stats.go                 StatsResult, ComputeStats, runStats
 package main
 
@@ -29,12 +29,12 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
-	"github.com/zhangyf/jrp/internal/lexicon"
 	"github.com/zhangyf/jrp/internal/offline"
 	"github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/sentence"
 	"github.com/zhangyf/jrp/internal/stats"
+	"github.com/zhangyf/jrp/internal/words"
 )
 
 // ==========================================================================
@@ -834,7 +834,7 @@ func runExportHard(fs *flag.FlagSet, lang string) {
 }
 
 // ==========================================================================
-// 原 cmd_lexicon.go
+// 原 cmd_words.go
 // ==========================================================================
 
 // runDumpLexicon 导出词汇总表（跟 GET /api/lexicon 同一份数据、同一个拼装函数），
@@ -864,7 +864,7 @@ func runDumpLexicon(fs *flag.FlagSet, lang string) {
 		meta.Items = map[string]WordPOS{}
 	}
 
-	items, posSummary, groups := lexicon.BuildLexicon(arc, meta)
+	items, posSummary, groups := words.BuildLexicon(arc, meta)
 
 	payload := map[string]interface{}{
 		"success":      true,
@@ -895,7 +895,7 @@ func runDumpLexicon(fs *flag.FlagSet, lang string) {
 	}
 }
 
-// BuildLexicon 已迁 internal/lexicon（P2），CLI dump-lexicon 与
+// BuildLexicon 已迁 internal/words（P2），CLI dump-lexicon 与
 // GET /api/lexicon 共用同一份实现。
 
 // ==========================================================================

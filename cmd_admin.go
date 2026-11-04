@@ -32,7 +32,7 @@ import (
 	"github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/planconfig"
 	"github.com/zhangyf/jrp/internal/record"
-	"github.com/zhangyf/jrp/internal/wordmeta"
+	"github.com/zhangyf/jrp/internal/words"
 )
 
 // ==========================================================================
@@ -113,7 +113,7 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 	// Find due words, assign categories, sort, and build the plan (reused by server)
 	dateStr := targetDate.Format("2006-01-02")
 	meta, _ := storage.DownloadWordMeta(ctx)
-	plan := plan.BuildDuePlan(arc, lang, targetDate, wordmeta.HoldSet(meta))
+	plan := plan.BuildDuePlan(arc, lang, targetDate, words.HoldSet(meta))
 
 	// Sentences-only mode: drop the entire word section. Requires --sentences.
 	if *sentencesOnly {
