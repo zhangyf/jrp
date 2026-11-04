@@ -1,4 +1,4 @@
-package main
+package offline
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ import (
 
 	"github.com/xuri/excelize/v2"
 	"github.com/zhangyf/jrp/internal/grading"
-	"github.com/zhangyf/jrp/internal/offline"
+	"github.com/zhangyf/jrp/internal/sentence"
 )
 
 // 本文件只补渲染侧（根包）当前零覆盖的缺口，不重复 excel_meta_test.go 的
@@ -129,7 +129,7 @@ func TestHardExcelExport(t *testing.T) {
 		MinAccuracy: 0.61,
 		MinReviews:  17,
 		Words:       words,
-		Sentences: []PlanSentence{
+		Sentences: []sentence.PlanSentence{
 			{Number: 1, Chinese: "句子会被丢弃", Answer: "答え"},
 		},
 	}
@@ -184,12 +184,12 @@ func TestHardExcelExport(t *testing.T) {
 	}{
 		{
 			name:      "without_meta",
-			wantSheet: []string{offline.ExerciseSheetName, offline.AnswerSheetName},
+			wantSheet: []string{ExerciseSheetName, AnswerSheetName},
 		},
 		{
 			name:      "with_meta",
 			withMeta:  true,
-			wantSheet: []string{offline.ExerciseSheetName, offline.AnswerSheetName, offline.MetaSheetName},
+			wantSheet: []string{ExerciseSheetName, AnswerSheetName, MetaSheetName},
 		},
 	}
 
@@ -198,7 +198,7 @@ func TestHardExcelExport(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "hard.xlsx")
 			var err error
 			if tc.withMeta {
-				err = GenerateHardExcelWithMeta(plan, path, &offline.ExcelMeta{
+				err = GenerateHardExcelWithMeta(plan, path, &ExcelMeta{
 					PlanDate: "2026-11-03", Language: "ja", Mode: "hard", Kind: "hard",
 				})
 			} else {
@@ -215,16 +215,16 @@ func TestHardExcelExport(t *testing.T) {
 			}
 
 			// 行数与列内容
-			for _, sh := range []string{offline.ExerciseSheetName, offline.AnswerSheetName} {
+			for _, sh := range []string{ExerciseSheetName, AnswerSheetName} {
 				if got := len(xlRows(t, f, sh)); got != 12 {
 					t.Errorf("%s 行数 = %d，want 12", sh, got)
 				}
 			}
-			xlAssertCells(t, f, offline.ExerciseSheetName, wantExer)
-			xlAssertCells(t, f, offline.AnswerSheetName, wantAns)
+			xlAssertCells(t, f, ExerciseSheetName, wantExer)
+			xlAssertCells(t, f, AnswerSheetName, wantAns)
 
 			// 状态符号写入（两个 sheet 的三个标题行都必须带符号）
-			for _, sh := range []string{offline.ExerciseSheetName, offline.AnswerSheetName} {
+			for _, sh := range []string{ExerciseSheetName, AnswerSheetName} {
 				for _, wt := range wantTitles {
 					got := xlCell(t, f, sh, wt.row)
 					if got != wt.title {
@@ -237,7 +237,7 @@ func TestHardExcelExport(t *testing.T) {
 			}
 
 			// 只导出钉子户类别：非钉子户状态词、句子、造句区块都不出现
-			for _, sh := range []string{offline.ExerciseSheetName, offline.AnswerSheetName} {
+			for _, sh := range []string{ExerciseSheetName, AnswerSheetName} {
 				txt := xlSheetText(t, f, sh)
 				for _, forbidden := range []string{
 					reviewCategories[1], "过滤掉", "句子会被丢弃", "答え", "造句", "S1",
@@ -256,10 +256,10 @@ func TestHardExcelExport(t *testing.T) {
 
 			if tc.withMeta {
 				// _meta 的键集合恰好是四个固定键，没有 grade_mode / 档位键。
-				xlAssertCells(t, f, offline.MetaSheetName, map[string]string{
+				xlAssertCells(t, f, MetaSheetName, map[string]string{
 					"A1": "plan_date", "A2": "language", "A3": "mode", "A4": "kind",
 				})
-				if got := len(xlRows(t, f, offline.MetaSheetName)); got != 4 {
+				if got := len(xlRows(t, f, MetaSheetName)); got != 4 {
 					t.Errorf("_meta 行数 = %d，want 4", got)
 				}
 			}
@@ -274,13 +274,13 @@ func TestHardExcelExport(t *testing.T) {
 func TestExcelNilEmptySentences(t *testing.T) {
 	cases := []struct {
 		name      string
-		sentences []PlanSentence
+		sentences []sentence.PlanSentence
 	}{
 		{"nil_sentences", nil},
-		{"empty_sentences", []PlanSentence{}},
+		{"empty_sentences", []sentence.PlanSentence{}},
 	}
 	signatures := map[string]string{}
-	wantSheets := []string{offline.ExerciseSheetName, offline.AnswerSheetName}
+	wantSheets := []string{ExerciseSheetName, AnswerSheetName}
 	wantTitle := fmt.Sprintf("%s 1词", reviewCategories[0])
 
 	for _, tc := range cases {
@@ -305,12 +305,12 @@ func TestExcelNilEmptySentences(t *testing.T) {
 			}
 
 			// 单词区块照常写出：标题 + 表头 + 1 个数据行；尾部空行被裁掉 → 3 行。
-			xlAssertCells(t, f, offline.ExerciseSheetName, map[string]string{
+			xlAssertCells(t, f, ExerciseSheetName, map[string]string{
 				"A1": wantTitle,
 				"A2": "序号", "B2": "中文", "C2": "日语", "E2": "序号", "F2": "中文", "G2": "日语",
 				"A3": "1", "B3": "释义1", "C3": "", "E3": "", "F3": "", "G3": "",
 			})
-			xlAssertCells(t, f, offline.AnswerSheetName, map[string]string{
+			xlAssertCells(t, f, AnswerSheetName, map[string]string{
 				"A1": wantTitle, "A3": "1", "B3": "释义1", "C3": "word1",
 			})
 
@@ -446,10 +446,10 @@ func TestExcelTwoColumnSplit(t *testing.T) {
 			f := xlOpen(t, path)
 
 			// 练习版：左栏 A/B/C、右栏 E/F/G（C/G 手写列留空）。
-			xlCheckSplit(t, f, offline.ExerciseSheetName,
+			xlCheckSplit(t, f, ExerciseSheetName,
 				"A", "B", "C", "E", "F", "G", tc.n, tc.wantHalf, false)
 			// 答案版：左栏 A/B/C、右栏 D/E/F（C/F 写答案）。
-			xlCheckSplit(t, f, offline.AnswerSheetName,
+			xlCheckSplit(t, f, AnswerSheetName,
 				"A", "B", "C", "D", "E", "F", tc.n, tc.wantHalf, true)
 		})
 	}
@@ -460,7 +460,7 @@ func TestExcelTwoColumnSplit(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestExcelSentenceSection(t *testing.T) {
-	sentences := []PlanSentence{
+	sentences := []sentence.PlanSentence{
 		{Number: 1, Chinese: "中文提示1", Answer: "日语答案1"},
 		{Number: 2, Chinese: "中文提示2", Answer: "日语答案2"},
 	}
@@ -532,7 +532,7 @@ func TestExcelMetaSheetVisibility(t *testing.T) {
 			{Number: 1, Word: "word1", Definition: "释义1", Status: reviewCategories[0]},
 		},
 	}
-	meta := &offline.ExcelMeta{
+	meta := &ExcelMeta{
 		PlanDate: "2026-11-03", Language: "ja", Mode: "daily", Kind: "hard",
 	}
 
@@ -544,14 +544,14 @@ func TestExcelMetaSheetVisibility(t *testing.T) {
 		f := xlOpen(t, path)
 
 		wantSheets := []string{
-			offline.ExerciseSheetName, offline.AnswerSheetName, offline.MetaSheetName,
+			ExerciseSheetName, AnswerSheetName, MetaSheetName,
 		}
 		if got := f.GetSheetList(); !reflect.DeepEqual(got, wantSheets) {
 			t.Errorf("sheet 列表 = %v，want %v", got, wantSheets)
 		}
 
 		// writeMetaSheet 用 SetSheetVisible(false) 隐藏 _meta。
-		vis, err := f.GetSheetVisible(offline.MetaSheetName)
+		vis, err := f.GetSheetVisible(MetaSheetName)
 		if err != nil || vis {
 			t.Errorf("_meta 应隐藏：visible=%v err=%v", vis, err)
 		}
@@ -567,18 +567,18 @@ func TestExcelMetaSheetVisibility(t *testing.T) {
 		if active != 0 {
 			t.Errorf("活动表索引 = %d，want 0", active)
 		}
-		if got := f.GetSheetName(active); got != offline.ExerciseSheetName {
-			t.Errorf("活动表 = %q，want %q", got, offline.ExerciseSheetName)
+		if got := f.GetSheetName(active); got != ExerciseSheetName {
+			t.Errorf("活动表 = %q，want %q", got, ExerciseSheetName)
 		}
 
 		// 写入侧：四行固定键，kind 也在其中。
-		xlAssertCells(t, f, offline.MetaSheetName, map[string]string{
+		xlAssertCells(t, f, MetaSheetName, map[string]string{
 			"A1": "plan_date", "B1": "2026-11-03",
 			"A2": "language", "B2": "ja",
 			"A3": "mode", "B3": "daily",
 			"A4": "kind", "B4": "hard",
 		})
-		if got := len(xlRows(t, f, offline.MetaSheetName)); got != 4 {
+		if got := len(xlRows(t, f, MetaSheetName)); got != 4 {
 			t.Errorf("_meta 行数 = %d，want 4", got)
 		}
 	})
@@ -589,21 +589,21 @@ func TestExcelMetaSheetVisibility(t *testing.T) {
 			t.Fatalf("生成失败：%v", err)
 		}
 		f := xlOpen(t, path)
-		if got := xlCell(t, f, offline.MetaSheetName, "B4"); got != "hard" {
+		if got := xlCell(t, f, MetaSheetName, "B4"); got != "hard" {
 			t.Errorf("_meta!B4 = %q，kind 应写入 hard", got)
 		}
 
 		// 如实断言当前行为：ExcelMeta 有 Kind 字段（写入侧），但 ImportPreview
 		// 没有 Kind 字段，ParseExerciseFile 的 switch 也没有 kind 分支，
 		// 未知键被忽略 —— kind 写进去了却读不回来。这不是 bug，不当成 bug 改。
-		if _, ok := reflect.TypeOf(offline.ExcelMeta{}).FieldByName("Kind"); !ok {
+		if _, ok := reflect.TypeOf(ExcelMeta{}).FieldByName("Kind"); !ok {
 			t.Errorf("ExcelMeta 应有 Kind 字段")
 		}
-		if _, ok := reflect.TypeOf(offline.ImportPreview{}).FieldByName("Kind"); ok {
+		if _, ok := reflect.TypeOf(ImportPreview{}).FieldByName("Kind"); ok {
 			t.Errorf("ImportPreview 不应有 Kind 字段（当前实现）")
 		}
 
-		prev, err := offline.ParseExerciseFile(path, grading.GradeKana)
+		prev, err := ParseExerciseFile(path, grading.GradeKana)
 		if err != nil {
 			t.Fatalf("带 kind 的 _meta 不该导致解析失败：%v", err)
 		}
@@ -625,15 +625,15 @@ func TestExcelMetaSheetVisibility(t *testing.T) {
 		}
 		f := xlOpen(t, path)
 		// 复位代码在 if meta != nil 之外，无 _meta 时也会执行。
-		wantSheets := []string{offline.ExerciseSheetName, offline.AnswerSheetName}
+		wantSheets := []string{ExerciseSheetName, AnswerSheetName}
 		if got := f.GetSheetList(); !reflect.DeepEqual(got, wantSheets) {
 			t.Errorf("sheet 列表 = %v，want %v", got, wantSheets)
 		}
 		if got := f.GetActiveSheetIndex(); got != 0 {
 			t.Errorf("活动表索引 = %d，want 0", got)
 		}
-		if got := f.GetSheetName(0); got != offline.ExerciseSheetName {
-			t.Errorf("活动表 = %q，want %q", got, offline.ExerciseSheetName)
+		if got := f.GetSheetName(0); got != ExerciseSheetName {
+			t.Errorf("活动表 = %q，want %q", got, ExerciseSheetName)
 		}
 	})
 }

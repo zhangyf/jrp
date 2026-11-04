@@ -76,7 +76,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request, st *Storag
 	case "hard":
 		plan := BuildHardPlan(arc, s.lang, targetDate, review.DefaultHardMinAccuracy, review.DefaultHardMinReviews)
 		filename = fmt.Sprintf("hard_words_%s.xlsx", dateStr)
-		genErr = GenerateHardExcelWithMeta(plan, tmp.Name(), &offline.ExcelMeta{
+		genErr = offline.GenerateHardExcelWithMeta(plan, tmp.Name(), &offline.ExcelMeta{
 			PlanDate: dateStr, Language: s.lang, Mode: "hard", Kind: "hard",
 		})
 
@@ -96,7 +96,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request, st *Storag
 			return
 		}
 		filename = fmt.Sprintf("review_%s_sentences.xlsx", dateStr)
-		genErr = GenerateExcelWithMeta(sp, tmp.Name(), &offline.ExcelMeta{
+		genErr = offline.GenerateExcelWithMeta(sp, tmp.Name(), &offline.ExcelMeta{
 			PlanDate: dateStr, Language: s.lang, Mode: "sentences", Kind: "sentences",
 		})
 
@@ -104,7 +104,7 @@ func (s *server) handleExport(w http.ResponseWriter, r *http.Request, st *Storag
 		plan := BuildDuePlan(arc, s.lang, targetDate, wordmeta.HoldSet(dueHold(ctx, st)))
 		plan.Sentences = BuildSentencePlanFrom(st, targetDate, 20, arc)
 		filename = fmt.Sprintf("review_%s.xlsx", dateStr)
-		genErr = GenerateExcelWithMeta(plan, tmp.Name(), &offline.ExcelMeta{
+		genErr = offline.GenerateExcelWithMeta(plan, tmp.Name(), &offline.ExcelMeta{
 			PlanDate: dateStr, Language: s.lang, Mode: "daily",
 		})
 	}

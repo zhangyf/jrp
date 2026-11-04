@@ -1,11 +1,24 @@
-package main
+package offline
 
 import (
 	"fmt"
 
 	"github.com/xuri/excelize/v2"
-	"github.com/zhangyf/jrp/internal/offline"
+	"github.com/zhangyf/jrp/internal/sentence"
 )
+
+// Hard-word severity sections, split by accuracy rate.
+//
+// 原定义在根包 cmd_export_hard.go，随渲染侧迁入本包；根包判档逻辑通过
+// 常量别名引用，保持单一数据源。
+const (
+	HardSevere   = "🔥重度钉子户（正确率<30%）"
+	HardModerate = "⚠️中度钉子户（正确率30~45%）"
+	HardMild     = "💤轻度钉子户（正确率45~60%）"
+)
+
+// hardCategories is the section order for the hard-word Excel.
+var hardCategories = []string{HardSevere, HardModerate, HardMild}
 
 // reviewCategories is the section order for the daily review Excel.
 //
@@ -261,7 +274,7 @@ func (w *excelWriter) renderWordSections(sheet string, isExer, withAnswer bool,
 //	练习版: | A=S{n} | B=中文 | C:F merged=空(书写区) |
 //	答案版: | A=S{n} | B:C merged=中文 | D:F merged=日语 |
 func (w *excelWriter) renderSentenceSection(sheet string, isExer, withAnswer bool,
-	sentences []PlanSentence, startRow int) {
+	sentences []sentence.PlanSentence, startRow int) {
 
 	if len(sentences) == 0 {
 		return
@@ -354,7 +367,7 @@ func groupPlanWordsByStatus(words []PlanWord) map[string][]PlanWord {
 // language / mode。离线包可能被改名、可能被微信转发，靠文件名不可靠；WPS 又会
 // 剥离自定义文档属性，所以藏一个 sheet 是最稳的。
 func writeTwoSheetWorkbook(order []string, byCat map[string][]PlanWord,
-	sentences []PlanSentence, outputPath string, meta *offline.ExcelMeta) error {
+	sentences []sentence.PlanSentence, outputPath string, meta *ExcelMeta) error {
 
 	w := newExcelWriter()
 	defer w.f.Close()
@@ -393,7 +406,7 @@ func GenerateExcel(plan *ReviewPlan, outputPath string) error {
 }
 
 // GenerateExcelWithMeta 同 GenerateExcel，额外写入隐藏的 _meta sheet。
-func GenerateExcelWithMeta(plan *ReviewPlan, outputPath string, meta *offline.ExcelMeta) error {
+func GenerateExcelWithMeta(plan *ReviewPlan, outputPath string, meta *ExcelMeta) error {
 	return writeTwoSheetWorkbook(
 		reviewCategories,
 		groupPlanWordsByStatus(plan.Words),
@@ -410,7 +423,7 @@ func GenerateHardExcel(plan *ReviewPlan, outputPath string) error {
 }
 
 // GenerateHardExcelWithMeta 同 GenerateHardExcel，额外写入隐藏的 _meta sheet。
-func GenerateHardExcelWithMeta(plan *ReviewPlan, outputPath string, meta *offline.ExcelMeta) error {
+func GenerateHardExcelWithMeta(plan *ReviewPlan, outputPath string, meta *ExcelMeta) error {
 	return writeTwoSheetWorkbook(
 		hardCategories,
 		groupPlanWordsByStatus(plan.Words),

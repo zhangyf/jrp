@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
+	"github.com/zhangyf/jrp/internal/offline"
 	"github.com/zhangyf/jrp/internal/review"
 	"github.com/zhangyf/jrp/internal/wordmeta"
 )
@@ -186,7 +187,7 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 		os.MkdirAll(dir, 0755)
 	}
 
-	if err := GenerateExcel(plan, *outputPath); err != nil {
+	if err := offline.GenerateExcel(plan, *outputPath); err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating Excel: %v\n", err)
 		os.Exit(1)
 	}
