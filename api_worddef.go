@@ -31,10 +31,6 @@ import (
 // api_vision.go 也用这个名字，故保留别名不改名。
 type WordDefItem = worddef.Item
 
-// hasParen 是给 api_vision.go 借用的薄壳；实现已在 internal/worddef。
-// vision 域（P4 后一域）合并薄壳时再一起收口。
-func hasParen(s string) bool { return worddef.HasParen(s) }
-
 // 编译期锁住接口实现关系：*Storage 读档案、wordDefCaller 问模型链。
 var _ worddef.ArchiveStore = (*Storage)(nil)
 var _ worddef.Caller = wordDefCaller{}

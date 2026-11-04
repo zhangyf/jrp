@@ -13,6 +13,7 @@ import (
 
 	"github.com/zhangyf/jrp/internal/llm"
 	"github.com/zhangyf/jrp/internal/vision"
+	"github.com/zhangyf/jrp/internal/worddef"
 )
 
 // 拍照取词：把图片直接丢给视觉大模型，让它吐「词形 + 中文意思」。
@@ -99,11 +100,9 @@ func loadVisionConfig() (visionConfig, bool) {
 	return c, c.Endpoint != "" && c.APIKey != ""
 }
 
-// visionPrompt 让 askVision 保持原样调用；定义在 internal/vision（规则护栏有单测盯着）。
-const visionPrompt = vision.Prompt
-
-// 认词结果的纯解析规则（ParseReply / CleanCandidates / HasJapanese / stripCodeFence）
-// 已随 P4 vision 域迁到 internal/vision；本文件只保留 IO / 编排 / 配额 / 冷却 / 限流。
+// 认词结果的纯解析规则（ParseReply / CleanCandidates / HasJapanese）随 P4 vision 域
+// 迁到 internal/vision；两域共用的去围栏规则 StripCodeFence 在 P5 收敛到 internal/textutil。
+// 本文件只保留 IO / 编排 / 配额 / 冷却 / 限流。
 
 type visionResult struct {
 	idx   int
@@ -286,7 +285,7 @@ func (s *server) handleVision(w http.ResponseWriter, r *http.Request, st *Storag
 	var need []string
 	for i := range per {
 		for _, c := range per[i].Candidates {
-			if c.Def == "" || !hasParen(c.Word) {
+			if c.Def == "" || !worddef.HasParen(c.Word) {
 				need = append(need, c.Word)
 			}
 		}
@@ -310,7 +309,7 @@ func (s *server) handleVision(w http.ResponseWriter, r *http.Request, st *Storag
 					c.Def = it.Def
 				}
 				// 本来只有假名的，用补了汉字的词形（みず → みず(水)）
-				if !hasParen(c.Word) && it.Word != "" {
+				if !worddef.HasParen(c.Word) && it.Word != "" {
 					c.Word = it.Word
 				}
 			}
@@ -380,7 +379,7 @@ func askVision(cfg visionConfig, idx int, img string, deadline time.Time) vision
 			}
 			return res
 		}
-		reply, model, retryable, err := visionChat(cfg, visionPrompt, "data:image/jpeg;base64,"+img)
+		reply, model, retryable, err := visionChat(cfg, vision.Prompt, "data:image/jpeg;base64,"+img)
 		if err != nil {
 			res.err = err
 			if attempt == visionRetry || !retryable {

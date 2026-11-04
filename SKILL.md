@@ -1527,10 +1527,31 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 - ⚠️ **形态与 judge/worddef 不同，按设计文档 3.7**：vision 的 `visionConfig`/`loadVisionConfig`/`visionChat`/`askVision`/`visionRetryable`/`visionHumanError` 带着共享冷却、`time.Sleep` 退避、并发 2 限流、120s 总预算、pending 每日 2 图配额 `takeQuota`，全是进程级时序状态，**注入接口反而会拆散冷却** ⇒ 全留根；`internal/vision` 只收纯解析规则，属 P2 那类规则包。
 - `types.go`：`Candidate` / `ImageResult`（根 `VisionCandidate`/`VisionImageResult` 类型别名，tag 与 `omitempty` 逐字保留，HTTP JSON 字节不变）；`rules.go`：`Prompt`、`ParseReply`/`CleanCandidates`/`HasJapanese` + 私有 `stripCodeFence`。
 - 根包 `api_vision.go` 只改 4 处（import / 两个 DTO 别名 / `const visionPrompt = vision.Prompt` / `askVision` 一处 `vision.ParseReply` 前缀）；`handleVision`/`askVision`/`visionChat`/`visionRetryable`/`visionHumanError`/`loadVisionConfig` 六个函数与基线字节级对拍 **全部 IDENTICAL**。
-- ⚠️ `stripCodeFence` 在 worddef / vision 各一份逐字一致的私有副本（纯函数、无状态）。按老师「2 选 A」，**P5 尾部薄壳合并那个独立 commit 再统一收敛**，P4 不为此新建公共包。
+- ⚠️ `stripCodeFence` 在 worddef / vision 各一份逐字一致的私有副本（纯函数、无状态）。按老师「2 选 A」，P4 暂留两份副本不新建公共包；**已在 P5 收敛到 `internal/textutil.StripCodeFence`（见下方 P5 章节）**。
 
 **验证**：三域各 `go build ./...` / `go test -mod=readonly -count=1 ./...` / `go vet ./...` / LF 版 gofmt / `git diff --check` 全绿；handler 与关键函数字节级对拍；新增 `internal/judge/{judge,prompt}_test.go`、`internal/worddef/{lookup,rules}_test.go`、`internal/vision/rules_test.go`（含 prompt 护栏、DTO JSON 字节、fake 接口不连 COS/HTTP/LLM）。收尾再加 `-shuffle=on -count=1 ./...`、`internal/... -shuffle=on -count=10`、三平台 `CGO_ENABLED=0` 构建，全绿。
 - 本批纯目录重构，线上行为不变；提交推送与部署继续分别确认（本轮**不部署**）。
+
+### P5 薄壳合并 + 收尾（2026-11-04）
+
+老师选「薄壳合并 + 收尾」，**跳过维护域二期**（circle / 词库维护 CLI 一批 / 句库 import 体检，量大复用价值低，留待以后需要时再排）。收敛点选**甲**。一个独立 commit，可单独 revert，**不部署**。
+
+**收敛点选甲：`internal/textutil`（新包）**
+- 新建 `internal/textutil/fence.go`：`StripCodeFence` 去掉模型回复外的 ` ```json ... ``` ` 外壳。函数体与 P4 时 worddef / vision 的两份私有副本**字节级逐字一致**（`git show HEAD:` 对拍确认），`fence_test.go` 把九种输入形状锁住。
+- `internal/worddef/rules.go`、`internal/vision/rules.go` 各删私有 `stripCodeFence`，`ParseReply` 改调 `textutil.StripCodeFence`。两用例包从此共用一份纯规则，互不 import。
+
+**根薄壳清理（3 处）**
+- `api_worddef.go`：删 `hasParen` 委托薄壳（`api_vision.go` 借用的名字）。
+- `api_vision.go`：`hasParen` 两处调用改 `worddef.HasParen`；删 `const visionPrompt = vision.Prompt`，`askVision` 改直接用 `vision.Prompt`。
+- `types.go` 的 24 条类型别名按设计文档 3.10「类型别名中枢」**留根不动**（保 HTTP / COS / Excel 契约字节，不是薄壳）。
+
+**行为 / 代价 / 回滚**
+- **行为不变**：全是纯规则搬家 + 别名直接化。三硬指标（HTTP 响应 JSON / COS 存档 / Excel 字节）一个不碰；`handleVision` / `askVision` / `handleWordDef` 逻辑零改动，6 处改动逐行核对。
+- **代价**：internal 包 20 → 21；代价仅多一个无依赖纯规则包。⚠️ **根生产 `.go` 仍是 64，一个没减** —— 收敛的是函数/常量/重复实现，不是文件；64 个根文件都带真实职责（最小 39 行 3 个真函数），没有能整并删除的纯空壳文件。要真降文件数只能做「文件级合并」（把 `storage_*.go` 等并进大文件），那是另一档架构动作，本轮不做。
+- **回滚**：`git revert` 单个 commit 即回到 P4 合并态，不碰数据、不碰线上。
+
+**收尾**：`docs/layered-design.md` 两处过时文字（15 行「均为纸面设计」、295 行「没有改任何生产代码…等老师点头」）改为 P0→P5 已落地的实际状态。两份 SKILL.md 同步。全量回归同 P4 口径（build / test / shuffle / internal×10 / vet / 三平台 / gofmt / diff-check）全绿。
+- **本轮不部署**。
 
 ## Command Reference
 
