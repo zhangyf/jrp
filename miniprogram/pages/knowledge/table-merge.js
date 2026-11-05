@@ -12,10 +12,24 @@
 //     文本，就老老实实输出一个空盒，不硬凑合并。这是无效 md 的降级行为。
 // ⚠️ 每个格子都给显式 grid-column / grid-row，不用 grid 的 auto-placement：
 //    存在跨行格子时 auto-flow 会留洞，把后面的格子挤到错的列上。
-// ⚠️ 列宽模板也在这里拼好：小程序 WXML 表达式不支持数组 join，
-//    部分机型对 CSS repeat()/minmax()/calc() 也不稳，一列一个定宽最保险。
+// ⚠️ 列宽按各列最长内容估算（textWidth），不是定宽：定宽 200rpx 会让
+//    「词尾う段→い段＋ます」这类长规则折行，第一行被撑高、其余行矮，
+//    整张表行高参差（2026-11-05 真机截图教训）。单行放得下行高才能齐。
+//    估算在 JS 里拼好再传，避开 WXSS 的 repeat()/minmax()/calc() 机型坑。
 //
 // 纯函数，不碰任何小程序 API，Node 里可直接 require 做单测。
+
+// 粗估一段文字在 25rpx 字号下的宽（rpx）：CJK/全角 ≈ 25，ASCII ≈ 13，空格 ≈ 7。
+function textWidth(s) {
+  let t = 0;
+  const str = String(s == null ? '' : s);
+  for (const ch of str) {
+    if (ch === ' ') t += 7;
+    else if (ch <= '\xff') t += 13; // ASCII/半角
+    else t += 25;
+  }
+  return t;
+}
 
 function mergeCells(block) {
   const header = block.header || [];
@@ -68,8 +82,14 @@ function mergeCells(block) {
     }
   }
 
+  // 列宽 = 该列表头 + 所有格子里最长那条的估算宽 + 内边距/边框余量 44rpx，
+  // 下限 120（窄列如「词类」）、上限 620（超长的例句列折行也别太离谱）。
   let gridCols = '';
-  for (let c = 0; c < cols; c++) gridCols += (c ? ' ' : '') + '200rpx';
+  for (let c = 0; c < cols; c++) {
+    let m = textWidth(header[c] || '');
+    for (let r = 0; r < n; r++) m = Math.max(m, textWidth((rows[r] || [])[c] || ''));
+    gridCols += (c ? ' ' : '') + Math.min(620, Math.max(120, m + 44)) + 'rpx';
+  }
   return { cells: cells, cols: cols, gridCols: gridCols };
 }
 

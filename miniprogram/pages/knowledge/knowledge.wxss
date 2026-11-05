@@ -157,8 +157,9 @@
 
 /* 表格：CSS Grid 显式坐标，支持真 rowspan 合并大格。
    ⚠️ 别退回 flex 逐行排 —— 有跨行格子时后面的格子会被挤错列。
-   ⚠️ 列宽由 JS 拼成 gridCols 传进来（一列一个 200rpx），
-      别在 WXSS 里用 repeat()/minmax()/calc()，部分机型不认。 */
+   ⚠️ 列宽由 JS 按各列最长内容估算后拼成 gridCols 传进来，
+      别在 WXSS 里写定宽或 repeat()/minmax()/calc()（部分机型不认）。
+      定宽会让长内容折行、行高参差（2026-11-05 真机截图教训）。 */
 .tbl {
   white-space: nowrap;
   border: 1rpx solid #e6e4da;
@@ -168,13 +169,14 @@
   display: grid;
 }
 .grid .th, .grid .td {
-  min-width: 200rpx;
   padding: 14rpx 16rpx;
   font-size: 25rpx;
   line-height: 1.55;
   border-right: 1rpx solid #eeebe0;
   border-bottom: 1rpx solid #eeebe0;
   white-space: normal;
+  display: flex;
+  align-items: center; /* 格子文字垂直居中：合并大格的字吊在顶上会显得空一大块 */
 }
 .grid .th {
   font-weight: 700;
