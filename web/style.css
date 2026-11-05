@@ -672,9 +672,10 @@ details[open] summary { margin-bottom: 10px; }
    z-index：header 10、二维码浮层 40、modal 60 —— 搜索取 45，压住内容但不挡弹窗。 */
 .gsearch {
   position: fixed;
-  /* 垂直：跟造句页 draft-bar 横幅那一行齐平（header ~61px + main padding-top 18px
-     + summary 一行 ≈ 顶部内容区顶端）。 */
-  top: 79px;
+  /* 垂直：顶边对齐今日练习页 #practiceListReview 的顶边。
+     header ~61px + main padding-top 18px + .toprow(summary chips) ~26px
+     + .summary margin-bottom 14px ≈ 119px。 */
+  top: 119px;
   /* 水平：贴屏幕右侧。老师明确要「在页面右侧」，不是跟白卡对齐、不是横在中间。 */
   right: 16px;
   z-index: 45;
@@ -732,7 +733,7 @@ details[open] summary { margin-bottom: 10px; }
 }
 /* 窄屏：仍贴右侧，框收窄避免盖正文太多 */
 @media (max-width: 640px) {
-  .gsearch { right: 10px; top: 79px; }
+  .gsearch { right: 10px; top: 119px; }
   .gsearch-input { width: 150px; }
   .gsearch-panel { width: 240px; }
 }
