@@ -14,35 +14,6 @@ const TYPES = [
   { key: 'adj', label: '形容词' }
 ];
 
-// 动词活用速查表：把 て形／た形／ます形／ない形 四张表合并成一张。
-// 三个表共用「一类（五段）/二类（一段）/サ变/カ变」骨架，
-// 一类动词的 ます形・ない形四行规则相同，模仿原表的合并单元格——
-// contM/contN 为 true 的格子是上行规则的延续，只留底色不写字。
-// ⚠️ た形（2026-11-03 加）跟て形是同一套音便，只差 て→た／で→だ，
-// 所以**必须紧挨着て形放**，读者一眼能看出同源。
-const GRAMMAR_ROWS = [
-  { k: 'a1', t: '一类（五段）', tail: 'う・つ・る', te: 'って（促音便）', ta: 'った', masu: '词尾う段→い段＋ます', nai: '词尾う段→あ段＋ない＊' },
-  { k: 'a2', t: '', tail: 'ぬ・ぶ・む', te: 'んで（拨音便）', ta: 'んだ', masu: '', nai: '', contM: true, contN: true },
-  { k: 'a3', t: '', tail: 'く・ぐ', te: 'いて／いで（イ音便）', ta: 'いた／いだ', masu: '', nai: '', contM: true, contN: true },
-  { k: 'a4', t: '', tail: 'す', te: 'して', ta: 'した', masu: '', nai: '', contM: true, contN: true },
-  { k: 'b1', t: '二类（一段）', tail: '見る 等', te: '去词尾る＋て', ta: '去词尾る＋た', masu: '去词尾る＋ます', nai: '去词尾る＋ない' },
-  { k: 'c1', t: '三类 サ变', tail: 'する', te: 'して', ta: 'した', masu: 'します', nai: 'しない' },
-  { k: 'c2', t: '三类 カ变', tail: '来る', te: 'きて', ta: 'きた', masu: 'きます', nai: 'こない' }
-];
-
-// 注意事项 + 例词：每条一行（<text> 逐条渲染）。行首别用空格对齐——
-// text 会合并连续空格，统一用「例・」前缀。
-// 例句按 て形／た形／ます形／ない形 的顺序排，跟表格列一致。
-const GRAMMAR_NOTES = [
-  '＊う结尾的动词，ない形变「わ」不变「あ」：買う → 買わない（✗買あない）',
-  '＊た形跟て形同一套音便，只是 て→た、で→だ：買って→買った、飲んで→飲んだ',
-  '例・買う → 買って／買った／買います／買わない',
-  '例・飲む → 飲んで／飲んだ／飲みます／飲まない',
-  '例・書く → 書いて／書いた／書きます／書かない',
-  '例・話す → 話して／話した／話します／話さない',
-  '例・見る → 見て／見た／見ます／見ない｜する → して／した／します／しない｜来る → きて／きた／きます／こない'
-];
-
 Page({
   data: {
     types: TYPES,
@@ -53,10 +24,6 @@ Page({
     err: '',
     graded: false,
     pool: 0,
-    // 默认收起（老师 2026-10-20 要求）：点标题才展开，别一进页就挡住题
-    grammarOpen: false,
-    grammar: GRAMMAR_ROWS,
-    grammarNotes: GRAMMAR_NOTES,
     // 试用态（未登录）：输入框锁死，点一下弹登录浮层 —— 详见 utils/trial.js
     trial: true, // ⚠️ 默认锁：onShow / 广播同步到真身份才解开（见 utils/trial.js）
     needLogin: false
@@ -74,9 +41,6 @@ Page({
     this.load();
   },
 
-  toggleGrammar() {
-    this.setData({ grammarOpen: !this.data.grammarOpen });
-  },
 
   onType(e) {
     this.setData({ type: e.currentTarget.dataset.type }, () => this.load());
