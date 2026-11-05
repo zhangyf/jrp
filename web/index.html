@@ -60,15 +60,6 @@
   </label>
   <span id="today" class="muted"></span>
   <a id="adminLink" class="admin-link hidden" href="/admin.html">管理</a>
-
-  <!-- 全局搜索：四页（今日练习/造句/钉子户/活用）右上角的浮动框。
-       默认 hidden，由 web/search.js 按当前页显隐；结果浮层挂在框下沿（header 是 sticky）。
-       词汇走字面、知识点走服务端语义检索，结果只在这块浮层里显示，不下发全库。 -->
-  <div id="gsearch" class="gsearch hidden">
-    <input id="gsearchInput" class="gsearch-input" type="text" autocomplete="off"
-           placeholder="搜词汇 / 知识点…" aria-label="全局搜索">
-    <div id="gsearchPanel" class="gsearch-panel hidden"></div>
-  </div>
 </header>
 
 <div id="dryRunBanner" class="hidden">
@@ -292,6 +283,16 @@
 <!-- 左侧常驻小程序码：position:fixed，滚到哪儿都跟着。
      拿不到码（未登录 / 服务端没配微信凭证）时整个隐藏，不留破图。 -->
 <div id="toast" class="hidden"></div>
+
+<!-- 全局搜索：四页（今日练习/造句/钉子户/活用）右侧的浮动搜索框。
+     position:fixed 贴屏幕右缘、垂直居中，滚到哪儿都跟着，不占页头。
+     默认 hidden，由 web/search.js 按当前页显隐；结果浮层从框往左弹出。
+     词汇走字面、知识点走服务端语义检索，结果只在这块浮层里显示，不下发全库。 -->
+<div id="gsearch" class="gsearch hidden">
+  <input id="gsearchInput" class="gsearch-input" type="text" autocomplete="off"
+         placeholder="搜词汇 / 知识点…" aria-label="全局搜索">
+  <div id="gsearchPanel" class="gsearch-panel hidden"></div>
+</div>
 
 <script src="grade.js"></script>
 <script src="app.js"></script>

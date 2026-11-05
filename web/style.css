@@ -664,22 +664,54 @@ details[open] summary { margin-bottom: 10px; }
 .kb-lockbtn.wide { display: block; text-align: center; padding: 8px; margin-top: 4px; }
 .kb-foot { margin: 4px 0 16px; }
 
-/* ---- 全局搜索（四页右上角的浮动框 + 结果浮层，2026-11-05） ----
-   挂在 header 末尾（sticky），结果面板绝对定位到搜索框下沿，滚动时跟着页头。
-   header z-index:10、二维码浮层 40、modal 60 —— 面板取 45，压住内容但不挡弹窗。 */
-.gsearch { position: relative; flex: 0 0 auto; }
-.gsearch-input {
-  width: 190px; max-width: 44vw; padding: 6px 10px;
-  font: inherit; font-size: 13px; color: var(--ink);
-  background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+/* ---- 全局搜索（四页右侧的浮动搜索框 + 结果浮层，2026-11-05） ----
+   position:fixed 贴屏幕右缘、垂直居中，滚到哪儿都跟着，不占页头。
+   结果面板从输入框往左弹出（右对齐到框的左缘），避免被右缘截断。
+   z-index：header 10、二维码浮层 40、modal 60 —— 搜索取 45，压住内容但不挡弹窗。 */
+.gsearch {
+  position: fixed;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
 }
-.gsearch-input:focus { outline: none; border-color: var(--accent); background: var(--panel); }
-.gsearch-input::placeholder { color: var(--muted); }
+.gsearch-input {
+  width: 44px;              /* 收起态：只露一个竖条，hover/聚焦展开 */
+  height: 44px;
+  padding: 0;
+  font: inherit; font-size: 13px; color: var(--ink);
+  background: var(--panel); border: 1px solid var(--line);
+  border-right: none;       /* 贴右缘，右边框省掉视觉更贴边 */
+  border-radius: 10px 0 0 10px;
+  box-shadow: -2px 2px 10px rgba(0, 0, 0, .08);
+  cursor: pointer;
+  transition: width .2s ease, padding .2s ease, color .2s ease;
+  color: transparent;        /* 收起态不显示文字，靠 placeholder 图标感 */
+  text-overflow: ellipsis;
+}
+.gsearch-input::placeholder { color: transparent; transition: color .2s ease; }
+/* 展开：hover 或聚焦时把框拉宽、露出输入区 */
+.gsearch:hover .gsearch-input,
+.gsearch-input:focus,
+.gsearch-input:not(:placeholder-shown) {
+  width: 220px; max-width: 60vw;
+  padding: 0 12px;
+  color: var(--ink);
+  cursor: text;
+  outline: none;
+  border-color: var(--accent);
+  background: var(--panel);
+}
+.gsearch-input:focus::placeholder,
+.gsearch-input:not(:placeholder-shown)::placeholder { color: var(--muted); }
 .gsearch-panel {
-  position: absolute; top: calc(100% + 6px); right: 0; z-index: 45;
-  width: 380px; max-width: 90vw; max-height: 60vh; overflow-y: auto;
+  margin-top: 6px;
+  width: 320px; max-width: calc(100vw - 24px); max-height: 62vh; overflow-y: auto;
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-  box-shadow: 0 8px 26px rgba(0, 0, 0, .12);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, .14);
   padding: 6px;
 }
 .gsearch-group {
@@ -694,10 +726,10 @@ details[open] summary { margin-bottom: 10px; }
 .gsearch-row.clickable:hover { background: var(--accent-soft); }
 .gsearch-row-main { display: block; font-weight: 600; color: var(--ink); }
 .gsearch-row-sub {
-  display: block; margin-top: 2px; font-size: 12px; color: var(--muted);
+  display: -webkit-box; margin-top: 2px; font-size: 12px; color: var(--muted);
   line-height: 1.45;
   overflow: hidden; text-overflow: ellipsis;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
 .gsearch-go { float: right; font-size: 11px; font-weight: 400; color: var(--accent); }
 .gsearch-loading, .gsearch-empty {
@@ -707,6 +739,10 @@ details[open] summary { margin-bottom: 10px; }
   margin-top: 4px; padding: 6px 10px; border-top: 1px solid var(--line);
   font-size: 11px; color: var(--muted);
 }
+/* 窄屏：收起态更窄，展开占更多宽度 */
 @media (max-width: 640px) {
-  .gsearch-input { width: 140px; }
+  .gsearch-input { width: 38px; height: 38px; }
+  .gsearch:hover .gsearch-input,
+  .gsearch-input:focus,
+  .gsearch-input:not(:placeholder-shown) { width: 180px; }
 }
