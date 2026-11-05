@@ -724,6 +724,8 @@ details[open] summary { margin-bottom: 10px; }
   border: 1px solid var(--line); padding: 5px 9px; text-align: left;
 }
 .kb-table th { background: var(--panel); font-weight: 600; white-space: nowrap; }
+/* rowspan 合并大格（延续空格子自动推断），浅底标出分组 */
+.kb-table td.mrow { background: #faf9f4; }
 
 /* 未登录：超出的段落盖模糊。
    ⚠️ 这是展示层的软限制（接口里全文已经发下来了），目的是引导登录，不是防攻击。 */

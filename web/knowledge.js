@@ -140,10 +140,33 @@ var knowledge = {
       var head = (b.header || []).map(function (c) {
         return '<th>' + esc(c) + '</th>';
       }).join('');
-      var rows = (b.rows || []).map(function (r) {
-        return '<tr>' + (r || []).map(function (c) {
-          return '<td>' + esc(c) + '</td>';
-        }).join('') + '</tr>';
+      // 「延续空格子」→ 真 rowspan 合并：非空格向下吞连续空格，被吞的不输出 <td>。
+      // 跟小程序 knowledge/table-merge.js 同一套约定（空格子 = 同上）。
+      // ⚠️ 逻辑全写在 blockHtml 局部，不新增顶层符号 —— web/*.js 是老式多
+      //    script 全局挂载，顶层 function 会覆盖别的文件同名 var（09-21 白屏事故）。
+      var rows0 = b.rows || [];
+      var cols = (b.header || []).length;
+      var skip = {}, spanOf = {};
+      for (var ci = 0; ci < cols; ci++) {
+        var anchor = -1; // 本列最近一个非空格的行号；-1 = 组首就是空格，降级成空盒
+        for (var ri = 0; ri < rows0.length; ri++) {
+          var cell = (rows0[ri] || [])[ci] || '';
+          if (cell !== '') {
+            anchor = ri;
+          } else if (anchor >= 0) {
+            skip[ri + ',' + ci] = true;
+            spanOf[anchor + ',' + ci] = (spanOf[anchor + ',' + ci] || 1) + 1;
+          }
+        }
+      }
+      var rows = rows0.map(function (r, ri) {
+        var tds = (r || []).map(function (c, ci) {
+          if (skip[ri + ',' + ci]) return '';
+          var sp = spanOf[ri + ',' + ci] || 0;
+          return '<td' + (sp > 1 ? ' rowspan="' + sp + '" class="mrow"' : '') + '>' +
+            esc(c) + '</td>';
+        }).join('');
+        return '<tr>' + tds + '</tr>';
       }).join('');
       return '<div class="kb-tbl-wrap"><table class="kb-table"><thead><tr>' +
         head + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
