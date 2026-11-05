@@ -56,10 +56,14 @@ func (s *server) handleListening(w http.ResponseWriter, r *http.Request, st *Sto
 //
 // 目录结构 listening/<LEVEL>/<name>.mp4 + <name>.srt。这里只列 mp4，
 // SRT 是否配对在详情接口里才校验（列表阶段不必为每个视频多打一次 HEAD）。
+//
+// ⚠️ 不用 Delimiter="/"：objstore 的 listWithDelimiter 解析了 CommonPrefixes
+// 却不返回它们（只回 Contents），靠它列不出子目录。改成 Delimiter="" 一次
+// 列全所有 mp4，按路径里 listening/ 之后的那一段（级别）自己分组。
 func (s *server) listeningIndex(w http.ResponseWriter, st *Storage) {
 	ctx := s.ctx()
 	prefix := st.sharedBase() + listeningDir
-	objs, err := st.store.ListObjects(ctx, objstore.ListOptions{Prefix: prefix, Delimiter: "/"})
+	objs, err := st.store.ListObjects(ctx, objstore.ListOptions{Prefix: prefix, Delimiter: ""})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 			"success": false, "error": "听力目录读不了：" + err.Error(),
@@ -67,53 +71,44 @@ func (s *server) listeningIndex(w http.ResponseWriter, st *Storage) {
 		return
 	}
 
-	// Delimiter="/" 时，子目录前缀落在 CommonPrefixes；objstore 把它折进
-	// ObjectInfo（Key 以 / 结尾）。逐个级别再列一次拿视频清单。
+	// prefix 之后的第一段 = 级别，第二段 = 文件名。
+	// 例：language-review/ja/listening/N5/xxx.mp4，prefix 剥掉后是 "N5/xxx.mp4"。
 	type levelOut struct {
 		Level  string   `json:"level"`
 		Videos []string `json:"videos"`
 	}
-	levels := make([]levelOut, 0, 8)
+	byLevel := map[string][]string{}
+	order := []string{}
 	for _, o := range objs {
-		if !strings.HasSuffix(o.Key, "/") {
+		if !strings.HasSuffix(strings.ToLower(o.Key), ".mp4") {
 			continue
 		}
-		lv := path.Base(strings.TrimSuffix(o.Key, "/"))
-		if !levelRe.MatchString(lv) {
+		rel := strings.TrimPrefix(o.Key, prefix)
+		parts := strings.SplitN(rel, "/", 2)
+		if len(parts) != 2 {
 			continue
 		}
-		videos, err := s.listVideos(st, o.Key)
-		if err != nil {
+		lv, name := parts[0], parts[1]
+		if !levelRe.MatchString(lv) || strings.Contains(name, "/") {
 			continue
 		}
-		if len(videos) == 0 {
-			continue
+		if _, ok := byLevel[lv]; !ok {
+			order = append(order, lv)
 		}
+		byLevel[lv] = append(byLevel[lv], name)
+	}
+	sort.Strings(order)
+	levels := make([]levelOut, 0, len(order))
+	for _, lv := range order {
+		videos := byLevel[lv]
+		sort.Strings(videos)
 		levels = append(levels, levelOut{Level: lv, Videos: videos})
 	}
-	sort.Slice(levels, func(i, j int) bool { return levels[i].Level < levels[j].Level })
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"levels":  levels,
 	})
-}
-
-// listVideos 列某级别目录下的 mp4 文件名（不含路径）。
-func (s *server) listVideos(st *Storage, prefix string) ([]string, error) {
-	objs, err := st.store.ListObjects(s.ctx(), objstore.ListOptions{Prefix: prefix, Delimiter: ""})
-	if err != nil {
-		return nil, err
-	}
-	var out []string
-	for _, o := range objs {
-		if !strings.HasSuffix(strings.ToLower(o.Key), ".mp4") {
-			continue
-		}
-		out = append(out, path.Base(o.Key))
-	}
-	sort.Strings(out)
-	return out, nil
 }
 
 // listeningVideo 返回单个视频的签名 URL + 解析后的 SRT 字幕。
