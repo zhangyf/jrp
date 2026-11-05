@@ -41,6 +41,7 @@ Commands:
   sentence-review-stats  Read-only: 回炉变形句库覆盖多少词/多少课、平均句长（难度代理）
   sentence-review-bank   回炉变形句库管理 (--dump / --merge 补批 / --file 覆盖)
   plan-config       View / change daily sentence quotas (no redeploy needed): --set / --reset
+  listening-goal    View / change listening progress-bar goals in minutes: --set / --reset
   sentence-import   Pull one lesson's sentences out of the 汇编 docs into the bank (--lesson N, --apply)
   lesson-status     One-shot check: 知识点 / 汇编 / 单词 / 句库 四件套齐不齐 (--lesson N | --all)
   user              Manage login accounts: list | approve <uid> | set-role <uid> <role> | disable <uid> | rename <uid> <name>
@@ -177,6 +178,8 @@ func main() {
 		runSentenceReviewBank(fs, lang)
 	case "plan-config":
 		runPlanConfig(fs, lang)
+	case "listening-goal":
+		runListeningGoal(fs, lang)
 	case "sentence-import":
 		runSentenceImport(fs, lang)
 	case "lesson-status":

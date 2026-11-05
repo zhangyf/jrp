@@ -105,15 +105,23 @@ function stJlpt(p) {
 
   var out = s + '</svg>';
 
-  // 听力累计时长：JLPT 卡下方追加一行「听力 N5 累计 X 分钟」。
-  // 老师定的口径：只算实际播放的秒数，不设目标，只显示累计。没听过整块不显示。
+  // 听力进度条：跟词汇/语法同一套画法 —— 当前累计分钟 ÷ 满格目标 = 百分比。
+  // 目标值后端从 COS 配置注入（goal_minutes），没配用内置默认（N5=1500/N4=3000 分钟）。
+  // 没听过整块不显示。
   var ls = p.listening || [];
   if (ls.length) {
-    var chips = ls.map(function (l) {
+    var rows = ls.map(function (l) {
       var min = Math.round((l.seconds || 0) / 60);
-      return '<span class="chip">听力 ' + esc(l.level) + ' 累计 <b>' + min + '</b> 分钟</span>';
+      var goal = l.goal_minutes || 0;
+      var pct = goal ? Math.min(100, Math.round(min / goal * 100)) : 0;
+      return '<div class="ls-goal-row">' +
+        '<span class="ls-goal-label">' + esc(l.level) + '</span>' +
+        '<div class="ls-goal-bar"><i style="width:' + pct + '%"></i></div>' +
+        '<span class="ls-goal-num">' + pct + '%</span>' +
+        '<span class="ls-goal-meta">' + min + ' / ' + goal + ' 分钟</span>' +
+        '</div>';
     }).join('');
-    out += '<div class="kv" style="margin-top:10px">' + chips + '</div>';
+    out += '<div class="ls-goals">' + rows + '</div>';
   }
 
   return stCardWide('JLPT 进度', '满格 = N4 目标，虚线 = N5 门槛', out);

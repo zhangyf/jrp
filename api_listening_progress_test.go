@@ -16,6 +16,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/zhangyf/jrp/internal/listening"
 )
 
 func TestListeningProgressRejectsBadLevel(t *testing.T) {
@@ -84,9 +86,10 @@ func TestListeningProgressRejectsNonPost(t *testing.T) {
 }
 
 func TestSortedListeningLevels(t *testing.T) {
+	goal := listening.Goal{N5: 1500, N4: 3000}
 	got := sortedListeningLevels(map[string]float64{
 		"N4": 300, "N5": 1200, "N3": 0, // N3 是 0，不该出现
-	})
+	}, goal)
 	if len(got) != 2 {
 		t.Fatalf("len=%d, want 2（0 秒的等级要过滤掉）", len(got))
 	}
@@ -95,5 +98,20 @@ func TestSortedListeningLevels(t *testing.T) {
 	}
 	if got[0].Seconds != 300 || got[1].Seconds != 1200 {
 		t.Errorf("秒数错：got %v,%v", got[0].Seconds, got[1].Seconds)
+	}
+	// goal 要按等级带上，前端好算百分比
+	if got[0].GoalMinutes != 3000 || got[1].GoalMinutes != 1500 {
+		t.Errorf("goal 错：got %d,%d want N4=3000,N5=1500", got[0].GoalMinutes, got[1].GoalMinutes)
+	}
+}
+
+// goal 配置异常（零值）时，sortedListeningLevels 要回退内置默认，不能除零。
+func TestSortedListeningLevelsBadGoalFallback(t *testing.T) {
+	got := sortedListeningLevels(map[string]float64{"N5": 600}, listening.Goal{})
+	if len(got) != 1 {
+		t.Fatalf("len=%d, want 1", len(got))
+	}
+	if got[0].GoalMinutes != listening.DefaultN5GoalMinutes {
+		t.Errorf("坏 goal 应回内置默认：got %d, want %d", got[0].GoalMinutes, listening.DefaultN5GoalMinutes)
 	}
 }

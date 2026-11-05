@@ -28,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zhangyf/jrp/internal/listening"
 	"github.com/zhangyf/jrp/internal/stats"
 )
 
@@ -157,14 +158,24 @@ func listeningTotals(ctx context.Context, st *Storage) map[string]float64 {
 	return loadListeningProgress(ctx, st).Total
 }
 
-// sortedListeningLevels 把累计秒数排成稳定的等级列表，前端直接摆。
-func sortedListeningLevels(total map[string]float64) []stats.ListeningLevel {
+// sortedListeningLevels 把累计秒数排成稳定的等级列表，并把该等级的满格目标
+// （分钟）一起带上 —— 前端拿 Seconds/60 ÷ GoalMinutes 直接画进度条，不用再传
+// 一份 goal。goal 为 0（配置异常）时给内置默认，避免除零。
+func sortedListeningLevels(total map[string]float64, goal listening.Goal) []stats.ListeningLevel {
+	if !listening.ValidGoal(goal) {
+		goal = listening.BuiltinGoal()
+	}
+	goalOf := map[string]int{"N5": goal.N5, "N4": goal.N4}
 	var out []stats.ListeningLevel
 	for lv, sec := range total {
 		if sec <= 0 {
 			continue
 		}
-		out = append(out, stats.ListeningLevel{Level: lv, Seconds: sec})
+		out = append(out, stats.ListeningLevel{
+			Level:       lv,
+			Seconds:     sec,
+			GoalMinutes: goalOf[lv],
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Level < out[j].Level })
 	return out

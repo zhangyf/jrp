@@ -175,12 +175,19 @@ Page({
           needs: s.needs_consol || 0, errors: s.errors || 0
         }));
 
-        // --- 听力累计时长：JLPT 卡里按等级摆一行「听力 N5 累计 X 分钟」。
-        //     老师定的口径：只算实际播放秒数，不设目标，只显示累计。没听过为空。
-        const listening = ((j && j.listening) || []).map((l) => ({
-          level: l.level || '',
-          min: Math.round((l.seconds || 0) / 60)
-        }));
+        // --- 听力进度条：跟 N5/N4 词汇/语法同一套画法。
+        //     当前累计分钟 ÷ 满格目标(goal_minutes) = 百分比。目标后端注入，
+        //     没配用内置默认（N5=1500/N4=3000 分钟）。没听过为空。
+        const listening = ((j && j.listening) || []).map((l) => {
+          const min = Math.round((l.seconds || 0) / 60);
+          const goal = l.goal_minutes || 0;
+          return {
+            level: l.level || '',
+            min,
+            goal,
+            pct: goal ? Math.min(100, Math.round((min * 100) / goal)) : 0
+          };
+        });
 
         this.setData({
           loading: false,

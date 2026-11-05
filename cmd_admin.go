@@ -28,6 +28,7 @@ import (
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/judge"
+	"github.com/zhangyf/jrp/internal/listening"
 	"github.com/zhangyf/jrp/internal/offline"
 	"github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/planconfig"
@@ -400,6 +401,129 @@ func runPlanConfig(fs *flag.FlagSet, lang string) {
 		"source":    source,
 		"limits":    map[string]int{"min": 0, "max": planconfig.MaxPlanCount},
 		"cos_key":   storage.planConfigKey(),
+		"hint":      hint,
+	})
+}
+
+// ==========================================================================
+// listening-goal —— 听力进度条满格目标（分钟），外置 COS 可调。
+//
+//	jrp --lang ja listening-goal                              看当前生效的目标（来源 + COS 原值）
+//	jrp --lang ja listening-goal --set n5=1500,n4=3000        改满格目标（分钟）
+//	jrp --lang ja listening-goal --reset                      删掉 COS 配置，回退内置 1500/3000
+//	jrp --lang ja listening-goal --dry-run                    演练，不落盘
+//
+// 只能改 n5 / n4 两个键，单位是分钟，允许 1 到 100000：写 0 会让进度条永远 0%，
+// 判坏回退内置。这是进度条的参照值，不是官方标准 —— 老师按自己节奏定的。
+//
+// ⚠️ 直读 COS，不走 resolveListeningGoal 的 60 秒缓存 —— 否则刚 --set 完
+// 立刻看会看到旧值，像没改成功。
+func runListeningGoal(fs *flag.FlagSet, lang string) {
+	set := fs.String("set", "", "设置目标（分钟），key=value，多个用逗号分隔，key 只能是 n5 / n4")
+	reset := fs.Bool("reset", false, "删除 COS 上的配置，回退内置默认")
+	dryRun := fs.Bool("dry-run", false, "演练：只校验不上传")
+	_ = fs.Parse(cmdArgs)
+
+	storage, err := NewStorage(lang)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if *dryRun {
+		storage.SetDryRun(true)
+	}
+	ctx := context.Background()
+
+	if *reset {
+		if err := storage.DeleteListeningGoal(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 删除失败：%v\n", err)
+			os.Exit(1)
+		}
+		outputResult(map[string]interface{}{
+			"success":   true,
+			"command":   "listening-goal",
+			"reset":     true,
+			"dry_run":   *dryRun,
+			"effective": listening.BuiltinGoal(),
+			"source":    "builtin",
+			"hint":      "COS 上的配置已删除，线上最多 60 秒后回退到内置默认（N5=1500 / N4=3000 分钟）",
+		})
+		return
+	}
+
+	if *set != "" {
+		cur, err := storage.DownloadListeningGoal(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 读取现有配置失败：%v\n", err)
+			os.Exit(1)
+		}
+		if cur.N5 == 0 && cur.N4 == 0 {
+			cur = listening.BuiltinGoal() // 没配过：以内置默认当起点
+		}
+		next := cur
+		for _, kv := range strings.Split(*set, ",") {
+			kv = strings.TrimSpace(kv)
+			if kv == "" {
+				continue
+			}
+			parts := strings.SplitN(kv, "=", 2)
+			if len(parts) != 2 {
+				fmt.Fprintf(os.Stderr, "Error: 写法不对（%q），应该是 key=value\n", kv)
+				os.Exit(1)
+			}
+			key := strings.TrimSpace(parts[0])
+			v, perr := strconv.Atoi(strings.TrimSpace(parts[1]))
+			if perr != nil {
+				fmt.Fprintf(os.Stderr, "Error: %s 的值不是整数（%q）\n", key, parts[1])
+				os.Exit(1)
+			}
+			if v <= 0 || v > listening.MaxGoalMinutes {
+				fmt.Fprintf(os.Stderr, "Error: %s=%d 越界，允许 1-%d 分钟（0 会让进度条永远 0%%）\n",
+					key, v, listening.MaxGoalMinutes)
+				os.Exit(1)
+			}
+			switch key {
+			case "n5":
+				next.N5 = v
+			case "n4":
+				next.N4 = v
+			default:
+				fmt.Fprintf(os.Stderr, "Error: 不能改 %q，只能改 n5 / n4（单位分钟）\n", key)
+				os.Exit(1)
+			}
+		}
+		if err := storage.UploadListeningGoal(ctx, next); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 上传失败：%v\n", err)
+			os.Exit(1)
+		}
+		outputResult(map[string]interface{}{
+			"success":   true,
+			"command":   "listening-goal",
+			"dry_run":   *dryRun,
+			"before":    cur,
+			"effective": next,
+			"source":    "cos",
+			"cos_key":   storage.listeningGoalKey(),
+			"hint":      "已写入 COS，线上最多 60 秒后生效，不用重启服务",
+		})
+		return
+	}
+
+	// 默认：查看
+	cos, err := storage.DownloadListeningGoal(ctx)
+	eff, source := listening.ChooseGoal(cos, err)
+	hint := "COS 上的配置正在生效（改完最多 60 秒后线上跟着变）"
+	if source == "builtin" {
+		hint = "COS 上没配或配坏了，用的是内置默认 N5=1500 / N4=3000 分钟"
+	}
+	outputResult(map[string]interface{}{
+		"success":   true,
+		"command":   "listening-goal",
+		"cos_raw":   cos,
+		"effective": eff,
+		"source":    source,
+		"limits":    map[string]int{"min": 1, "max": listening.MaxGoalMinutes},
+		"cos_key":   storage.listeningGoalKey(),
 		"hint":      hint,
 	})
 }

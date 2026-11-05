@@ -92,6 +92,15 @@
   background: #3b82c4;
 }
 
+/* 听力进度条：紫色，跟 N5(绿)/N4(蓝) 区分 */
+.bar-in.listen {
+  background: #6a4f8a;
+}
+/* 「听力N5」比「N5」长，label 放宽点别把进度条挤没 */
+.bar-label.wide {
+  min-width: 110rpx;
+}
+
 .bar-num {
   font-size: 24rpx;
   color: #8a8a86;
