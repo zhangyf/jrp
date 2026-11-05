@@ -155,31 +155,38 @@
   color: #23231f;
 }
 
-/* 表格：列宽不固定，横向滚。⚠️ 别用 flex-basis + calc()，部分机型不认 */
+/* 表格：CSS Grid 显式坐标，支持真 rowspan 合并大格。
+   ⚠️ 别退回 flex 逐行排 —— 有跨行格子时后面的格子会被挤错列。
+   ⚠️ 列宽由 JS 拼成 gridCols 传进来（一列一个 200rpx），
+      别在 WXSS 里用 repeat()/minmax()/calc()，部分机型不认。 */
 .tbl {
   white-space: nowrap;
   border: 1rpx solid #e6e4da;
   border-radius: 8rpx;
 }
-.tr {
-  display: flex;
-  border-bottom: 1rpx solid #eeebe0;
+.grid {
+  display: grid;
 }
-.tr:last-child { border-bottom: none; }
-.th, .td {
+.grid .th, .grid .td {
   min-width: 200rpx;
   padding: 14rpx 16rpx;
   font-size: 25rpx;
   line-height: 1.55;
   border-right: 1rpx solid #eeebe0;
+  border-bottom: 1rpx solid #eeebe0;
   white-space: normal;
 }
-.th {
+.grid .th {
   font-weight: 700;
   color: #23231f;
   background: #f5f4ee;
 }
-.td { color: #33332d; }
+.grid .td { color: #33332d; }
+/* 合并大格：极浅底色 + 加粗，跟 web 端原表的 cont 延续格呼应 */
+.grid .td.merged {
+  background: #fdfcf7;
+  font-weight: 600;
+}
 
 /* 被挡的块：blur 是主效果，color:transparent + text-shadow 是 filter 不生效时的兜底
    （部分安卓 WebView 不支持 CSS filter，只糊一层也看得出「被挡了」） */

@@ -16,15 +16,24 @@
 
 const app = getApp();
 const trial = require('../../utils/trial.js');
+const tableMerge = require('./table-merge.js');
 const LAST_KEY = 'jrp_k_lesson'; // 记住上次看到第几课，下次进来直接落在那儿
 
-// prepBlocks 给有序列表的每一项补一个序号。
+// prepBlocks 给有序列表补序号、给表格算合并坐标。
 // ⚠️ 别在 WXML 里写 `index + 1 + '.'` —— WXML 表达式的运算支持很有限，
 //    数字跟字符串拼在一起容易渲染成 NaN 或空。能算的一律在 JS 里算好。
+// ⚠️ 表格同理：合并单元格的坐标 / style 全在 JS 里算好，WXML 只负责平铺。
+//    表格原始 rows 保留不动 —— 老版本小程序读的还是它，向后兼容。
 function prepBlocks(blocks) {
   (blocks || []).forEach((b) => {
     if (b.type === 'list' && b.items) {
       b.items.forEach((it, i) => { it.no = String(i + 1) + '.'; });
+    }
+    if (b.type === 'table') {
+      const m = tableMerge.mergeCells(b);
+      b.cells = m.cells;
+      b.cols = m.cols;
+      b.gridCols = m.gridCols;
     }
   });
   return blocks;

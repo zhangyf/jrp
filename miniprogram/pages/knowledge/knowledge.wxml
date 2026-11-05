@@ -49,12 +49,14 @@
               </view>
             </view>
           </view>
+          <!-- 表格走 CSS Grid 显式坐标：mergeCells 已把「空格子=同上」算成真 rowspan，
+               每个格子的 grid-column / grid-row / span 都写在 c.style 里，这里只平铺。 -->
           <scroll-view class="tbl" scroll-x wx:elif="{{b.type === 'table'}}">
-            <view class="tr">
-              <view class="th" wx:for="{{b.header}}" wx:for-item="c" wx:key="index">{{c}}</view>
-            </view>
-            <view class="tr" wx:for="{{b.rows}}" wx:for-item="row" wx:key="index">
-              <view class="td" wx:for="{{row}}" wx:for-item="c" wx:key="index">{{c}}</view>
+            <view class="grid" style="grid-template-columns: {{b.gridCols}};">
+              <block wx:for="{{b.cells}}" wx:for-item="c" wx:key="k">
+                <view class="{{c.head ? 'th' : 'td'}}{{c.merged ? ' merged' : ''}}"
+                      style="{{c.style}}">{{c.t}}</view>
+              </block>
             </view>
           </scroll-view>
         </view>
