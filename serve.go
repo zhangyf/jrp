@@ -85,6 +85,7 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 	mux.HandleFunc("/api/review", srv.withUser(srv.handleReview))
 	mux.HandleFunc("/api/lexicon", srv.withUser(srv.handleLexicon))
 	mux.HandleFunc("/api/search", srv.withUser(srv.handleSearch)) // 全局搜索：词汇字面 + 知识点语义；trial/匿名不给用（不在白名单）
+	mux.HandleFunc("/api/listening", srv.withUser(srv.handleListening)) // 听力：视频签名URL + SRT逐句字幕；trial/匿名不给用
 	mux.HandleFunc("/api/words", srv.withUser(srv.handleAddWords))
 	mux.HandleFunc("/api/vision", srv.withUser(srv.handleVision))
 	mux.HandleFunc("/api/word-def", srv.withUser(srv.handleWordDef))

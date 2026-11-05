@@ -112,6 +112,11 @@
   background: #8a6b3f;
 }
 
+/* 听力：看视频练听解，用紫调跟上面几个都分得开 */
+.t-listen {
+  background: #6a4f8a;
+}
+
 .err {
   margin-bottom: 18rpx;
   font-size: 26rpx;

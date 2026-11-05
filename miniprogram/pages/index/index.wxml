@@ -38,6 +38,11 @@
         <view class="tile-title">知识点</view>
         <view class="tile-desc">每课只看一部分</view>
       </view>
+      <!-- 听力：体验版锁住（不在白名单），点了弹登录浮层 -->
+      <view class="tile t-listen" data-mode="listening" bindtap="go" hover-class="tile-press">
+        <view class="tile-title">听力</view>
+        <view class="tile-desc">登录后可用</view>
+      </view>
     </view>
     <view class="foot-link" bindtap="onWxLogin">{{busy ? '登录中…' : '微信登录后可保存进度'}}</view>
   </block>
@@ -76,6 +81,11 @@
     <view class="tile t-kno" data-mode="knowledge" bindtap="go" hover-class="tile-press">
       <view class="tile-title">知识点</view>
       <view class="tile-desc">新标日III · 按课查</view>
+    </view>
+    <!-- 听力：视频 + 字幕逐句高亮（2026-11-05）。未登录锁住，点了弹登录 -->
+    <view class="tile t-listen" data-mode="listening" bindtap="go" hover-class="tile-press">
+      <view class="tile-title">听力</view>
+      <view class="tile-desc">视频 · 逐句字幕</view>
     </view>
   </view>
 

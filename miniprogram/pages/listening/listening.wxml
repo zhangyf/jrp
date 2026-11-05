@@ -1,0 +1,54 @@
+<view class="wrap">
+  <view class="loading" wx:if="{{loading}}">正在加载…</view>
+  <view class="err" wx:if="{{err}}">{{err}}</view>
+
+  <!-- ===== 详情态：播放器 + 字幕 ===== -->
+  <block wx:if="{{playing}}">
+    <view class="vtitle">{{title}}</view>
+    <video id="player" class="player" src="{{videoUrl}}"
+           controls show-center-play-btn
+           bindtimeupdate="onTimeUpdate" binderror="onVideoError"
+           object-fit="contain"></video>
+    <view class="note" wx:if="{{note}}">{{note}}</view>
+
+    <scroll-view id="cueBox" class="cues" scroll-y scroll-into-view="{{scrollInto}}"
+                 scroll-with-animation>
+      <view id="cue-{{index}}"
+            class="cue {{index === active ? 'on' : ''}}"
+            wx:for="{{cues}}" wx:key="index"
+            data-i="{{index}}" bindtap="seekCue">
+        <text class="cue-idx">{{index + 1}}</text>
+        <text class="cue-txt">{{item.text}}</text>
+      </view>
+      <view class="cue-empty" wx:if="{{!cues.length}}">这段没有字幕</view>
+    </scroll-view>
+
+    <view class="backbar">
+      <view class="backbtn" bindtap="back">← 返回列表</view>
+    </view>
+  </block>
+
+  <!-- ===== 列表态：级别 + 视频清单 ===== -->
+  <block wx:if="{{!playing && !loading && !err}}">
+    <view class="hd">
+      <text class="hd-title">听力</text>
+      <text class="hd-sub" wx:if="{{levels.length}}">{{levels.length}} 个级别</text>
+    </view>
+    <scroll-view class="chips" scroll-x enable-flex>
+      <view class="chip {{item.level === curLevel ? 'on' : ''}}"
+            wx:for="{{levels}}" wx:key="level"
+            data-level="{{item.level}}" bindtap="pickLevel">{{item.level}}</view>
+    </scroll-view>
+
+    <view class="vlist">
+      <view class="vitem" wx:for="{{videos}}" wx:key="*this"
+            data-file="{{item}}" bindtap="openVideo" hover-class="vitem-press">
+        <view class="vplay">▶</view>
+        <view class="vname">{{item}}</view>
+      </view>
+      <view class="vempty" wx:if="{{!videos.length}}">这个级别还没有视频</view>
+    </view>
+  </block>
+
+  <include src="../../trial-sheet.wxml" />
+</view>

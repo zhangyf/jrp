@@ -6,6 +6,7 @@
     "pages/conj/conj",
     "pages/lexicon/lexicon",
     "pages/knowledge/knowledge",
+    "pages/listening/listening",
     "pages/addword/addword",
     "pages/stats/stats",
     "pages/login/login"
