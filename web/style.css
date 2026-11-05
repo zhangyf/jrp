@@ -672,7 +672,7 @@ details[open] summary { margin-bottom: 10px; }
    z-index：header 10、二维码浮层 40、modal 60 —— 搜索取 45，压住内容但不挡弹窗。 */
 .gsearch {
   position: fixed;
-  top: 14px;              /* 右上角：贴着页头下方一点 */
+  top: 68px;              /* 页头（sticky，约 56px 高）之下、正文区右上角，别压住页头导航 */
   right: 16px;
   z-index: 45;
 }
@@ -728,7 +728,7 @@ details[open] summary { margin-bottom: 10px; }
 }
 /* 窄屏：输入框和面板都收窄，避免盖住正文太多 */
 @media (max-width: 640px) {
-  .gsearch { right: 10px; top: 10px; }
+  .gsearch { right: 10px; top: 62px; }
   .gsearch-input { width: 150px; }
   .gsearch-panel { width: 240px; }
 }
