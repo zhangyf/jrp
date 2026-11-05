@@ -672,8 +672,19 @@ details[open] summary { margin-bottom: 10px; }
    z-index：header 10、二维码浮层 40、modal 60 —— 搜索取 45，压住内容但不挡弹窗。 */
 .gsearch {
   position: fixed;
-  top: 68px;              /* 页头（sticky，约 56px 高）之下、正文区右上角，别压住页头导航 */
-  right: 16px;
+  /* 垂直：跟左侧白卡顶边对齐。header ~61px + main padding-top 18px ≈ 79px。 */
+  top: 79px;
+  /* 水平：跟白卡右边缘对齐。main 是 max-width:860px 居中、padding 18px，
+     白卡右缘 = 视口中心 + (430 - 18)px。这里用一个跟 main 同宽的居中容器，
+     内部右对齐，框就始终贴白卡右缘，跟框宽无关。 */
+  left: 50%;
+  width: 860px;
+  max-width: 100%;
+  margin-left: -430px;     /* -860/2，让容器与 main 同轴居中 */
+  padding-right: 18px;     /* 对齐 main 的 padding，框贴白卡右内边距 */
+  box-sizing: border-box;
+  display: flex;
+  justify-content: flex-end;
   z-index: 45;
 }
 .gsearch-input {
@@ -726,9 +737,14 @@ details[open] summary { margin-bottom: 10px; }
   margin-top: 4px; padding: 6px 10px; border-top: 1px solid var(--line);
   font-size: 11px; color: var(--muted);
 }
-/* 窄屏：输入框和面板都收窄，避免盖住正文太多 */
+/* 窄屏：main 占满视口，白卡右缘 = 视口右缘 - padding。改用 right 贴边对齐。 */
+@media (max-width: 900px) {
+  .gsearch { left: auto; margin-left: 0; right: 18px; top: 79px; }
+  .gsearch-input { width: 180px; }
+  .gsearch-panel { width: 260px; }
+}
 @media (max-width: 640px) {
-  .gsearch { right: 10px; top: 62px; }
+  .gsearch { right: 12px; top: 79px; }
   .gsearch-input { width: 150px; }
   .gsearch-panel { width: 240px; }
 }
