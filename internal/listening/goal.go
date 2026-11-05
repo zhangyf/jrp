@@ -2,9 +2,10 @@ package listening
 
 // goal.go —— 听力进度条的「满格」目标值：解析、内置默认、合法性校验、回退选择。
 //
-// 老师定的满格口径（2026-11-05）：N5 = 1500 分钟（25h）、N4 = 3000 分钟（50h）。
+// 老师定的满格口径（2026-11-05）：N5 = 4500 分钟（75h）、N4 = 6000 分钟（100h）。
 // 这是进度条的参照值，不是官方标准 —— 听力没有词汇那种 800/1500 词的公认门槛，
-// 这两个数是老师按自己节奏定的，外置在 COS 上随时能改（jrp listening-goal）。
+// 这两个数参考了备考机构主流口径（到 N5 累计约 75h、到 N4 约 100h），外置在 COS
+// 上随时能改（jrp listening-goal）。
 //
 // 纯函数、不碰 COS / Storage —— 装载缓存与 CLI 编排留在根包（跟 planconfig 同套路）。
 
@@ -15,8 +16,8 @@ import (
 
 // 内置默认满格目标（分钟）。COS 上没配 / 配坏了就用这两个数。
 const (
-	DefaultN5GoalMinutes = 1500 // 25 小时
-	DefaultN4GoalMinutes = 3000 // 50 小时
+	DefaultN5GoalMinutes = 4500 // 75 小时
+	DefaultN4GoalMinutes = 6000 // 100 小时
 )
 
 // MaxGoalMinutes 目标上限。写个 99999999 上去进度条永远趴在 0%，没意义，判坏回退。

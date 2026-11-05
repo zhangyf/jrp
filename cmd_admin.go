@@ -409,8 +409,8 @@ func runPlanConfig(fs *flag.FlagSet, lang string) {
 // listening-goal —— 听力进度条满格目标（分钟），外置 COS 可调。
 //
 //	jrp --lang ja listening-goal                              看当前生效的目标（来源 + COS 原值）
-//	jrp --lang ja listening-goal --set n5=1500,n4=3000        改满格目标（分钟）
-//	jrp --lang ja listening-goal --reset                      删掉 COS 配置，回退内置 1500/3000
+//	jrp --lang ja listening-goal --set n5=4500,n4=6000        改满格目标（分钟）
+//	jrp --lang ja listening-goal --reset                      删掉 COS 配置，回退内置 4500/6000
 //	jrp --lang ja listening-goal --dry-run                    演练，不落盘
 //
 // 只能改 n5 / n4 两个键，单位是分钟，允许 1 到 100000：写 0 会让进度条永远 0%，
@@ -446,7 +446,7 @@ func runListeningGoal(fs *flag.FlagSet, lang string) {
 			"dry_run":   *dryRun,
 			"effective": listening.BuiltinGoal(),
 			"source":    "builtin",
-			"hint":      "COS 上的配置已删除，线上最多 60 秒后回退到内置默认（N5=1500 / N4=3000 分钟）",
+			"hint":      "COS 上的配置已删除，线上最多 60 秒后回退到内置默认（N5=4500 / N4=6000 分钟）",
 		})
 		return
 	}
@@ -514,7 +514,7 @@ func runListeningGoal(fs *flag.FlagSet, lang string) {
 	eff, source := listening.ChooseGoal(cos, err)
 	hint := "COS 上的配置正在生效（改完最多 60 秒后线上跟着变）"
 	if source == "builtin" {
-		hint = "COS 上没配或配坏了，用的是内置默认 N5=1500 / N4=3000 分钟"
+		hint = "COS 上没配或配坏了，用的是内置默认 N5=4500 / N4=6000 分钟"
 	}
 	outputResult(map[string]interface{}{
 		"success":   true,
