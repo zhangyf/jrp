@@ -133,6 +133,7 @@ var app = {
     else if (page === 'lexicon') lexicon.load();
     else if (page === 'conj') conj.load();
     else if (page === 'knowledge') knowledge.load();
+    else if (page === 'listening') listening.load();
   },
 
   // api 统一走这里：带上 token，401 时弹 token 输入条。

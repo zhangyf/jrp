@@ -86,6 +86,12 @@
       <view class="bar"><view class="bar-in n4" style="width:{{n4Pct}}%"></view></view>
       <view class="bar-num">{{n4Pct}}%</view>
     </view>
+
+    <!-- 听力累计时长：只算实际播放秒数，不设目标。没听过整块不显示 -->
+    <view class="kv" wx:for="{{listening}}" wx:for-item="l" wx:key="level">
+      <text>听力 {{l.level}} 累计</text><text class="num">{{l.min}} 分钟</text>
+    </view>
+
     <view class="hint">
       N5 门槛 {{jlpt.n5.vocab}} 词 / 第 {{jlpt.n5.lesson}} 课　·　N4 门槛 {{jlpt.n4.vocab}} 词 / 第 {{jlpt.n4.lesson}} 课
     </view>

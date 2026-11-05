@@ -103,7 +103,20 @@ function stJlpt(p) {
     '　熟练 ' + p.vocab_firm + ' / ' + p.n5.vocab +
     '　语法 第' + p.lesson + ' / ' + p.n5.lesson + '课</text>';
 
-  return stCardWide('JLPT 进度', '满格 = N4 目标，虚线 = N5 门槛', s + '</svg>');
+  var out = s + '</svg>';
+
+  // 听力累计时长：JLPT 卡下方追加一行「听力 N5 累计 X 分钟」。
+  // 老师定的口径：只算实际播放的秒数，不设目标，只显示累计。没听过整块不显示。
+  var ls = p.listening || [];
+  if (ls.length) {
+    var chips = ls.map(function (l) {
+      var min = Math.round((l.seconds || 0) / 60);
+      return '<span class="chip">听力 ' + esc(l.level) + ' 累计 <b>' + min + '</b> 分钟</span>';
+    }).join('');
+    out += '<div class="kv" style="margin-top:10px">' + chips + '</div>';
+  }
+
+  return stCardWide('JLPT 进度', '满格 = N4 目标，虚线 = N5 门槛', out);
 }
 
 // 一张卡片。sub 是标题右侧的灰色小字说明

@@ -51,6 +51,7 @@ Page({
     err: '',
     period: '',
     jlpt: null,
+    listening: [],
     n5Pct: 0,
     n4Pct: 0,
     kpis: [],
@@ -174,9 +175,17 @@ Page({
           needs: s.needs_consol || 0, errors: s.errors || 0
         }));
 
+        // --- 听力累计时长：JLPT 卡里按等级摆一行「听力 N5 累计 X 分钟」。
+        //     老师定的口径：只算实际播放秒数，不设目标，只显示累计。没听过为空。
+        const listening = ((j && j.listening) || []).map((l) => ({
+          level: l.level || '',
+          min: Math.round((l.seconds || 0) / 60)
+        }));
+
         this.setData({
           loading: false,
           jlpt: j,
+          listening,
           n5Pct: j ? pct(j.vocab_firm, j.lesson, j.n5) : 0,
           n4Pct: j ? pct(j.vocab_firm, j.lesson, j.n4) : 0,
           period: hasCmp

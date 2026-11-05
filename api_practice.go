@@ -792,6 +792,12 @@ func (s *server) handleStats(w http.ResponseWriter, r *http.Request, st *Storage
 		return
 	}
 
+	// 听力累计时长：塞进 jlpt 段，前端在 JLPT 进度卡里按等级摆一行。
+	// 非日语 / 没听过都是空数组，前端按「没有听力数据」处理。
+	if res.Jlpt != nil {
+		res.Jlpt.Listening = sortedListeningLevels(listeningTotals(s.ctx(), st))
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success":   true,
 		"language":  s.lang,

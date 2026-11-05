@@ -84,6 +84,8 @@ Page({
       '&file=' + encodeURIComponent(file);
     app.request(q, 'GET', {}, true)
       .then((res) => {
+        self.lastT = -1;
+        self.pending = 0;
         self.setData({
           loading: false,
           playing: true,
@@ -97,8 +99,22 @@ Page({
   },
 
   // 播放进度更新 → 找当前句高亮。字幕不多，线性扫足够（几百句以内无压力）。
+  //
+  // 同时累加「实际播放时长」上报：口径是老师定的（2026-11-05）——只算正在播放
+  // 的秒数，暂停、拖动跳过的不算。做法：相邻两次 onTimeUpdate 的 currentTime
+  // 差值在 (0, 1.5] 秒内（正常播放节奏）才累加；seek 大跳变直接丢弃。攒够 15
+  // 秒上报一次，onHide / onUnload / back 时把尾巴交上去。
   onTimeUpdate(e) {
     const t = e.detail.currentTime;
+    // —— 时长累加 ——
+    if (this.lastT >= 0) {
+      const d = t - this.lastT;
+      if (d > 0 && d <= 1.5) this.pending = (this.pending || 0) + d;
+    }
+    this.lastT = t;
+    if (this.pending >= 15) this.flush();
+
+    // —— 字幕高亮 ——
     const cues = this.data.cues;
     if (!cues.length) return;
     let idx = -1;
@@ -126,6 +142,19 @@ Page({
     }
   },
 
+  // 把攒下的时长上报给后端。失败静默（下次再攒再报，不影响播放）。
+  flush() {
+    const secs = this.pending || 0;
+    this.pending = 0;
+    if (secs < 1 || !this.data.curLevel) return;
+    app.request('/api/listening/progress', 'POST',
+      { level: this.data.curLevel, seconds: Math.round(secs * 10) / 10 }, true)
+      .catch(() => { /* 上报失败不吵用户 */ });
+  },
+
+  onHide() { this.flush(); },
+  onUnload() { this.flush(); },
+
   // 点某句 → seek 到那句开头。
   seekCue(e) {
     const i = e.currentTarget.dataset.i;
@@ -144,6 +173,9 @@ Page({
   },
 
   back() {
+    this.flush(); // 离开播放器把没上报的时长交上去
+    this.lastT = -1;
+    this.pending = 0;
     this.setData({ playing: false, videoUrl: '', cues: [], active: -1, title: '' });
   },
 

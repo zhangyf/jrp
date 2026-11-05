@@ -40,6 +40,7 @@
     <button class="tab" data-page="stats">统计</button>
     <button class="tab" data-page="lexicon">词汇总表</button>
     <button class="tab" data-page="knowledge">知识点</button>
+    <button class="tab" data-page="listening">听力</button>
   </nav>
   <span class="spacer"></span>
   <label class="grade-mode">
@@ -278,6 +279,16 @@
     <div id="kbBody"></div>
     <div id="kbMsg" class="feedback"></div>
   </section>
+
+  <!-- 听力：视频 + 同名 SRT 字幕，边播边看逐句高亮（web 端 2026-11-05 补，
+       跟小程序同一个 /api/listening 接口）。按级别分组，点视频拉签名 URL。
+       实际播放时长上报 /api/listening/progress，统计页 JLPT 卡里能看到。 -->
+  <section id="page-listening" class="page hidden">
+    <div id="lsLevels" class="kb-lessons"></div>
+    <div id="lsSummary" class="summary"></div>
+    <div id="lsBody"></div>
+    <div id="lsMsg" class="feedback"></div>
+  </section>
 </main>
 
 <!-- 左侧常驻小程序码：position:fixed，滚到哪儿都跟着。
@@ -307,8 +318,9 @@
 <script src="stats.js"></script>
 <script src="lexicon.js"></script>
 <script src="conjugation.js"></script>
-<script src="knowledge.js"></script>
-<script src="search.js"></script>
+    <script src="knowledge.js"></script>
+    <script src="listening.js"></script>
+    <script src="search.js"></script>
 <script>app.boot(); search.boot()</script>
 </body>
 </html>

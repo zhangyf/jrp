@@ -48,16 +48,25 @@ type LessonCount struct {
 // N4 约 1500 词、语法到标日初级下册第 48 课。放在后端算，是为了让 CLI 和网站
 // 共用同一个口径，改门槛只改一处。
 type JlptProgress struct {
-	VocabTotal int       `json:"vocab_total"` // 词库总量
-	VocabFirm  int       `json:"vocab_firm"`  // 熟练词：正确率 ≥80% 且复习过
-	Lesson     int       `json:"lesson"`      // 当前课次，从分组名里解析出的最大课号
-	N5         JlptLevel `json:"n5"`
-	N4         JlptLevel `json:"n4"`
+	VocabTotal int              `json:"vocab_total"` // 词库总量
+	VocabFirm  int              `json:"vocab_firm"`  // 熟练词：正确率 ≥80% 且复习过
+	Lesson     int              `json:"lesson"`      // 当前课次，从分组名里解析出的最大课号
+	N5         JlptLevel        `json:"n5"`
+	N4         JlptLevel        `json:"n4"`
+	Listening  []ListeningLevel `json:"listening"` // 各等级听力累计秒数（没听过为空数组）
 }
 
 type JlptLevel struct {
 	Vocab  int `json:"vocab"`
 	Lesson int `json:"lesson"`
+}
+
+// ListeningLevel 一个等级的听力累计时长（秒）。挂在 JlptProgress.Listening
+// 里，前端在 JLPT 进度卡里按等级摆一行「听力 N5 累计 X 分钟」。
+// Seconds 用 float 是因为前端上报的就是秒（可带小数），显示时才取整成分钟。
+type ListeningLevel struct {
+	Level   string  `json:"level"`
+	Seconds float64 `json:"seconds"`
 }
 
 type HardWordCounts struct {
