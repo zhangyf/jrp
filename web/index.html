@@ -284,9 +284,10 @@
      拿不到码（未登录 / 服务端没配微信凭证）时整个隐藏，不留破图。 -->
 <div id="toast" class="hidden"></div>
 
-<!-- 全局搜索：四页（今日练习/造句/钉子户/活用）右侧的浮动搜索框。
-     position:fixed 贴屏幕右缘、垂直居中，滚到哪儿都跟着，不占页头。
-     默认 hidden，由 web/search.js 按当前页显隐；结果浮层从框往左弹出。
+<!-- 全局搜索：四页（今日练习/造句/钉子户/活用）右上角的浮动搜索框。
+     position:fixed 钉在屏幕右上角，滚到哪儿都跟着，不占页头。
+     默认 hidden，由 web/search.js 按当前页显隐；结果浮层 absolute 挂在框正下方往下展开
+     （脱离文档流，面板变长只往下长，不把输入框顶得往上移）。
      词汇走字面、知识点走服务端语义检索，结果只在这块浮层里显示，不下发全库。 -->
 <div id="gsearch" class="gsearch hidden">
   <input id="gsearchInput" class="gsearch-input" type="text" autocomplete="off"
