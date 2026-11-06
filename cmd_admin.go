@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -687,6 +688,150 @@ func runRefinePrompt(fs *flag.FlagSet, lang string) {
 	fmt.Println(tpl)
 	if source == "builtin" && strings.TrimSpace(cosText) != "" {
 		fmt.Println("\n（COS 上有一份模板，但校验没过，当前实际用的是内置模板）")
+	}
+}
+
+// runRefineConfig 管理字幕精校旋钮（存在 COS 上，改它不用重新编译部署）。
+//
+//	jrp --lang ja refine-config                              看当前生效配置（来源 + 实际值）
+//	jrp --lang ja refine-config --set by_question=false       改一个键
+//	jrp --lang ja refine-config --set max_cues_per_part=40,timeout_seconds=200
+//	jrp --lang ja refine-config --file x.json                 上传完整 JSON
+//	jrp --lang ja refine-config --builtin                     打印内置默认
+//	jrp --lang ja refine-config --reset                       删掉 COS 配置，回退内置
+//	jrp --lang ja refine-config --dry-run                     演练，不落盘
+//
+// 可改的键：by_question（按题目切分，默认 true）、max_cues_per_part（单段句数上限，
+// 1-200，默认 60）、timeout_seconds（单次模型调用超时，30-600，默认 150）、
+// model / fallback（覆盖现网文本链）。
+//
+// ⚠️ 跟 plan-config 一样直读 COS，不走 60 秒缓存 —— 否则刚 --set 完立刻看会看到旧值。
+func runRefineConfig(fs *flag.FlagSet, lang string) {
+	set := fs.String("set", "", "改键值（逗号分隔）：by_question=true,max_cues_per_part=40,timeout_seconds=200,model=...,fallback=...")
+	file := fs.String("file", "", "上传完整 JSON 配置文件")
+	builtin := fs.Bool("builtin", false, "打印内置默认配置")
+	reset := fs.Bool("reset", false, "删除 COS 上的配置，回退内置")
+	dryRun := fs.Bool("dry-run", false, "演练：只校验不写")
+	_ = fs.Parse(cmdArgs)
+
+	if *builtin {
+		b, _ := json.MarshalIndent(listening.BuiltinRefineConfig(), "", "  ")
+		fmt.Println(string(b))
+		return
+	}
+
+	storage, err := NewStorage(lang)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if *dryRun {
+		storage.SetDryRun(true)
+	}
+	ctx := context.Background()
+
+	// 上传完整 JSON
+	if *file != "" {
+		data, err := os.ReadFile(*file)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 读取文件失败：%v\n", err)
+			os.Exit(1)
+		}
+		cfg, perr := listening.ParseRefineConfig(data)
+		if perr != nil {
+			fmt.Fprintf(os.Stderr, "Error: 配置不是合法 JSON：%v\n", perr)
+			os.Exit(1)
+		}
+		if verr := listening.ValidateRefineConfig(cfg); verr != nil {
+			fmt.Fprintf(os.Stderr, "Error: 配置越界（%v）—— 没写进 COS\n", verr)
+			os.Exit(1)
+		}
+		out, _ := json.MarshalIndent(listening.NormalizeRefineConfig(cfg), "", "  ")
+		if err := storage.UploadRefineConfig(ctx, out); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 上传失败：%v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("已上传配置：\n%s\n最多 60 秒后生效，不用重启服务\n", string(out))
+		return
+	}
+
+	// 删除
+	if *reset {
+		if err := storage.DeleteRefineConfig(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 删除失败：%v\n", err)
+			os.Exit(1)
+		}
+		b, _ := json.MarshalIndent(listening.BuiltinRefineConfig(), "", "  ")
+		fmt.Printf("已删除 COS 配置，回退内置：\n%s\n", string(b))
+		return
+	}
+
+	// 改键：先读现有值（COS 优先，坏了回退内置），套用改动后整体写回
+	if *set != "" {
+		cur, _ := listening.ChooseRefineConfig(storage.DownloadRefineConfig(ctx))
+		cfg := cur
+		for _, kv := range strings.Split(*set, ",") {
+			kv = strings.TrimSpace(kv)
+			if kv == "" {
+				continue
+			}
+			k, v, ok := strings.Cut(kv, "=")
+			if !ok {
+				fmt.Fprintf(os.Stderr, "Error: --set 项 %q 不是 k=v 形式\n", kv)
+				os.Exit(1)
+			}
+			k, v = strings.TrimSpace(k), strings.TrimSpace(v)
+			switch k {
+			case "by_question":
+				b, perr := strconv.ParseBool(v)
+				if perr != nil {
+					fmt.Fprintf(os.Stderr, "Error: by_question 只接受 true/false（收到 %q）\n", v)
+					os.Exit(1)
+				}
+				cfg.ByQuestion = &b
+			case "max_cues_per_part":
+				n, perr := strconv.Atoi(v)
+				if perr != nil {
+					fmt.Fprintf(os.Stderr, "Error: max_cues_per_part 只接受整数（收到 %q）\n", v)
+					os.Exit(1)
+				}
+				cfg.MaxCuesPerPart = n
+			case "timeout_seconds":
+				n, perr := strconv.Atoi(v)
+				if perr != nil {
+					fmt.Fprintf(os.Stderr, "Error: timeout_seconds 只接受整数（收到 %q）\n", v)
+					os.Exit(1)
+				}
+				cfg.TimeoutSeconds = n
+			case "model":
+				cfg.Model = v
+			case "fallback":
+				cfg.Fallback = v
+			default:
+				fmt.Fprintf(os.Stderr, "Error: 不认识的键 %q（可用：by_question / max_cues_per_part / timeout_seconds / model / fallback）\n", k)
+				os.Exit(1)
+			}
+		}
+		if verr := listening.ValidateRefineConfig(cfg); verr != nil {
+			fmt.Fprintf(os.Stderr, "Error: 配置越界（%v）—— 没写进 COS\n", verr)
+			os.Exit(1)
+		}
+		out, _ := json.MarshalIndent(listening.NormalizeRefineConfig(cfg), "", "  ")
+		if err := storage.UploadRefineConfig(ctx, out); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 上传失败：%v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("已更新配置：\n%s\n最多 60 秒后生效，不用重启服务\n", string(out))
+		return
+	}
+
+	// 查看
+	data, err := storage.DownloadRefineConfig(ctx)
+	cfg, source := listening.ChooseRefineConfig(data, err)
+	out, _ := json.MarshalIndent(cfg, "", "  ")
+	fmt.Printf("来源：%s\n\n%s\n", source, string(out))
+	if source == "builtin" && len(strings.TrimSpace(string(data))) != 0 {
+		fmt.Println("（COS 上有一份配置，但解析/校验没过，当前实际用的是内置默认）")
 	}
 }
 

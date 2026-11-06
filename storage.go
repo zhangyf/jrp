@@ -915,6 +915,42 @@ func (s *Storage) DeleteRefinePrompt(ctx context.Context) error {
 	return s.deleteObjectIgnore404(ctx, s.refinePromptKey())
 }
 
+// ---- 字幕精校旋钮外置（configs/refine_config.json）----
+//
+// 2026-11-06 老师提的：批次上限/超时/模型不该硬编码。跟 plan_config.json 同一套，
+// 读不到 / 解析坏 / 越界都由 listening.ChooseRefineConfig 回退内置默认。
+
+const refineConfigCosKey = "configs/refine_config.json"
+
+func (s *Storage) refineConfigKey() string {
+	return s.sharedBase() + "/" + refineConfigCosKey
+}
+
+// DownloadRefineConfig 读配置原始 JSON。不存在或读失败返回空，调用方回退内置。
+func (s *Storage) DownloadRefineConfig(ctx context.Context) ([]byte, error) {
+	data, err := s.store.GetAll(ctx, s.refineConfigKey())
+	if err != nil {
+		return nil, nil
+	}
+	return data, nil
+}
+
+// UploadRefineConfig 写配置。演练模式下不落盘。
+func (s *Storage) UploadRefineConfig(ctx context.Context, data []byte) error {
+	if s.dryRun {
+		return nil
+	}
+	return s.store.PutObject(ctx, s.refineConfigKey(), data)
+}
+
+// DeleteRefineConfig 删配置（--reset），删掉即回退内置。404 也当成功。
+func (s *Storage) DeleteRefineConfig(ctx context.Context) error {
+	if s.dryRun {
+		return nil
+	}
+	return s.deleteObjectIgnore404(ctx, s.refineConfigKey())
+}
+
 // ==========================================================================
 // 原 storage_planconfig.go
 // ==========================================================================

@@ -35,6 +35,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/zhangyf/jrp/internal/listening"
@@ -95,28 +96,41 @@ func refinePathToken(path string) string {
 	return strings.TrimSpace(rest)
 }
 
-// refineModel 返回精校用的模型链。默认走现网文本链（跟判句同一个），
-// 老师想给字幕单独配更强模型时设 JRP_REFINE_MODEL / JRP_REFINE_FALLBACK 覆盖。
-func refineModel() llm.Config {
+// refineModel 返回精校用的模型链。默认走现网文本链（跟判句同一个）。
+//
+// 覆盖优先级：环境变量 > COS 配置（configs/refine_config.json）> 现网默认。
+// 环境变量留给运维应急（改完 restart 即生效），日常调参走 COS 配置不用重启。
+func refineModel(rc listening.RefineConfig) llm.Config {
 	cfg, ok := llm.LoadConfig()
 	if !ok {
 		return llm.Config{}
 	}
+	// 先套 COS 配置
+	if m := strings.TrimSpace(rc.Model); m != "" {
+		cfg.Model = m
+	}
+	if fb := strings.TrimSpace(rc.Fallback); fb != "" {
+		cfg.Fallback = llm.ParseFallbackModels(fb, cfg.Model)
+	}
+	// 再让环境变量兜底覆盖
 	if m := strings.TrimSpace(os.Getenv("JRP_REFINE_MODEL")); m != "" {
 		cfg.Model = m
 	}
 	if fb := strings.TrimSpace(os.Getenv("JRP_REFINE_FALLBACK")); fb != "" {
 		cfg.Fallback = llm.ParseFallbackModels(fb, cfg.Model)
 	}
-	// 精校一批发 40 句、模型要读完再写，比判句那句慢得多，超时给足。
+	// 超时：默认取配置（内置 150s），环境变量可再覆盖。
+	timeout := rc.TimeoutSeconds
+	if timeout <= 0 {
+		timeout = listening.DefaultTimeoutSeconds
+	}
 	if v := strings.TrimSpace(os.Getenv("JRP_REFINE_TIMEOUT")); v != "" {
 		var n int
-		if _, err := fmt.Sscanf(v, "%d", &n); err == nil && n > 0 && n <= 300 {
-			cfg.Timeout = time.Duration(n) * time.Second
+		if _, err := fmt.Sscanf(v, "%d", &n); err == nil && n > 0 && n <= 600 {
+			timeout = n
 		}
-	} else {
-		cfg.Timeout = 60 * time.Second
 	}
+	cfg.Timeout = time.Duration(timeout) * time.Second
 	return cfg
 }
 
@@ -228,82 +242,131 @@ func (s *server) handleListeningRefine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// —— 拉 SRT ——
+	// —— 同一份字幕同时只跑一份精校 ——
+	//     数据万象回调可能并发重试，两个进程同时读写同一个 srt 会互相覆盖。
+	if !refineTryLock(srtKey) {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true, "skipped": "already in progress",
+		})
+		return
+	}
+
+	// —— 立刻 200，精校放后台 ——
+	//     ⛔ 不能同步等：整段字幕要调十几次模型，动辄十几分钟，nginx proxy_read_timeout
+	//     只有 300s，必然 504；而且客户端一断开 request ctx 就被取消，模型调用跟着死。
+	//     回调方（数据万象）只关心「收到没」，返回 accepted 即可，真正的结果落 COS +
+	//     .refined 标记里。后台用独立 context，不继承请求生命周期。
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true, "accepted": true, "srt": srtKey,
+	})
+	go func() {
+		defer refineUnlock(srtKey)
+		s.runRefine(srtKey)
+	}()
+}
+
+// runRefine 后台精校主流程。独立 context（不跟请求生命周期），整体上限 40 分钟。
+func (s *server) runRefine(srtKey string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Minute)
+	defer cancel()
+	st := s.storage
+
+	// 再查一次幂等标记：拿到锁之前可能已被别的回调跑完。
+	if refinedMarkerExists(ctx, st, srtKey) {
+		return
+	}
+
 	srtData, err := st.store.GetAll(ctx, srtKey)
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]interface{}{
-			"success": false, "error": "找不到字幕文件：" + srtKey,
-		})
+		log.Printf("refine: 拉字幕失败 %s：%v", srtKey, err)
 		return
 	}
 	cues := listening.ParseSRT(string(srtData))
 	if len(cues) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
-			"success": false, "error": "字幕解析为空，不精校",
-		})
+		log.Printf("refine: 字幕解析为空，跳过 %s", srtKey)
 		return
 	}
 
-	// —— 精校 ——
-	cfg := refineModel()
+	// 旋钮：COS configs/refine_config.json 优先，坏了回退内置（60 秒缓存）。
+	rcfg, rsrc := listening.ResolveRefineConfig(ctx, st)
+
+	cfg := refineModel(rcfg)
 	if cfg.Endpoint == "" || cfg.APIKey == "" {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
-			"success": false, "error": "服务端没配大模型（JRP_LLM_ENDPOINT/API_KEY），精校用不了",
-		})
+		log.Printf("refine: 服务端没配大模型，精校跳过 %s", srtKey)
 		return
 	}
 
-	changed, model, err := refineCues(ctx, cfg, st, cues)
+	changed, model, err := refineCues(ctx, cfg, st, rcfg, cues)
 	if err != nil {
 		log.Printf("refine: %s 精校失败：%v", srtKey, err)
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"success": false, "error": "精校失败：" + err.Error(),
-		})
 		return
 	}
 
 	// —— 回写 COS 覆盖原 srt（老师要求直接覆盖，不保留人工兜底）——
 	if err := st.store.PutObject(ctx, srtKey, []byte(listening.RenderSRT(cues))); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"success": false, "error": "回写字幕失败：" + err.Error(),
-		})
+		log.Printf("refine: 回写字幕失败 %s：%v", srtKey, err)
 		return
 	}
 
-	// —— 落精校标记，下次回调直接跳过 ——
 	markRefined(ctx, st, srtKey, model, changed)
 
-	log.Printf("refine: %s 精校完成，%d 句改了 %d 处，模型 %s", srtKey, len(cues), changed, model)
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"success": true,
-		"srt":     srtKey,
-		"cues":    len(cues),
-		"changed": changed,
-		"model":   model,
-	})
+	parts := listening.SplitParts(cues, rcfg)
+	log.Printf("refine: %s 精校完成，%d 句 / %d 段（%s 切分，配置来源 %s），改了 %d 处，模型 %s",
+		srtKey, len(cues), len(parts), splitMode(rcfg), rsrc, changed, model)
 }
 
-// refineCues 分批把字幕喂给模型，把回来的修改应用到 cues（原地改）。
-// 返回总共改了几处、生效的模型名。任一批模型全挂就返回错误（不写半成品，
-// 免得只精校了一半就覆盖回去）。
+// splitMode 日志用：当前是「按题目」还是「按句数」切。
+func splitMode(c listening.RefineConfig) string {
+	if c.ByQuestion != nil && *c.ByQuestion {
+		return "按题目"
+	}
+	return "按句数"
+}
+
+// refineInFlight 同一份 srt 同时只允许一个精校在跑。
+// 数据万象回调重试很频繁，没有这道闸并发写同一份字幕会互相覆盖。
+var refineInFlight = struct {
+	sync.Mutex
+	m map[string]bool
+}{m: map[string]bool{}}
+
+func refineTryLock(key string) bool {
+	refineInFlight.Lock()
+	defer refineInFlight.Unlock()
+	if refineInFlight.m[key] {
+		return false
+	}
+	refineInFlight.m[key] = true
+	return true
+}
+
+func refineUnlock(key string) {
+	refineInFlight.Lock()
+	defer refineInFlight.Unlock()
+	delete(refineInFlight.m, key)
+}
+
+// refineCues 按题目分段喂给模型，把回来的修改应用到 cues（原地改）。
+// 返回总共改了几处、生效的模型名。
+//
+// 切分由配置决定（默认按题号切，一段 = 一道题；识别不出题号才退回按句数硬切）。
+// 一段失败就整体失败 —— 不写半成品，免得只精校了一半就覆盖回 COS。
 //
 // 走 llmChat（跟查释义同一个）：它内部按 cfg.Timeout 给每个模型各自计时，
-// 并复用 SkipModel/MarkResult 的主备切换 + 冷却状态。ctx 目前只用于将来扩展，
-// llm.Call 自己建超时 ctx。
-func refineCues(ctx context.Context, cfg llm.Config, st *Storage, cues []listening.Cue) (int, string, error) {
+// 并复用 SkipModel/MarkResult 的主备切换 + 冷却状态。
+func refineCues(ctx context.Context, cfg llm.Config, st *Storage, rcfg listening.RefineConfig, cues []listening.Cue) (int, string, error) {
 	// 模板走 60 秒缓存装载（COS 优先，坏了回退内置），改模板不用重新部署。
 	tpl, _, _ := listening.ResolveRefinePrompt(ctx, st)
+
+	parts := listening.SplitParts(cues, rcfg)
 	total := 0
 	model := ""
-	for start := 0; start < len(cues); start += listening.RefineBatchSize() {
-		end := start + listening.RefineBatchSize()
-		if end > len(cues) {
-			end = len(cues)
-		}
-		input := listening.BuildRefineInput(cues, start, end)
+	for i, p := range parts {
+		input := listening.BuildRefineInput(cues, p.Start, p.End)
 		reply, m, err := llmChat(cfg, tpl+"\n\n字幕：\n"+input)
 		if err != nil {
-			return total, model, fmt.Errorf("第 %d-%d 句精校失败：%w", start+1, end, err)
+			return total, model, fmt.Errorf("第 %d/%d 段（第 %d-%d 句，%q）精校失败：%w",
+				i+1, len(parts), p.Start+1, p.End, p.Label, err)
 		}
 		if model == "" {
 			model = m

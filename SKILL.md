@@ -1070,6 +1070,21 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
 - **方案 A（纯文本、不给视频）**：只修「语言层能确定」的错（同音词/搭配/固定指令句/番号），
   数字/专名/选择题选项这类必须听音频才知道的**保持原样**——宁可漏改不改坏。
   这是与老师对齐的口径（2026-11-06），纯文本模型解决不了「八番 vs 一番」这种。
+- **回调是异步的**（2026-11-06 改）：整段字幕要调十几次模型、动辄十几分钟，nginx
+  `proxy_read_timeout` 只有 300s 必然 504；而且客户端一断 request ctx 就取消，模型调用跟着死。
+  所以 handler 校验完立刻返回 `{"accepted":true}`，精校放后台 goroutine（独立 context，
+  整体上限 40 分钟），结果落 COS + `.refined` 标记。同一份 srt 有 `refineInFlight` 闸，
+  并发重试直接跳过。
+- **切分按题目，不按句数**（2026-11-06 老师提的）：`SplitParts` 按大题号（`問題一`）/
+  小题号（`一番`）切，**一段 = 一道题**（题干→会话→質問→選択肢 完整语境）。按固定句数
+  硬切会把同一题劈成两段，模型看不到题目全貌，碎片句救不回来。识别不出题号（非 JLPT 素材）
+  才退回每 `max_cues_per_part` 句一段兜底；单题过长也按这个上限硬切。
+  ⚠️ `問題用紙` / `問題要旨` 后面没数字，不会误判成题号（有单测盯）。
+- **旋钮外置**（照 plan-config 同套路）：`configs/refine_config.json`，字段
+  `by_question`（默认 true）/ `max_cues_per_part`（1-200，默认 60）/ `timeout_seconds`
+  （30-600，默认 150）/ `model` / `fallback`。读不到/解析坏/越界一律回退内置，60 秒缓存。
+  CLI `jrp --lang ja refine-config`（`--set k=v,...` / `--file` / `--builtin` / `--reset` /
+  `--dry-run`），CLI 直读 COS 不走缓存。模型覆盖优先级：**环境变量 > COS 配置 > 现网默认**。
 - **prompt 外置**（照 judge-prompt 同套路，2026-11-06）：`configs/refine_prompt.txt`，
   内置兜底 + `ValidateRefinePrompt`（**无占位符**，只要求非空 + 含「编号」输出格式说明）+
   `ChooseRefinePrompt`（坏了回退内置）+ `RefinePromptVersion`（sha256 前 12 位）+
@@ -1081,7 +1096,9 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
 - **纯函数层** `internal/listening/refine.go`：`RefinePrompt`（内置兜底，保守规则有单测盯）、
   `BuildRefineInput`（带编号、**不带时间轴**喂模型）、`ParseRefineReply`（只认「编号: 文本」，
   忽略代码块/解释/「无」）、`ApplyRefinements`（只替换点名的编号，越界忽略，时间轴不动）、
-  `RenderSRT`（毫秒**四舍五入**不能截断，否则 round-trip 偏 1ms）。40 句一批防超 token。
+  `RenderSRT`（毫秒**四舍五入**不能截断，否则 round-trip 偏 1ms）。切分见上「按题目」段；
+  实测 deepseek-flash/glm-5.3-flash 读 40 句日文 150s 都跑不完（超时），15 句约 42s，
+  一道题通常 10-40 句，150s 够用。`JRP_REFINE_TIMEOUT` 仍可覆盖配置。
 - **幂等**：精校完落一个 `<srt>.refined` 标记对象，工作流重试回调直接跳过，不重复烧钱。
 - **只处理 `State=Success`** 的回调；失败/进行中的确认收到、不做事。
 - **配置**（`/etc/jrp/jrp.env`）：`JRP_REFINE_TOKEN`（回调密钥，必配才启用，配进回调
