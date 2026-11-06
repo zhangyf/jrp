@@ -1048,6 +1048,33 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
 前端 `outputs/sentence_judge_test.js` 21 项（含「写对了不调模型」「关掉后不再问」
 「模型挂了不冒充」「改字后旧结论作废」）。
 
+### 字幕精校回调（大模型第四用途，2026-11-06 起，默认关闭）
+
+老师在 COS 桶里搭了数据万象工作流：上传视频 → 转封装 + ASR 生成 SRT → 回调 jrp。
+服务端拉同名 `.srt`，调大模型**保守精校**，直接覆盖回 COS。
+
+- **接口**：`POST /api/listening/refine`，body 是数据万象的 XML（`Response/JobsDetail`）。
+  从 `Operation.Output.Object` 拿 **.srt 完整 key**（老师确认回调里给的就是它）；
+  兜底按 `Input.Object` 的视频 key 换扩展名。
+- ⛔ **不走 withUser**（工作流没有用户会话）。它**能写 COS = 后门**，鉴权用独立密钥
+  `JRP_REFINE_TOKEN`：回调请求带 `Authorization: Bearer <JRP_REFINE_TOKEN>` 才放行，
+  常量时间比较。没配这个密钥 → 403，精校不启用（部署上去是安全的）。
+- **方案 A（纯文本、不给视频）**：只修「语言层能确定」的错（同音词/搭配/固定指令句/番号），
+  数字/专名/选择题选项这类必须听音频才知道的**保持原样**——宁可漏改不改坏。
+  这是与老师对齐的口径（2026-11-06），纯文本模型解决不了「八番 vs 一番」这种。
+- **纯函数层** `internal/listening/refine.go`：`RefinePrompt`（内置兜底，保守规则有单测盯）、
+  `BuildRefineInput`（带编号、**不带时间轴**喂模型）、`ParseRefineReply`（只认「编号: 文本」，
+  忽略代码块/解释/「无」）、`ApplyRefinements`（只替换点名的编号，越界忽略，时间轴不动）、
+  `RenderSRT`（毫秒**四舍五入**不能截断，否则 round-trip 偏 1ms）。40 句一批防超 token。
+- **幂等**：精校完落一个 `<srt>.refined` 标记对象，工作流重试回调直接跳过，不重复烧钱。
+- **只处理 `State=Success`** 的回调；失败/进行中的确认收到、不做事。
+- **配置**（`/etc/jrp/jrp.env`）：`JRP_REFINE_TOKEN`（回调密钥，必配才启用）；
+  模型默认走现网文本链（`JRP_LLM_MODEL`+`FALLBACK`），可用 `JRP_REFINE_MODEL`/
+  `JRP_REFINE_FALLBACK`/`JRP_REFINE_TIMEOUT`（默认 60s，精校比判句慢）覆盖。
+- **测试**：`internal/listening/refine_test.go`（金标准取自 2026-11-06 手工精校的那份：
+  懲戒→聴解、問題要旨→問題用紙、泡→青いの；含全角编号/冒号、噪声过滤、越界编号、
+  round-trip、时间码边界）。
+
 ## Critical Rules
 
 1. **Never manually edit archive markdown** — always use the Go CLI for archive operations

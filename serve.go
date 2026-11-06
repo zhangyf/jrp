@@ -87,6 +87,9 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 	mux.HandleFunc("/api/search", srv.withUser(srv.handleSearch))                        // 全局搜索：词汇字面 + 知识点语义；trial/匿名不给用（不在白名单）
 	mux.HandleFunc("/api/listening", srv.withUser(srv.handleListening))                  // 听力：视频签名URL + SRT逐句字幕；trial/匿名不给用
 	mux.HandleFunc("/api/listening/progress", srv.withUser(srv.handleListeningProgress)) // 听力实际播放时长上报（改个人档案，trial/匿名不给用）
+	// 字幕精校回调：COS 数据万象工作流完成后打过来。⛔ 不走 withUser（工作流没有
+	// 用户会话），自己验 Bearer JRP_REFINE_TOKEN —— 它能写 COS，等于后门，必须独立密钥。
+	mux.HandleFunc("/api/listening/refine", srv.handleListeningRefine)
 	mux.HandleFunc("/api/words", srv.withUser(srv.handleAddWords))
 	mux.HandleFunc("/api/vision", srv.withUser(srv.handleVision))
 	mux.HandleFunc("/api/word-def", srv.withUser(srv.handleWordDef))
