@@ -15,11 +15,11 @@ package main
 
 import (
 	"net/http"
+	"net/url"
 	"path"
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/zhangyf/jrp/internal/listening"
 	"github.com/zhangyf/objstore"
@@ -31,9 +31,14 @@ const listeningDir = "/listening/"
 // levelRe 认级别目录名：N5 / N4 / N3 / N2 / N1（也容许 n5 小写）。
 var levelRe = regexp.MustCompile(`^N[1-5]$`)
 
-// presignTTL 签名 URL 有效期。视频播放可能持续几十分钟，且用户可能暂停很久，
-// 给足 3 小时；URL 只在响应里下发、不落盘，过期重拉一次接口即可。
-const presignTTL = 3 * time.Hour
+// listeningCDNBase 听力文件的对外域名。EO 侧做了回源 URL 重写：前端请求
+// https://listening.110105.xyz/{Nx}/{file}，EO 自动补上 COS 路径前缀
+// （language-review/<lang>/listening/）回源到私有桶。这样对外不暴露桶域名
+// 和真实 key 前缀，也不带 COS 签名 —— 从安全角度把存储细节藏在 EO 后面。
+//
+// 列表仍走默认桶（内部 SDK ListObjects），只有下发给前端的播放地址换这个域名。
+// ⚠️ {Nx} 是等级（N5 这种，注意大小写），{file} 是最终文件名（不含路径前缀）。
+const listeningCDNBase = "https://listening.110105.xyz/"
 
 // handleListening 听力模块唯一入口。
 func (s *server) handleListening(w http.ResponseWriter, r *http.Request, st *Storage) {
@@ -111,9 +116,13 @@ func (s *server) listeningIndex(w http.ResponseWriter, st *Storage) {
 	})
 }
 
-// listeningVideo 返回单个视频的签名 URL + 解析后的 SRT 字幕。
+// listeningVideo 返回单个视频的播放地址 + 解析后的 SRT 字幕。
 //
 // file 只接受裸文件名（不带路径、不含 ..），路径由服务端拼，避免目录穿越。
+//
+// ⚠️ 播放地址不再走 COS 签名 URL，改成 EO 域名裸路径：
+// https://listening.110105.xyz/{Nx}/{file}。EO 侧回源重写会自动补 COS 路径前缀，
+// 把桶域名和真实 key 藏在 EO 后面（安全考量）。列表仍走默认桶 SDK（内部）。
 func (s *server) listeningVideo(w http.ResponseWriter, r *http.Request, st *Storage, level, file string) {
 	if !levelRe.MatchString(level) {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
@@ -147,16 +156,12 @@ func (s *server) listeningVideo(w http.ResponseWriter, r *http.Request, st *Stor
 		return
 	}
 
-	// 签名 URL。
-	videoURL, err := st.store.PresignGetObject(ctx, videoKey, presignTTL)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"success": false, "error": "生成播放地址失败：" + err.Error(),
-		})
-		return
-	}
+	// 播放地址：EO 域名 + 等级 + 文件名。文件名含空格/日文，逐段 URL 编码
+	// （等级和文件名分开编，斜杠是路径分隔符不能编）。
+	videoURL := listeningCDNBase + url.PathEscape(level) + "/" + url.PathEscape(file)
 
 	// SRT：同名换扩展名。缺失不算错（前端降级成纯播放、无字幕联动）。
+	// 文本同理走 EO 域名（EO 回源重写会补前缀），前端按需拉取。
 	srtKey := base + strings.TrimSuffix(file, path.Ext(file)) + ".srt"
 	var cues []listening.Cue
 	var srtNote string
@@ -178,7 +183,6 @@ func (s *server) listeningVideo(w http.ResponseWriter, r *http.Request, st *Stor
 		"title":     strings.TrimSuffix(file, path.Ext(file)),
 		"size":      info.Size,
 		"video_url": videoURL,
-		"expires":   int(presignTTL.Seconds()),
 		"cues":      cues,
 		"cue_count": len(cues),
 		"note":      srtNote,
