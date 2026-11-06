@@ -75,6 +75,9 @@
     <view class="kv">
       <text>当前课次</text><text class="num">第 {{jlpt.lesson}} 课</text>
     </view>
+    <view class="kv">
+      <text>听力时长</text><text class="num">N5 {{n5ListenMin}} 分　N4 {{n4ListenMin}} 分</text>
+    </view>
 
     <view class="bar-wrap">
       <view class="bar-label">N5</view>

@@ -51,6 +51,8 @@ Page({
     err: '',
     period: '',
     jlpt: null,
+    n5ListenMin: 0,
+    n4ListenMin: 0,
     n5ListenGoal: 0,
     n4ListenGoal: 0,
     n5Pct: 0,
@@ -188,6 +190,8 @@ Page({
         this.setData({
           loading: false,
           jlpt: j,
+          n5ListenMin: n5Listen.min,
+          n4ListenMin: n4Listen.min,
           n5ListenGoal: n5Listen.goal,
           n4ListenGoal: n4Listen.goal,
           n5Pct: j ? pct(j.vocab_firm, j.lesson, n5Listen, j.n5) : 0,
