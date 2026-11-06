@@ -412,10 +412,35 @@ button.unk.on {
 .modal p { margin: 0; font-size: 13px; line-height: 1.6; }
 .modal .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 
-/* 搜索页内浮窗：点搜索结果弹出的详情（不跳页，盖在练习页上） */
-.search-modal { max-width: 520px; width: 100%; max-height: 82vh; display: flex; flex-direction: column; }
-.search-modal h4 { word-break: break-word; }
-.search-modal .sm-body { overflow: auto; margin: 6px 0 2px; }
+/* 搜索页内浮窗：右侧滑出的抽屉，贴近腾讯云控制台文档浮窗的形态
+   （占右侧约 1/3 宽、近全屏高、顶部标题栏 + 关闭、底部跳转按钮）。 */
+.search-drawer-mask {
+  position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+  background: rgba(0, 0, 0, .35);
+  z-index: 60;
+}
+.search-drawer {
+  position: absolute; top: 0; right: 0; bottom: 0;
+  width: min(560px, 92vw);
+  background: var(--panel);
+  box-shadow: -8px 0 30px rgba(0, 0, 0, .15);
+  display: flex; flex-direction: column;
+  animation: sd-in .18s ease;
+}
+@keyframes sd-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+.sd-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px; border-bottom: 1px solid var(--line);
+}
+.sd-title { flex: 1; font-size: 16px; font-weight: 700; color: var(--ink); word-break: break-word; }
+.sd-close {
+  border: none; background: transparent; cursor: pointer;
+  font-size: 24px; line-height: 1; color: var(--muted); padding: 0 2px;
+}
+.sd-close:hover { color: var(--ink); }
+.sd-body { flex: 1; overflow: auto; padding: 16px 18px; }
+.sd-foot { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); }
+
 .sm-kv { display: flex; gap: 12px; padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
 .sm-kv:last-child { border-bottom: none; }
 .sm-k { flex: 0 0 48px; color: var(--muted); font-size: 12px; line-height: 1.7; }

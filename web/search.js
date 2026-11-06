@@ -184,13 +184,14 @@ var search = {
     this.openModal(esc(d.title || '知识点'), null, opts, body);
   },
 
-  // openModal 开一个页内浮窗。kv = [["标签","HTML内容"],...]（词条用）；
-  // bodyHtml 是自由 HTML（知识点片段用）。jumpOpts 有就多一个跳转按钮。
-  // 复用 modal-mask 样式（z-index 60，压住搜索面板 45 和页面内容），点蒙层/ESC/关闭都关。
+  // openModal 开一个右侧抽屉浮窗（贴近腾讯云控制台文档浮窗的形态）。
+  // kv = [["标签","HTML内容"],...]（词条用）；bodyHtml 是自由 HTML（知识点片段用）。
+  // jumpOpts 有就在底部多一个「在词汇表查看 / 打开完整知识点」按钮。
+  // 点蒙层/ESC/×/切页都关。盖在当前页上，练习状态不丢。
   openModal: function (titleHtml, kv, jumpOpts, bodyHtml) {
     this.closeModal();
     var mask = document.createElement('div');
-    mask.className = 'modal-mask';
+    mask.className = 'search-drawer-mask';
     mask.setAttribute('data-search-modal', '1');
 
     var inner = '';
@@ -202,15 +203,20 @@ var search = {
     } else if (bodyHtml) {
       inner = '<div class="sm-text">' + bodyHtml + '</div>';
     }
-    var jumpBtn = '';
+    var foot = '';
     if (jumpOpts && jumpOpts.jumpText) {
-      jumpBtn = '<button class="ghost" data-act="jump">' + esc(jumpOpts.jumpText) + '</button>';
+      foot = '<div class="sd-foot">' +
+        '<button class="ghost" data-act="jump">' + esc(jumpOpts.jumpText) + '</button>' +
+        '</div>';
     }
     mask.innerHTML =
-      '<div class="modal search-modal">' +
-      '<h4>' + titleHtml + '</h4>' +
-      '<div class="sm-body">' + inner + '</div>' +
-      '<div class="row">' + jumpBtn + '<button class="primary" data-act="close">关闭</button></div>' +
+      '<div class="search-drawer">' +
+      '<div class="sd-head">' +
+      '<span class="sd-title">' + titleHtml + '</span>' +
+      '<button class="sd-close" data-act="close" aria-label="关闭">×</button>' +
+      '</div>' +
+      '<div class="sd-body">' + inner + '</div>' +
+      foot +
       '</div>';
     document.body.appendChild(mask);
     this._mask = mask;
