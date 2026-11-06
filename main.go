@@ -37,6 +37,7 @@ Commands:
   sentence-bank    Sentence bank management (--file upload / --dump / --stats)
   sentence-preview  Read-only dry run: which sentences would be picked today
   judge-prompt       View / upload / reset the LLM prompt template for 造句 judgement
+  refine-prompt      View / upload / reset the LLM prompt template for 字幕精校
   sentence-review-todo  List words that qualify for 回炉 but have no transformed sentence yet
   sentence-review-stats  Read-only: 回炉变形句库覆盖多少词/多少课、平均句长（难度代理）
   sentence-review-bank   回炉变形句库管理 (--dump / --merge 补批 / --file 覆盖)
@@ -170,6 +171,8 @@ func main() {
 		runSentencePreview(fs, lang)
 	case "judge-prompt":
 		runJudgePrompt(fs, lang)
+	case "refine-prompt":
+		runRefinePrompt(fs, lang)
 	case "sentence-review-todo":
 		runSentenceReviewTodo(fs, lang)
 	case "sentence-review-stats":

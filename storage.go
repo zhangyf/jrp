@@ -878,6 +878,43 @@ func (s *Storage) DeleteJudgePrompt(ctx context.Context) error {
 	return s.deleteObjectIgnore404(ctx, s.judgePromptKey())
 }
 
+// ---- 字幕精校 prompt 外置（照 judge prompt 同一套，key 换成 configs/refine_prompt.txt）----
+//
+// 精校模板跟判句模板的区别：判句模板有 {answer}/{input} 占位符，精校模板没有
+// （字幕是拼在模板后面的）。所以这里只有「读/写/删」三件套，校验逻辑在
+// listening.ValidateRefinePrompt（只要求非空 + 含「编号」）。
+
+const refinePromptCosKey = "configs/refine_prompt.txt"
+
+func (s *Storage) refinePromptKey() string {
+	return s.sharedBase() + "/" + refinePromptCosKey
+}
+
+// DownloadRefinePrompt 读精校模板。不存在或读失败返回空串，调用方据此回退内置。
+func (s *Storage) DownloadRefinePrompt(ctx context.Context) (string, error) {
+	data, err := s.store.GetAll(ctx, s.refinePromptKey())
+	if err != nil {
+		return "", nil
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// UploadRefinePrompt 写精校模板。演练模式下不落盘。
+func (s *Storage) UploadRefinePrompt(ctx context.Context, text string) error {
+	if s.dryRun {
+		return nil
+	}
+	return s.store.PutObject(ctx, s.refinePromptKey(), []byte(text))
+}
+
+// DeleteRefinePrompt 删精校模板（--reset），删掉即回退内置。404 也当成功。
+func (s *Storage) DeleteRefinePrompt(ctx context.Context) error {
+	if s.dryRun {
+		return nil
+	}
+	return s.deleteObjectIgnore404(ctx, s.refinePromptKey())
+}
+
 // ==========================================================================
 // 原 storage_planconfig.go
 // ==========================================================================

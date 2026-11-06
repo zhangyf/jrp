@@ -1,11 +1,17 @@
 package listening
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"log"
 	"math"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 // 字幕精校（方案 A：纯文本、保守策略）。
@@ -29,21 +35,36 @@ const refineBatchSize = 40
 // RefineBatchSize 暴露批次大小给根包的编排层用（同包常量不跨包可见）。
 func RefineBatchSize() int { return refineBatchSize }
 
-// RefinePrompt 是精校任务的系统指令。外置到 COS 可调（跟 judge-prompt 同套路），
-// 这里是内置兜底版本。
-const RefinePrompt = `你是日语字幕精校助手。下面是一段日语听力字幕（通常是 JLPT 听力真题），
-它由语音识别(ASR)自动生成，存在识别错误。你的任务是**只修正确定的错误**。
+// RefinePrompt 是精校任务的系统指令。外置到 COS 可调（configs/refine_prompt.txt，
+// 跟 judge-prompt 同套路），这份是内置兜底版本。
+//
+// 2026-11-06 按 ①② 调过（实测暴露「碎片句救不了、模型偏保守」）：
+//   - ① 加领域锚点：明说这是 JLPT 听力真题、开头/结尾有固定套话，并列出高频 ASR
+//     混淆对（聴解↔懲戒、問題用紙↔問題要旨、番号被切成バ/ば/段）——给模型推断的抓手。
+//   - ② 放宽碎片句尺度：上下文/固定套话能明确推断原意时（含被切碎的词）可以修；
+//     但数字、人名、地名、选择题选项**仍然保持原样**（这些必须听音频，红线不动）。
+const RefinePrompt = `你是日语字幕精校助手。下面是一段**日语听力字幕**，绝大多数是 JLPT 听力真题
+（聴解試験），由语音识别(ASR)自动生成，识别错误不少。你的任务是**只修正确定的错误**。
 
-规则（务必遵守）：
-1. 只修「语言层面能确定」的错误：同音/近音词、明显的搭配或语法错误、
-   JLPT 听力的固定指令句、番号递增（一番→二番→三番…）。
+【领域线索，帮你判断】
+- JLPT 听力有大量固定套话，开头如「日本語能力試験。聴解。」「これから聴解試験を始めます」
+  「問題用紙を取ってください」「質問を聞いてください」「一から四の中から、一番良いものを
+  一つ選んでください」等；结尾常是「これで聴解試験を終わります」。
+- 大题号（問題一/二…）和小题号（一番→二番→三番…）都是**递增**的。
+- ASR 高频混淆（见到这些大概率是识别错）：聴解↔懲戒、問題用紙↔問題要旨、
+  番号被切成「バ/ば/段/バン」、私の↔たの、青い↔泡、尻尾↔味。
+
+【修正规则】
+1. **能确定就修**：同音/近音词、明显的搭配或语法错误、固定套话里的识别错、
+   按递增规律能确定的番号、以及**上下文或固定套话能明确推断出原意的碎片句**
+   （比如「懲戒ベルゴ」在听力开头几乎必然是「聴解」被切碎）。
 2. **没把握就保持原样**：数字、人名、地名、选择题选项内容——这些必须听音频才能确认，
    你听不到，一律不要改。宁可漏改，也不能把对的改成错的。
 3. **只改文字，绝不改时间轴**。你也看不到时间轴，只处理句子文本。
 4. 保持原有的敬体/简体、标点风格，不要润色、不要翻译、不要增删句子。
 5. 每一句单独判断，不要因为上下文顺口就擅自改写整句。
 
-输出格式（严格照做，方便程序解析）：
+【输出格式，严格照做，方便程序解析】
 - 只输出**需要修改**的句子，格式为「编号: 改正后的完整句子」。
 - 编号就是输入里每句前面方括号里的数字。
 - 不需要修改的句子**不要输出**。
@@ -54,10 +75,11 @@ const RefinePrompt = `你是日语字幕精校助手。下面是一段日语听�
 输入：
 [1] 懲戒試験を始めます。
 [2] 問題要旨を挙げてください。
-[3] 私の暇な日は、日曜日だけですが。
+[3] 懲戒ベルゴ。
 输出：
 1: 聴解試験を始めます。
 2: 問題用紙を挙げてください。
+3: 聴解。
 `
 
 // RefineCue 是精校过程中「一句」的中间表示：编号（1-based）+ 原文本。
@@ -165,4 +187,78 @@ func normalizeDigits(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// ---- prompt 外置（跟 judge-prompt 同套路）----
+
+// ValidateRefinePrompt 校验外置精校模板。护栏：必须包含输出格式关键标记
+// 「编号:」的说明，否则模型不知道按什么格式回，ParseRefineReply 抠不出东西。
+// 精校模板没有占位符（字幕是拼在模板后面的），所以只校验非空 + 输出格式说明。
+func ValidateRefinePrompt(tpl string) error {
+	if strings.TrimSpace(tpl) == "" {
+		return fmt.Errorf("模板为空")
+	}
+	// 输出格式说明里必须有「编号」和冒号示例，否则模型回的格式程序解析不了。
+	if !strings.Contains(tpl, "编号") {
+		return fmt.Errorf("模板缺少输出格式说明（应包含「编号:」）")
+	}
+	return nil
+}
+
+// ChooseRefinePrompt 在「COS 上读到的」和「内置的」之间做选择。
+// 读不到、空的、校验不过，一律回退内置——精校绝不因为一份坏文件卡住。
+func ChooseRefinePrompt(cosText string, err error) (tpl, source string) {
+	if err != nil || strings.TrimSpace(cosText) == "" {
+		return RefinePrompt, "builtin"
+	}
+	if err := ValidateRefinePrompt(cosText); err != nil {
+		log.Printf("refine-prompt: COS 上的模板不可用（%v），回退内置模板", err)
+		return RefinePrompt, "builtin"
+	}
+	return cosText, "cos"
+}
+
+// RefinePromptVersion 模板版本：内容 sha256 前 12 位。改一个字版本就变，
+// 便于排查「这次精校用的是哪版 prompt」。
+func RefinePromptVersion(tpl string) string {
+	sum := sha256.Sum256([]byte(tpl))
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+// RefineConfigStore 读 COS 上的精校模板。实现方是根包 *Storage 的
+// DownloadRefinePrompt。用例只读不写（上传/删除走 CLI，不进接口）。
+type RefineConfigStore interface {
+	DownloadRefinePrompt(ctx context.Context) (string, error)
+}
+
+// refinePromptTTL 模板缓存时长。精校是视频上传才触发的低频动作，60 秒足够，
+// 改模板后最多 60 秒生效。
+const refinePromptTTL = 60 * time.Second
+
+var refinePromptCache = struct {
+	sync.Mutex
+	at      time.Time
+	tpl     string
+	version string
+	source  string
+}{}
+
+// ResolveRefinePrompt 拿当前生效的精校模板：COS 优先，坏了回退内置。缓存 60 秒。
+func ResolveRefinePrompt(ctx context.Context, store RefineConfigStore) (tpl, version, source string) {
+	refinePromptCache.Lock()
+	if time.Since(refinePromptCache.at) < refinePromptTTL && refinePromptCache.tpl != "" {
+		t, v, src := refinePromptCache.tpl, refinePromptCache.version, refinePromptCache.source
+		refinePromptCache.Unlock()
+		return t, v, src
+	}
+	refinePromptCache.Unlock()
+
+	tpl, source = ChooseRefinePrompt(store.DownloadRefinePrompt(ctx))
+	version = RefinePromptVersion(tpl)
+
+	refinePromptCache.Lock()
+	refinePromptCache.at, refinePromptCache.tpl = time.Now(), tpl
+	refinePromptCache.version, refinePromptCache.source = version, source
+	refinePromptCache.Unlock()
+	return tpl, version, source
 }

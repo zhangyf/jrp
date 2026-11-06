@@ -612,6 +612,84 @@ func runJudgePrompt(fs *flag.FlagSet, lang string) {
 	}
 }
 
+// runRefinePrompt 管理字幕精校的 prompt 模板（存在 COS 上，改它不用重新部署）。
+// 套路跟 judge-prompt 完全一样，key 换成 configs/refine_prompt.txt。
+//
+//	jrp --lang ja refine-prompt             看当前生效的模板（来源 + 版本）
+//	jrp --lang ja refine-prompt --builtin   打印内置模板（重定向到文件当起点改）
+//	jrp --lang ja refine-prompt --file x.txt  上传，校验通过才写
+//	jrp --lang ja refine-prompt --reset     删掉 COS 模板，回退内置
+//	jrp --lang ja refine-prompt --dry-run   演练，不落盘
+//
+// 校验护栏比判句松：精校模板没有占位符（字幕拼在模板后面），只要求非空 + 含「编号」
+// 输出格式说明，否则模型不知道按什么格式回，ParseRefineReply 抠不出东西。
+func runRefinePrompt(fs *flag.FlagSet, lang string) {
+	file := fs.String("file", "", "上传本地模板文件（输出格式说明里须含「编号:」）")
+	builtin := fs.Bool("builtin", false, "打印内置模板到标准输出")
+	reset := fs.Bool("reset", false, "删除 COS 上的模板，回退到内置")
+	dryRun := fs.Bool("dry-run", false, "演练：只校验不上传")
+	_ = fs.Parse(cmdArgs)
+
+	// 内置模板纯本地，不用连 COS
+	if *builtin {
+		fmt.Print(listening.RefinePrompt)
+		if !strings.HasSuffix(listening.RefinePrompt, "\n") {
+			fmt.Println()
+		}
+		return
+	}
+
+	storage, err := NewStorage(lang)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if *dryRun {
+		storage.SetDryRun(true)
+	}
+	ctx := context.Background()
+
+	// 上传
+	if *file != "" {
+		data, err := os.ReadFile(*file)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 读取文件失败：%v\n", err)
+			os.Exit(1)
+		}
+		text := strings.TrimSpace(string(data))
+		if err := listening.ValidateRefinePrompt(text); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 模板不能用（%v）—— 没写进 COS\n", err)
+			os.Exit(1)
+		}
+		if err := storage.UploadRefinePrompt(ctx, text); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 上传失败：%v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("已上传模板（%d 字符，版本 %s），最多 60 秒后生效，不用重启服务\n",
+			len(text), listening.RefinePromptVersion(text))
+		return
+	}
+
+	// 删除
+	if *reset {
+		if err := storage.DeleteRefinePrompt(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: 删除失败：%v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("已删除 COS 模板，回退内置（版本 %s）\n", listening.RefinePromptVersion(listening.RefinePrompt))
+		return
+	}
+
+	// 查看
+	cosText, err := storage.DownloadRefinePrompt(ctx)
+	tpl, source := listening.ChooseRefinePrompt(cosText, err)
+	fmt.Printf("来源：%s\n版本：%s\n字符数：%d\n\n", source, listening.RefinePromptVersion(tpl), len(tpl))
+	fmt.Println(tpl)
+	if source == "builtin" && strings.TrimSpace(cosText) != "" {
+		fmt.Println("\n（COS 上有一份模板，但校验没过，当前实际用的是内置模板）")
+	}
+}
+
 // ==========================================================================
 // 原 cmd_knowledge.go
 // ==========================================================================

@@ -1,6 +1,8 @@
 package listening
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -153,5 +155,79 @@ func TestFormatClock边界(t *testing.T) {
 		if got := formatClock(c.in); got != c.want {
 			t.Errorf("formatClock(%v) = %q，要 %q", c.in, got, c.want)
 		}
+	}
+}
+
+// ---- prompt 外置：Validate / Choose / Version / Resolve ----
+
+func TestValidateRefinePrompt(t *testing.T) {
+	// 好的：非空 + 含「编号」
+	if err := ValidateRefinePrompt("你是精校助手。\n输出格式：编号: 文本"); err != nil {
+		t.Errorf("合法模板被拒：%v", err)
+	}
+	// 空的
+	if err := ValidateRefinePrompt("   \n\t "); err == nil {
+		t.Error("空模板应该被拒")
+	}
+	// 缺输出格式说明（没有「编号」）
+	if err := ValidateRefinePrompt("你是精校助手，请改正错误。"); err == nil {
+		t.Error("缺「编号」说明的模板应该被拒，否则模型回的格式解析不了")
+	}
+}
+
+func TestChooseRefinePrompt(t *testing.T) {
+	// COS 读到了合法模板 → 用 COS 的
+	tpl, src := ChooseRefinePrompt("合法模板，编号: 文本", nil)
+	if src != "cos" || tpl != "合法模板，编号: 文本" {
+		t.Errorf("应该用 COS 模板，got src=%s tpl=%q", src, tpl)
+	}
+	// 读失败 → 回退内置
+	tpl, src = ChooseRefinePrompt("", errors.New("boom"))
+	if src != "builtin" || tpl != RefinePrompt {
+		t.Errorf("读失败应回退内置，got src=%s", src)
+	}
+	// 空串 → 回退内置
+	_, src = ChooseRefinePrompt("", nil)
+	if src != "builtin" {
+		t.Errorf("空串应回退内置，got src=%s", src)
+	}
+	// 校验不过 → 回退内置（模板里不含「编号」二字）
+	_, src = ChooseRefinePrompt("请改正错误并输出结果", nil)
+	if src != "builtin" {
+		t.Errorf("校验不过应回退内置，got src=%s", src)
+	}
+}
+
+func TestRefinePromptVersion(t *testing.T) {
+	v1 := RefinePromptVersion("模板A")
+	v2 := RefinePromptVersion("模板B")
+	v3 := RefinePromptVersion("模板A")
+	if len(v1) != 12 {
+		t.Errorf("版本应是 sha256 前 12 位，got len=%d", len(v1))
+	}
+	if v1 != v3 {
+		t.Error("同一内容版本应稳定")
+	}
+	if v1 == v2 {
+		t.Error("不同内容版本应不同")
+	}
+}
+
+// fakeRefineStore 假的 COS 读，用来测 60 秒缓存装载。
+type fakeRefineStore struct {
+	text string
+	err  error
+}
+
+func (f *fakeRefineStore) DownloadRefinePrompt(context.Context) (string, error) {
+	return f.text, f.err
+}
+
+func TestResolveRefinePrompt(t *testing.T) {
+	// 缓存是包级全局，先测 COS 命中，再测回退（顺序影响缓存，所以拆开断言来源正确即可）。
+	s := &fakeRefineStore{text: "COS 上的模板，编号: 文本"}
+	tpl, version, source := ResolveRefinePrompt(context.Background(), s)
+	if source != "cos" || !strings.Contains(tpl, "COS 上的模板") || version == "" {
+		t.Errorf("应命中 COS 模板，got source=%s tpl=%q version=%q", source, tpl, version)
 	}
 }

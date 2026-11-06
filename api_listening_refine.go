@@ -253,7 +253,7 @@ func (s *server) handleListeningRefine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	changed, model, err := refineCues(ctx, cfg, cues)
+	changed, model, err := refineCues(ctx, cfg, st, cues)
 	if err != nil {
 		log.Printf("refine: %s 精校失败：%v", srtKey, err)
 		writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -290,7 +290,9 @@ func (s *server) handleListeningRefine(w http.ResponseWriter, r *http.Request) {
 // 走 llmChat（跟查释义同一个）：它内部按 cfg.Timeout 给每个模型各自计时，
 // 并复用 SkipModel/MarkResult 的主备切换 + 冷却状态。ctx 目前只用于将来扩展，
 // llm.Call 自己建超时 ctx。
-func refineCues(ctx context.Context, cfg llm.Config, cues []listening.Cue) (int, string, error) {
+func refineCues(ctx context.Context, cfg llm.Config, st *Storage, cues []listening.Cue) (int, string, error) {
+	// 模板走 60 秒缓存装载（COS 优先，坏了回退内置），改模板不用重新部署。
+	tpl, _, _ := listening.ResolveRefinePrompt(ctx, st)
 	total := 0
 	model := ""
 	for start := 0; start < len(cues); start += listening.RefineBatchSize() {
@@ -299,7 +301,7 @@ func refineCues(ctx context.Context, cfg llm.Config, cues []listening.Cue) (int,
 			end = len(cues)
 		}
 		input := listening.BuildRefineInput(cues, start, end)
-		reply, m, err := llmChat(cfg, listening.RefinePrompt+"\n\n字幕：\n"+input)
+		reply, m, err := llmChat(cfg, tpl+"\n\n字幕：\n"+input)
 		if err != nil {
 			return total, model, fmt.Errorf("第 %d-%d 句精校失败：%w", start+1, end, err)
 		}
