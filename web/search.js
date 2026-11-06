@@ -154,7 +154,7 @@ var search = {
   //    练习状态（做题进度 / 播放器）完全不丢。想主动跳走，浮窗里有按钮。——
 
   // 点词汇结果：浮窗展示词条。字段跟词汇总表同一套口径（释义只摆主部，
-  // 括号那截进「备注」），但搜索只回精简字段，没有复习/错次/阶段。
+  // 括号那截进「备注」），圆级画圈（跟复习卡同一套 app.circleHtml）、阶段显示文字。
   showWord: function (w) {
     this.hide();
     var head = esc(w.kana || w.word);
@@ -162,6 +162,8 @@ var search = {
     var kv = [];
     if (w.def) kv.push(['释义', esc(w.def) + (w.note ? '<span class="muted">（' + esc(w.note) + '）</span>' : '')]);
     if (w.pos) kv.push(['词性', esc(w.pos) + (w.sub ? '·' + esc(w.sub) : '')]);
+    if (w.circle) kv.push(['圆级', app.circleHtml(w)]);
+    if (w.status) kv.push(['阶段', esc(w.status)]);
     if (w.word_note) kv.push(['备注', esc(w.word_note)]);
     if (w.group) kv.push(['分组', esc(w.group)]);
     if (w.number) kv.push(['词号', '#' + w.number]);

@@ -198,6 +198,26 @@ func TestSearchNotInTrialWhitelist(t *testing.T) {
 	}
 }
 
+// 词汇结果的 JSON 必须带 circle / status（抽屉浮窗里要展示圆级和阶段）。
+// 改 searchWordHit 结构时漏掉这两个字段会在这里红。
+func TestSearchWordHitJSONHasCircleStatus(t *testing.T) {
+	hit := searchWordHit{
+		Number: 1, Word: "みず(水)", Kana: "みず", Kanji: "水",
+		Def: "水", Pos: "名词", Group: "第1课", Circle: "三圆", Status: "🟢已掌握",
+	}
+	b, err := json.Marshal(hit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	if !containsStr(s, `"circle":"三圆"`) {
+		t.Errorf("缺少 circle 字段：%s", s)
+	}
+	if !containsStr(s, `"status":"🟢已掌握"`) {
+		t.Errorf("缺少 status 字段：%s", s)
+	}
+}
+
 func (m *memDocStore) sharedMemKey(suffix string) string {
 	return LangConfigs["ja"].COSPrefix + suffix
 }

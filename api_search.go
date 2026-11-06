@@ -84,6 +84,8 @@ type searchWordHit struct {
 	Pos      string `json:"pos"`
 	Sub      string `json:"sub"`
 	Group    string `json:"group"`
+	Circle   string `json:"circle"` // 手册分级：三圆/二圆/一圆（手册没收录为空）
+	Status   string `json:"status"` // 阶段：🟢已掌握/🟡基本掌握/🔴待巩固…
 	Score    int    `json:"score"`
 }
 
@@ -192,7 +194,8 @@ func (s *server) searchWords(ctx context.Context, st *Storage, q string) []searc
 		out = append(out, searchWordHit{
 			Number: h.it.Number, Word: h.it.Word, Kana: h.it.Kana, Kanji: h.it.Kanji,
 			Note: h.it.Note, WordNote: h.it.WordNote, Def: h.it.Def,
-			Pos: h.it.Pos, Sub: h.it.Sub, Group: h.it.Group, Score: h.sc,
+			Pos: h.it.Pos, Sub: h.it.Sub, Group: h.it.Group,
+			Circle: h.it.Circle, Status: h.it.Status, Score: h.sc,
 		})
 	}
 	return out
