@@ -6,6 +6,7 @@
   <block wx:if="{{playing}}">
     <view class="vtitle">{{title}}</view>
     <video id="player" class="player" src="{{videoUrl}}"
+           initial-time="{{initialTime}}"
            controls show-center-play-btn
            bindtimeupdate="onTimeUpdate" binderror="onVideoError"
            object-fit="contain"></video>

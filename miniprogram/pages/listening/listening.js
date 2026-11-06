@@ -15,6 +15,10 @@
 // 4. **字幕跟着播放连续滚**：每换一句都更新 scroll-into-view，别只在「跑出可见区」
 //    时才滚 —— 那样高亮会一路走到当前页最后一句才停，SRT 句子间还常有空隙，
 //    idx 不变期间更是一动不动。web 端同理（只写字幕框自己的 scrollTop）。
+//
+// 5. **记住上次听到哪里**：按「级别|标题」把 currentTime 存本地存储
+//    （key 跟 web 端一致：jrp_listen_pos|<level>|<title>），进播放器用 video 的
+//    initial-time 跳过去，重开不用从头听。纯前端，不碰后端。
 
 const app = getApp();
 const trial = require('../../utils/trial.js');
@@ -36,7 +40,9 @@ Page({
     note: '',
     // trial 门禁
     trial: false,
-    needLogin: false
+    needLogin: false,
+    // 上次进度（秒）：进播放器时由 video 的 initial-time 跳过去
+    initialTime: 0
   },
 
   onLoad() {
@@ -91,13 +97,17 @@ Page({
       .then((res) => {
         self.lastT = -1;
         self.pending = 0;
+        self.lastSave = 0;
+        const title = res.title || file;
         self.setData({
           loading: false,
           playing: true,
-          title: res.title || file,
+          title: title,
           videoUrl: res.video_url || '',
           cues: res.cues || [],
-          note: res.note || ''
+          note: res.note || '',
+          // 上次听到哪里：>1 秒才跳（太小没意义），initial-time 交给 video
+          initialTime: lsGetPos(self.data.curLevel, title) > 1 ? lsGetPos(self.data.curLevel, title) : 0
         });
       })
       .catch((e2) => self.setData({ loading: false, err: e2.message || '加载失败' }));
@@ -118,6 +128,13 @@ Page({
     }
     this.lastT = t;
     if (this.pending >= 15) this.flush();
+
+    // 记住进度：每 ~5 秒存一次（onTimeUpdate 一秒好几次，别每次都写存储）
+    const now = Date.now();
+    if (!this.lastSave || now - this.lastSave > 5000) {
+      this.lastSave = now;
+      lsSetPos(this.data.curLevel, this.data.title, t);
+    }
 
     // —— 字幕高亮 ——
     const cues = this.data.cues;
@@ -160,8 +177,13 @@ Page({
       .catch(() => { /* 上报失败不吵用户 */ });
   },
 
-  onHide() { this.flush(); },
-  onUnload() { this.flush(); },
+  onHide() { this.flush(); this.savePos(); },
+  onUnload() { this.flush(); this.savePos(); },
+
+  // 把当前播放位置存到本地（退出/切后台时调用，别把尾巴弄丢）
+  savePos() {
+    if (this.lastT >= 0) lsSetPos(this.data.curLevel, this.data.title, this.lastT);
+  },
 
   // 点某句 → seek 到那句开头。
   seekCue(e) {
@@ -184,9 +206,10 @@ Page({
 
   back() {
     this.flush(); // 离开播放器把没上报的时长交上去
+    this.savePos(); // 记住进度，下次进来接着听
     this.lastT = -1;
     this.pending = 0;
-    this.setData({ playing: false, videoUrl: '', cues: [], active: -1, title: '' });
+    this.setData({ playing: false, videoUrl: '', cues: [], active: -1, title: '', initialTime: 0 });
   },
 
   // utils/trial.js 要求的挂法
@@ -195,3 +218,18 @@ Page({
   goLogin: trial.goLogin,
   noop: trial.noop
 });
+
+// —— 上次进度：本地存储按「级别|标题」存秒数，key 跟 web 端一致。失败静默 ——
+function lsPosKey(level, title) {
+  return 'jrp_listen_pos|' + (level || '') + '|' + (title || '');
+}
+function lsGetPos(level, title) {
+  try {
+    const raw = wx.getStorageSync(lsPosKey(level, title));
+    const n = raw === '' || raw === null ? 0 : parseFloat(raw);
+    return isNaN(n) ? 0 : n;
+  } catch (e) { return 0; }
+}
+function lsSetPos(level, title, t) {
+  try { wx.setStorageSync(lsPosKey(level, title), String(Math.floor(t))); } catch (e) {}
+}
