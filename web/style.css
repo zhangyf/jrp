@@ -691,18 +691,6 @@ details[open] summary { margin-bottom: 10px; }
 .ls-cue.on .ls-cue-idx { color: var(--accent); }
 .ls-cue-txt { flex: 1; min-width: 0; }
 
-/* 听力进度条：JLPT 卡里跟词汇/语法并列，一条一个等级 */
-.ls-goals { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-.ls-goal-row { display: flex; align-items: center; gap: 10px; }
-.ls-goal-label { font-size: 13px; font-weight: 600; min-width: 26px; color: var(--ink); }
-.ls-goal-bar {
-  flex: 1; height: 14px; border-radius: 7px;
-  background: var(--line); overflow: hidden;
-}
-.ls-goal-bar i { display: block; height: 100%; background: var(--accent); border-radius: 7px; }
-.ls-goal-num { font-size: 13px; font-weight: 500; min-width: 38px; text-align: right; color: var(--ink); }
-.ls-goal-meta { font-size: 12px; color: var(--muted); min-width: 130px; }
-
 /* ---- 全局搜索（四页右上角的浮动搜索框 + 结果浮层，2026-11-05） ----
    position:fixed 钉在屏幕右上角，滚到哪儿都跟着，不占页头。
    输入框常驻一个固定宽度（带提示文字），不再做收起/展开竖条。

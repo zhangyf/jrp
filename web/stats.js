@@ -40,16 +40,45 @@ var stats = {
 // 门槛值和当前值都由后端 /api/stats 的 jlpt 段给，这里一个数字都不写死，
 // 词库涨了、课次推进了，图自己跟着变。
 // 颜色是「过了 N5 没有」的信号：琥珀=还在 N5 线以下，绿色=已越过 N5 在冲 N4。
+//
+// 听力两行（N5/N4）画在同一张 SVG 里，跟词汇/语法完全同款（老师 2026-11-06
+// 明确要求样式一致，别单独搞一套细条）。区别：听力的「目标」就是该等级自己的
+// 满格（N5 行用 N5 目标、N4 行用 N4 目标），没有「先过 N5 再冲 N4」的两段式，
+// 所以只画单色填充 + 百分比，不画 N5 门槛虚线。
 function stJlpt(p) {
   if (!p || !p.n4 || !p.n4.vocab || !p.n4.lesson) return '';
 
+  // 前三条：词汇/熟练/语法，两段式（N5 门槛 → N4 目标）。
   var rows = [
     { label: '词汇量', sub: p.vocab_total + ' 词', cur: p.vocab_total, n5: p.n5.vocab, n4: p.n4.vocab },
     { label: '熟练词汇', sub: p.vocab_firm + ' 词 · 正确率≥80%', cur: p.vocab_firm, n5: p.n5.vocab, n4: p.n4.vocab },
     { label: '语法进度', sub: '第' + p.lesson + '课', cur: p.lesson, n5: p.n5.lesson, n4: p.n4.lesson }
   ];
 
-  var X0 = 170, W = 390, H = 296;
+  // 听力两行：目标 = 该等级自己的满格分钟数。cur 用分钟，n4 用 goal，n5 不用。
+  // 后端保证 N5、N4 各一行（没听过也是 0），这里按 level 对上号。
+  var lsByLevel = {};
+  (p.listening || []).forEach(function (l) { lsByLevel[l.level] = l; });
+  [['N5', '听力 N5'], ['N4', '听力 N4']].forEach(function (pair) {
+    var lv = pair[0], label = pair[1];
+    var l = lsByLevel[lv];
+    if (!l) return;
+    var min = Math.round((l.seconds || 0) / 60);
+    var goal = l.goal_minutes || 0;
+    if (!goal) return;
+    rows.push({
+      label: label,
+      sub: min + ' / ' + goal + ' 分钟',
+      cur: min, n5: 0, n4: goal, listen: true
+    });
+  });
+
+  var listenCount = rows.length - 3; // 听力行数
+  var X0 = 170, W = 390, rowH = 62, topPad = 62;
+  // 底部结论框固定 60 高 + 上边距 20；总高随行数涨。
+  var H = topPad + rows.length * rowH + 80;
+  var boxY = topPad + rows.length * rowH + 4;
+
   var s = '<svg viewBox="0 0 680 ' + H + '" width="100%" role="img" ' +
     'aria-label="JLPT N5 与 N4 等级目标的达成进度">';
 
@@ -58,9 +87,9 @@ function stJlpt(p) {
     p.n5.vocab + ' 词 / 第' + p.n5.lesson + '课）</text>';
 
   rows.forEach(function (r, i) {
-    var cy = 62 + i * 62;
-    var n5w = W * Math.min(1, r.n5 / r.n4);
-    var curW = W * Math.min(1, r.cur / r.n4);
+    var cy = topPad + i * rowH;
+    var n5w = r.n4 ? W * Math.min(1, r.n5 / r.n4) : 0;
+    var curW = r.n4 ? W * Math.min(1, r.cur / r.n4) : 0;
     var below = Math.min(curW, n5w);
     var above = Math.max(0, curW - n5w);
 
@@ -71,21 +100,28 @@ function stJlpt(p) {
 
     s += '<rect x="' + X0 + '" y="' + (cy - 10) + '" width="' + W +
       '" height="20" rx="10" fill="' + chart.PALETTE.line + '"/>';
-    if (below > 0) {
-      s += '<rect x="' + X0 + '" y="' + (cy - 10) + '" width="' + below.toFixed(1) +
-        '" height="20" rx="10" fill="' + chart.PALETTE.warn + '"/>';
+    // 听力行：单色填充（accent），没有 N5 门槛分段。
+    if (r.listen) {
+      if (curW > 0) {
+        s += '<rect x="' + X0 + '" y="' + (cy - 10) + '" width="' + curW.toFixed(1) +
+          '" height="20" rx="10" fill="' + chart.PALETTE.accent + '"/>';
+      }
+    } else {
+      if (below > 0) {
+        s += '<rect x="' + X0 + '" y="' + (cy - 10) + '" width="' + below.toFixed(1) +
+          '" height="20" rx="10" fill="' + chart.PALETTE.warn + '"/>';
+      }
+      if (above > 0) {
+        s += '<rect x="' + (X0 + n5w).toFixed(1) + '" y="' + (cy - 10) + '" width="' + above.toFixed(1) +
+          '" height="20" rx="10" fill="' + chart.PALETTE.accent + '"/>';
+      }
+      s += '<line x1="' + (X0 + n5w).toFixed(1) + '" y1="' + (cy - 16) + '" x2="' + (X0 + n5w).toFixed(1) +
+        '" y2="' + (cy + 16) + '" stroke="' + chart.PALETTE.muted + '" stroke-width="1" stroke-dasharray="3 3"/>';
     }
-    if (above > 0) {
-      s += '<rect x="' + (X0 + n5w).toFixed(1) + '" y="' + (cy - 10) + '" width="' + above.toFixed(1) +
-        '" height="20" rx="10" fill="' + chart.PALETTE.accent + '"/>';
-    }
-
-    s += '<line x1="' + (X0 + n5w).toFixed(1) + '" y1="' + (cy - 16) + '" x2="' + (X0 + n5w).toFixed(1) +
-      '" y2="' + (cy + 16) + '" stroke="' + chart.PALETTE.muted + '" stroke-width="1" stroke-dasharray="3 3"/>';
 
     s += '<text x="580" y="' + cy + '" font-size="13" font-weight="500" ' +
       'fill="var(--ink)" dominant-baseline="central">' +
-      Math.round(Math.min(1, r.cur / r.n4) * 100) + '%</text>';
+      Math.round(Math.min(1, r.n4 ? r.cur / r.n4 : 0) * 100) + '%</text>';
   });
 
   var gapFirm = Math.max(0, p.n5.vocab - p.vocab_firm);
@@ -94,37 +130,16 @@ function stJlpt(p) {
     ? 'N5 门槛已达成，正冲 N4'
     : '距 N5 还差：熟练词汇 +' + gapFirm + ' 词、语法 +' + gapLesson + ' 课';
 
-  s += '<rect x="40" y="216" width="600" height="60" rx="12" ' +
+  s += '<rect x="40" y="' + boxY + '" width="600" height="60" rx="12" ' +
     'fill="var(--accent-soft)" stroke="var(--line)" stroke-width="0.5"/>';
-  s += '<text x="60" y="238" font-size="14" font-weight="500" ' +
+  s += '<text x="60" y="' + (boxY + 22) + '" font-size="14" font-weight="500" ' +
     'fill="var(--ink)" dominant-baseline="central">' + esc(head) + '</text>';
-  s += '<text x="60" y="260" font-size="12" fill="var(--muted)" ' +
+  s += '<text x="60" y="' + (boxY + 44) + '" font-size="12" fill="var(--muted)" ' +
     'dominant-baseline="central">词汇量 ' + p.vocab_total + ' / ' + p.n5.vocab +
     '　熟练 ' + p.vocab_firm + ' / ' + p.n5.vocab +
     '　语法 第' + p.lesson + ' / ' + p.n5.lesson + '课</text>';
 
-  var out = s + '</svg>';
-
-  // 听力进度条：跟词汇/语法同一套画法 —— 当前累计分钟 ÷ 满格目标 = 百分比。
-  // 目标值后端从 COS 配置注入（goal_minutes），没配用内置默认（N5=1500/N4=3000 分钟）。
-  // 没听过整块不显示。
-  var ls = p.listening || [];
-  if (ls.length) {
-    var rows = ls.map(function (l) {
-      var min = Math.round((l.seconds || 0) / 60);
-      var goal = l.goal_minutes || 0;
-      var pct = goal ? Math.min(100, Math.round(min / goal * 100)) : 0;
-      return '<div class="ls-goal-row">' +
-        '<span class="ls-goal-label">' + esc(l.level) + '</span>' +
-        '<div class="ls-goal-bar"><i style="width:' + pct + '%"></i></div>' +
-        '<span class="ls-goal-num">' + pct + '%</span>' +
-        '<span class="ls-goal-meta">' + min + ' / ' + goal + ' 分钟</span>' +
-        '</div>';
-    }).join('');
-    out += '<div class="ls-goals">' + rows + '</div>';
-  }
-
-  return stCardWide('JLPT 进度', '满格 = N4 目标，虚线 = N5 门槛', out);
+  return stCardWide('JLPT 进度', '满格 = N4 目标，虚线 = N5 门槛', s + '</svg>');
 }
 
 // 一张卡片。sub 是标题右侧的灰色小字说明
