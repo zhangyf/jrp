@@ -55,15 +55,16 @@ function stJlpt(p) {
   ];
 
   // 听力一根条：N5 目标 4500 当虚线、N4 目标 6000 当满格，跟词汇同款两段式。
+  // sub 只留一句（累计分钟），别塞 N5/N4 两组数 —— 那块宽度只有 130px，
+  // 塞两组会被进度条盖住（老师截图抓到）；详细数字在底部小结框里。
   var lsByLevel = {};
   (p.listening || []).forEach(function (l) { lsByLevel[l.level] = l; });
   var l5 = lsByLevel['N5'], l4 = lsByLevel['N4'];
   if (l4 && l4.goal_minutes) {
-    var min5 = Math.round(((l5 && l5.seconds) || 0) / 60);
     var min4 = Math.round((l4.seconds || 0) / 60);
     rows.push({
       label: '听力',
-      sub: 'N5 ' + min5 + ' / ' + l5.goal_minutes + '　N4 ' + min4 + ' / ' + l4.goal_minutes + ' 分钟',
+      sub: min4 + ' / ' + l4.goal_minutes + ' 分钟',
       cur: min4, n5: l5.goal_minutes, n4: l4.goal_minutes
     });
   }
@@ -116,14 +117,25 @@ function stJlpt(p) {
     ? 'N5 门槛已达成，正冲 N4'
     : '距 N5 还差：熟练词汇 +' + gapFirm + ' 词、语法 +' + gapLesson + ' 课';
 
+  // 底部小结第二行：词汇/熟练/语法是固定三项，听力是动态维度（目标可调），
+  // 有听力数据才补上，别写死 —— 老师要求达标说明覆盖所有维度。
+  var detail = '词汇量 ' + p.vocab_total + ' / ' + p.n5.vocab +
+    '　熟练 ' + p.vocab_firm + ' / ' + p.n5.vocab +
+    '　语法 第' + p.lesson + ' / ' + p.n5.lesson + '课';
+  var l5b = lsByLevel['N5'], l4b = lsByLevel['N4'];
+  if (l4b && l4b.goal_minutes) {
+    var lm5 = Math.round(((l5b && l5b.seconds) || 0) / 60);
+    var lm4 = Math.round((l4b.seconds || 0) / 60);
+    detail += '　听力 N5 ' + lm5 + ' / ' + l5b.goal_minutes +
+      '　N4 ' + lm4 + ' / ' + l4b.goal_minutes;
+  }
+
   s += '<rect x="40" y="' + boxY + '" width="600" height="60" rx="12" ' +
     'fill="var(--accent-soft)" stroke="var(--line)" stroke-width="0.5"/>';
   s += '<text x="60" y="' + (boxY + 22) + '" font-size="14" font-weight="500" ' +
     'fill="var(--ink)" dominant-baseline="central">' + esc(head) + '</text>';
   s += '<text x="60" y="' + (boxY + 44) + '" font-size="12" fill="var(--muted)" ' +
-    'dominant-baseline="central">词汇量 ' + p.vocab_total + ' / ' + p.n5.vocab +
-    '　熟练 ' + p.vocab_firm + ' / ' + p.n5.vocab +
-    '　语法 第' + p.lesson + ' / ' + p.n5.lesson + '课</text>';
+    'dominant-baseline="central">' + esc(detail) + '</text>';
 
   return stCardWide('JLPT 进度', '满格 = N4 目标，虚线 = N5 门槛', s + '</svg>');
 }
