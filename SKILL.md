@@ -1053,12 +1053,20 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
 老师在 COS 桶里搭了数据万象工作流：上传视频 → 转封装 + ASR 生成 SRT → 回调 jrp。
 服务端拉同名 `.srt`，调大模型**保守精校**，直接覆盖回 COS。
 
-- **接口**：`POST /api/listening/refine`，body 是数据万象的 XML（`Response/JobsDetail`）。
-  从 `Operation.Output.Object` 拿 **.srt 完整 key**（老师确认回调里给的就是它）；
-  兜底按 `Input.Object` 的视频 key 换扩展名。
-- ⛔ **不走 withUser**（工作流没有用户会话）。它**能写 COS = 后门**，鉴权用独立密钥
-  `JRP_REFINE_TOKEN`：回调请求带 `Authorization: Bearer <JRP_REFINE_TOKEN>` 才放行，
-  常量时间比较。没配这个密钥 → 403，精校不启用（部署上去是安全的）。
+- **接口**：`POST /api/listening/refine/<JRP_REFINE_TOKEN>`，body 是数据万象的 XML
+  （`Response/JobsDetail`）。从 `Operation.Output.Object` 拿 **.srt 完整 key**（老师确认
+  回调里给的就是它）；兜底按 `Input.Object` 的视频 key 换扩展名。
+- ⛔ **不走 withUser**（工作流没有用户会话）。它**能写 COS = 后门**。
+- **鉴权 = 方案 A（密钥放 URL path）+ 方案 C（校验桶名和 key 前缀）**，2026-11-06 定：
+  - 数据万象回调**加不了自定义 header**（`NotifyConfig` 只有 Url/Type/Event/ResultFormat），
+    也**没有公开的回调出口网段**（翻遍官方文档无 CI 回调 IP 白名单）——所以 Bearer 和
+    「按网段放行」都走不通，只能把密钥放进回调 URL：`/api/listening/refine/<token>`，
+    服务端剥 path 里那段比对（`refinePathToken` + 常量时间比较）。
+  - 回调 body 是明文 XML 谁都能构造，所以再加一道 `checkRefineTarget`：桶名必须**精确等于**
+    `TENCENT_COS_BUCKET`（不是 HasPrefix，防前缀相似的桶名），key 必须落在
+    `sharedBase()/listening/` 之下，越界 403。
+  - 代价：密钥会明文落 nginx access log（root-only，可控）。没配 `JRP_REFINE_TOKEN`
+    → 403，精校不启用（部署上去是安全的）。
 - **方案 A（纯文本、不给视频）**：只修「语言层能确定」的错（同音词/搭配/固定指令句/番号），
   数字/专名/选择题选项这类必须听音频才知道的**保持原样**——宁可漏改不改坏。
   这是与老师对齐的口径（2026-11-06），纯文本模型解决不了「八番 vs 一番」这种。
@@ -1068,12 +1076,14 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
   `RenderSRT`（毫秒**四舍五入**不能截断，否则 round-trip 偏 1ms）。40 句一批防超 token。
 - **幂等**：精校完落一个 `<srt>.refined` 标记对象，工作流重试回调直接跳过，不重复烧钱。
 - **只处理 `State=Success`** 的回调；失败/进行中的确认收到、不做事。
-- **配置**（`/etc/jrp/jrp.env`）：`JRP_REFINE_TOKEN`（回调密钥，必配才启用）；
-  模型默认走现网文本链（`JRP_LLM_MODEL`+`FALLBACK`），可用 `JRP_REFINE_MODEL`/
+- **配置**（`/etc/jrp/jrp.env`）：`JRP_REFINE_TOKEN`（回调密钥，必配才启用，配进回调
+  URL 的 path）；模型默认走现网文本链（`JRP_LLM_MODEL`+`FALLBACK`），可用 `JRP_REFINE_MODEL`/
   `JRP_REFINE_FALLBACK`/`JRP_REFINE_TIMEOUT`（默认 60s，精校比判句慢）覆盖。
+  回调地址填 `https://jrp.110105.xyz/api/listening/refine/<JRP_REFINE_TOKEN>`，格式 XML。
 - **测试**：`internal/listening/refine_test.go`（金标准取自 2026-11-06 手工精校的那份：
   懲戒→聴解、問題要旨→問題用紙、泡→青いの；含全角编号/冒号、噪声过滤、越界编号、
-  round-trip、时间码边界）。
+  round-trip、时间码边界）；`api_listening_refine_test.go`（path token 提取、桶名精确相等、
+  key 前缀越界、前缀相似桶名不误判）。
 
 ## Critical Rules
 

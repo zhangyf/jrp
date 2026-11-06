@@ -52,12 +52,22 @@ type ciJobsDetail struct {
 	State     string     `xml:"State"`
 	Code      string     `xml:"Code"`
 	Message   string     `xml:"Message"`
-	Input     ciObject   `xml:"Input"`
+	Input     ciInput    `xml:"Input"`
 	Operation ciOperaton `xml:"Operation"`
 }
 
+// ciInput 回调里的输入对象：Object 是源文件 key，BucketId 是源桶（可能带 APPID）。
+type ciInput struct {
+	Object   string `xml:"Object"`
+	BucketId string `xml:"BucketId"`
+	Region   string `xml:"Region"`
+}
+
+// ciObject 通用输出对象：Object 是结果文件 key，Bucket 是结果桶。
 type ciObject struct {
 	Object string `xml:"Object"`
+	Bucket string `xml:"Bucket"`
+	Region string `xml:"Region"`
 }
 
 type ciOperaton struct {
@@ -67,6 +77,22 @@ type ciOperaton struct {
 // refineToken 从环境读回调密钥。没配就是「精校功能未启用」。
 func refineToken() string {
 	return strings.TrimSpace(os.Getenv("JRP_REFINE_TOKEN"))
+}
+
+// refinePathToken 从回调 URL path 里剥出密钥段。
+// 路由注册的是 /api/listening/refine/，path 形如 /api/listening/refine/<token>。
+// 取「refine/ 之后」的那一段；多段时只取第一段（token 本身不含斜杠）。
+func refinePathToken(path string) string {
+	const marker = "/api/listening/refine/"
+	i := strings.Index(path, marker)
+	if i < 0 {
+		return ""
+	}
+	rest := path[i+len(marker):]
+	if j := strings.IndexByte(rest, '/'); j >= 0 {
+		rest = rest[:j]
+	}
+	return strings.TrimSpace(rest)
 }
 
 // refineModel 返回精校用的模型链。默认走现网文本链（跟判句同一个），
@@ -108,9 +134,11 @@ func (s *server) handleListeningRefine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// —— 鉴权：独立密钥，常量时间比较防时序 ——
+	// —— 鉴权：密钥放 URL path（数据万象回调加不了自定义 header，见文件头注释）——
+	//     回调地址配成 /api/listening/refine/<JRP_REFINE_TOKEN>，这里把 token 剥出来比对。
+	//     常量时间比较防时序；没配密钥 = 功能未启用，直接 403。
 	want := refineToken()
-	got := bearerToken(r)
+	got := refinePathToken(r.URL.Path)
 	if want == "" {
 		writeJSON(w, http.StatusForbidden, map[string]interface{}{
 			"success": false,
@@ -153,6 +181,18 @@ func (s *server) handleListeningRefine(w http.ResponseWriter, r *http.Request) {
 		log.Printf("refine: 任务未成功 State=%s Code=%s Msg=%s，跳过", d.State, d.Code, d.Message)
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"success": true, "skipped": "job not successful: " + d.State,
+		})
+		return
+	}
+
+	// —— 方案 C：校验桶名 + key 前缀。URL 密钥挡陌生人，这道挡「拿到的 URL
+	//     去精校别的桶 / 别的目录」——回调 body 是明文 XML 谁都能构造，所以
+	//     只认本桶、且 key 必须落在听力目录下，越界的直接拒。
+	if err := checkRefineTarget(d, s.storage); err != nil {
+		log.Printf("refine: 拒绝越界回调：%v（Input=%q Output=%q）",
+			err, d.Input.Object, d.Operation.Output.Object)
+		writeJSON(w, http.StatusForbidden, map[string]interface{}{
+			"success": false, "error": err.Error(),
 		})
 		return
 	}
@@ -270,6 +310,38 @@ func refineCues(ctx context.Context, cfg llm.Config, cues []listening.Cue) (int,
 		total += listening.ApplyRefinements(cues, changes)
 	}
 	return total, model, nil
+}
+
+// checkRefineTarget 校验回调指向的对象确实在本桶的听力目录下（方案 C）。
+//
+// 数据万象回调的 body 是明文 XML，拿到 URL 的人能任意构造 Input/Output，所以
+// 除了 URL 密钥，还要认对象本身：桶名必须等于本服务配的 TENCENT_COS_BUCKET，
+// key 必须落在 sharedBase()/listening/ 之下。越界一律拒，不给精校别的桶/目录的机会。
+//
+// 桶名比较用常量时间（虽然桶名不是秘密，但顺手一致）；key 前缀用 strings.HasPrefix。
+func checkRefineTarget(d ciJobsDetail, st *Storage) error {
+	wantBucket := strings.TrimSpace(os.Getenv("TENCENT_COS_BUCKET"))
+	// 回调里桶名可能带 APPID 后缀（如 xxx-1251036673），TENCENT_COS_BUCKET 配的也是
+	// 这个完整形式，直接比。Input 和 Output 都要落在同一个桶。
+	if wantBucket != "" {
+		for _, b := range []string{d.Input.BucketId, d.Operation.Output.Bucket} {
+			if b == "" {
+				continue
+			}
+			if subtle.ConstantTimeCompare([]byte(b), []byte(wantBucket)) != 1 {
+				return fmt.Errorf("回调指向了别的桶：%s", b)
+			}
+		}
+	}
+	// key 前缀：Output.Object（srt key）或 Input.Object（视频 key）至少一个必须
+	// 落在 listening 目录下。两个都给且都不在 → 拒。
+	prefix := st.sharedBase() + "/listening/"
+	okIn := strings.HasPrefix(d.Input.Object, prefix)
+	okOut := d.Operation.Output.Object != "" && strings.HasPrefix(d.Operation.Output.Object, prefix)
+	if !okIn && !okOut {
+		return fmt.Errorf("对象不在听力目录下（应在 %s）", prefix)
+	}
+	return nil
 }
 
 // extOf 取文件名扩展名（含点），没有就返回空串。
