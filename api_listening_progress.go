@@ -24,7 +24,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
@@ -158,25 +157,28 @@ func listeningTotals(ctx context.Context, st *Storage) map[string]float64 {
 	return loadListeningProgress(ctx, st).Total
 }
 
-// sortedListeningLevels 把累计秒数排成稳定的等级列表，并把该等级的满格目标
-// （分钟）一起带上 —— 前端拿 Seconds/60 ÷ GoalMinutes 直接画进度条，不用再传
-// 一份 goal。goal 为 0（配置异常）时给内置默认，避免除零。
+// sortedListeningLevels 产出统计页要画的听力进度行。
+//
+// ⚠️ 固定产出 N5、N4 两行（有数据用数据，没数据用 0），不再按「有没有听过」过滤
+// —— 词汇/语法的进度条哪怕 0% 也常驻显示，听力藏起来会很突兀（老师一看就问
+// 「听力时长呢」）。等级顺序固定 N5 在前 N4 在后，跟 JLPT 卡里其它条一致。
+//
+// goal 是该等级的满格目标（分钟），后端从 COS 配置注入；配置异常回退内置默认，
+// 避免除零。前端拿 Seconds/60 ÷ GoalMinutes 直接画进度条。
 func sortedListeningLevels(total map[string]float64, goal listening.Goal) []stats.ListeningLevel {
 	if !listening.ValidGoal(goal) {
 		goal = listening.BuiltinGoal()
 	}
+	// 固定顺序 N5、N4；只展示这两个等级（N1-N3 暂无目标口径，不画）。
+	order := []string{"N5", "N4"}
 	goalOf := map[string]int{"N5": goal.N5, "N4": goal.N4}
-	var out []stats.ListeningLevel
-	for lv, sec := range total {
-		if sec <= 0 {
-			continue
-		}
+	out := make([]stats.ListeningLevel, 0, len(order))
+	for _, lv := range order {
 		out = append(out, stats.ListeningLevel{
 			Level:       lv,
-			Seconds:     sec,
+			Seconds:     total[lv], // 没听过就是 0
 			GoalMinutes: goalOf[lv],
 		})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Level < out[j].Level })
 	return out
 }

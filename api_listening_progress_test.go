@@ -86,30 +86,44 @@ func TestListeningProgressRejectsNonPost(t *testing.T) {
 }
 
 func TestSortedListeningLevels(t *testing.T) {
-	goal := listening.Goal{N5: 1500, N4: 3000}
+	goal := listening.Goal{N5: 4500, N4: 6000}
 	got := sortedListeningLevels(map[string]float64{
-		"N4": 300, "N5": 1200, "N3": 0, // N3 是 0，不该出现
+		"N5": 1200, "N4": 300, "N3": 999, // N3 不在固定顺序里，不该出现
 	}, goal)
+	// 固定产出 N5、N4 两行，顺序 N5 在前。
 	if len(got) != 2 {
-		t.Fatalf("len=%d, want 2（0 秒的等级要过滤掉）", len(got))
+		t.Fatalf("len=%d, want 2（固定 N5/N4 两行）", len(got))
 	}
-	if got[0].Level != "N4" || got[1].Level != "N5" {
-		t.Errorf("顺序错：got %s,%s want N4,N5", got[0].Level, got[1].Level)
+	if got[0].Level != "N5" || got[1].Level != "N4" {
+		t.Errorf("顺序错：got %s,%s want N5,N4", got[0].Level, got[1].Level)
 	}
-	if got[0].Seconds != 300 || got[1].Seconds != 1200 {
+	if got[0].Seconds != 1200 || got[1].Seconds != 300 {
 		t.Errorf("秒数错：got %v,%v", got[0].Seconds, got[1].Seconds)
 	}
-	// goal 要按等级带上，前端好算百分比
-	if got[0].GoalMinutes != 3000 || got[1].GoalMinutes != 1500 {
-		t.Errorf("goal 错：got %d,%d want N4=3000,N5=1500", got[0].GoalMinutes, got[1].GoalMinutes)
+	if got[0].GoalMinutes != 4500 || got[1].GoalMinutes != 6000 {
+		t.Errorf("goal 错：got %d,%d want N5=4500,N4=6000", got[0].GoalMinutes, got[1].GoalMinutes)
+	}
+}
+
+// 没听过也要常驻显示两行 0%，不能藏（词汇/语法进度条 0% 也是常驻的）。
+func TestSortedListeningLevelsAlwaysShowsBoth(t *testing.T) {
+	got := sortedListeningLevels(map[string]float64{}, listening.Goal{N5: 4500, N4: 6000})
+	if len(got) != 2 {
+		t.Fatalf("len=%d, want 2（没听过也要常驻两行）", len(got))
+	}
+	if got[0].Seconds != 0 || got[1].Seconds != 0 {
+		t.Errorf("没听过应为 0 秒：got %v,%v", got[0].Seconds, got[1].Seconds)
+	}
+	if got[0].Level != "N5" || got[1].Level != "N4" {
+		t.Errorf("顺序错：got %s,%s", got[0].Level, got[1].Level)
 	}
 }
 
 // goal 配置异常（零值）时，sortedListeningLevels 要回退内置默认，不能除零。
 func TestSortedListeningLevelsBadGoalFallback(t *testing.T) {
 	got := sortedListeningLevels(map[string]float64{"N5": 600}, listening.Goal{})
-	if len(got) != 1 {
-		t.Fatalf("len=%d, want 1", len(got))
+	if len(got) != 2 {
+		t.Fatalf("len=%d, want 2", len(got))
 	}
 	if got[0].GoalMinutes != listening.DefaultN5GoalMinutes {
 		t.Errorf("坏 goal 应回内置默认：got %d, want %d", got[0].GoalMinutes, listening.DefaultN5GoalMinutes)
