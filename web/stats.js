@@ -41,10 +41,9 @@ var stats = {
 // 词库涨了、课次推进了，图自己跟着变。
 // 颜色是「过了 N5 没有」的信号：琥珀=还在 N5 线以下，绿色=已越过 N5 在冲 N4。
 //
-// 听力两行（N5/N4）画在同一张 SVG 里，跟词汇/语法完全同款（老师 2026-11-06
-// 明确要求样式一致，别单独搞一套细条）。区别：听力的「目标」就是该等级自己的
-// 满格（N5 行用 N5 目标、N4 行用 N4 目标），没有「先过 N5 再冲 N4」的两段式，
-// 所以只画单色填充 + 百分比，不画 N5 门槛虚线。
+// 听力：跟词汇/语法一样**一根条**，N5 目标当虚线门槛、N4 目标当满格，
+// 当前值 = N4 素材的累计时长（练 N4 素材就是在冲 N4）。sub 里把 N5/N4 各自
+// 累计都标出来，一眼能看到两级分别听了多久。后端保证 N5、N4 各一行。
 function stJlpt(p) {
   if (!p || !p.n4 || !p.n4.vocab || !p.n4.lesson) return '';
 
@@ -55,25 +54,20 @@ function stJlpt(p) {
     { label: '语法进度', sub: '第' + p.lesson + '课', cur: p.lesson, n5: p.n5.lesson, n4: p.n4.lesson }
   ];
 
-  // 听力两行：目标 = 该等级自己的满格分钟数。cur 用分钟，n4 用 goal，n5 不用。
-  // 后端保证 N5、N4 各一行（没听过也是 0），这里按 level 对上号。
+  // 听力一根条：N5 目标 4500 当虚线、N4 目标 6000 当满格，跟词汇同款两段式。
   var lsByLevel = {};
   (p.listening || []).forEach(function (l) { lsByLevel[l.level] = l; });
-  [['N5', '听力 N5'], ['N4', '听力 N4']].forEach(function (pair) {
-    var lv = pair[0], label = pair[1];
-    var l = lsByLevel[lv];
-    if (!l) return;
-    var min = Math.round((l.seconds || 0) / 60);
-    var goal = l.goal_minutes || 0;
-    if (!goal) return;
+  var l5 = lsByLevel['N5'], l4 = lsByLevel['N4'];
+  if (l4 && l4.goal_minutes) {
+    var min5 = Math.round(((l5 && l5.seconds) || 0) / 60);
+    var min4 = Math.round((l4.seconds || 0) / 60);
     rows.push({
-      label: label,
-      sub: min + ' / ' + goal + ' 分钟',
-      cur: min, n5: 0, n4: goal, listen: true
+      label: '听力',
+      sub: 'N5 ' + min5 + ' / ' + l5.goal_minutes + '　N4 ' + min4 + ' / ' + l4.goal_minutes + ' 分钟',
+      cur: min4, n5: l5.goal_minutes, n4: l4.goal_minutes
     });
-  });
+  }
 
-  var listenCount = rows.length - 3; // 听力行数
   var X0 = 170, W = 390, rowH = 62, topPad = 62;
   // 底部结论框固定 60 高 + 上边距 20；总高随行数涨。
   var H = topPad + rows.length * rowH + 80;
@@ -100,24 +94,16 @@ function stJlpt(p) {
 
     s += '<rect x="' + X0 + '" y="' + (cy - 10) + '" width="' + W +
       '" height="20" rx="10" fill="' + chart.PALETTE.line + '"/>';
-    // 听力行：单色填充（accent），没有 N5 门槛分段。
-    if (r.listen) {
-      if (curW > 0) {
-        s += '<rect x="' + X0 + '" y="' + (cy - 10) + '" width="' + curW.toFixed(1) +
-          '" height="20" rx="10" fill="' + chart.PALETTE.accent + '"/>';
-      }
-    } else {
-      if (below > 0) {
-        s += '<rect x="' + X0 + '" y="' + (cy - 10) + '" width="' + below.toFixed(1) +
-          '" height="20" rx="10" fill="' + chart.PALETTE.warn + '"/>';
-      }
-      if (above > 0) {
-        s += '<rect x="' + (X0 + n5w).toFixed(1) + '" y="' + (cy - 10) + '" width="' + above.toFixed(1) +
-          '" height="20" rx="10" fill="' + chart.PALETTE.accent + '"/>';
-      }
-      s += '<line x1="' + (X0 + n5w).toFixed(1) + '" y1="' + (cy - 16) + '" x2="' + (X0 + n5w).toFixed(1) +
-        '" y2="' + (cy + 16) + '" stroke="' + chart.PALETTE.muted + '" stroke-width="1" stroke-dasharray="3 3"/>';
+    if (below > 0) {
+      s += '<rect x="' + X0 + '" y="' + (cy - 10) + '" width="' + below.toFixed(1) +
+        '" height="20" rx="10" fill="' + chart.PALETTE.warn + '"/>';
     }
+    if (above > 0) {
+      s += '<rect x="' + (X0 + n5w).toFixed(1) + '" y="' + (cy - 10) + '" width="' + above.toFixed(1) +
+        '" height="20" rx="10" fill="' + chart.PALETTE.accent + '"/>';
+    }
+    s += '<line x1="' + (X0 + n5w).toFixed(1) + '" y1="' + (cy - 16) + '" x2="' + (X0 + n5w).toFixed(1) +
+      '" y2="' + (cy + 16) + '" stroke="' + chart.PALETTE.muted + '" stroke-width="1" stroke-dasharray="3 3"/>';
 
     s += '<text x="580" y="' + cy + '" font-size="13" font-weight="500" ' +
       'fill="var(--ink)" dominant-baseline="central">' +
