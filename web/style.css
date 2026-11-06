@@ -446,6 +446,8 @@ button.unk.on {
 .sm-k { flex: 0 0 48px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .sm-v { flex: 1; line-height: 1.7; }
 .sm-text { font-size: 14px; line-height: 1.7; color: var(--ink); }
+.sm-loading { padding: 24px 0; text-align: center; color: var(--muted); }
+.sm-empty { padding: 24px 0; text-align: center; color: var(--muted); }
 
 /* 统计 */
 .stat-block { margin-bottom: 18px; }

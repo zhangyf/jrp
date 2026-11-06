@@ -7,8 +7,9 @@
 // 数据源：GET /api/search?q=（服务端并行两路，挂 withUser，trial/匿名不给用）。
 // 结果只在浮层里展示，不落 localStorage、不缓存全库。
 // ⚠️ 点结果不再跳页（2026-11-06 老师要求）：改用页内浮窗展示词条/知识点详情，
-//    练习页 DOM 不切走、播放器/做题进度不丢；想主动去词汇表/知识点页，浮窗里
-//    有个「在词汇表查看 / 打开完整知识点」按钮，点它才跳。
+//    练习页 DOM 不切走、播放器/做题进度不丢。知识点抽屉里直接展示**完整内容**
+//    （异步拉 /api/knowledge?lesson=N 复用 knowledge.blockHtml 渲染）；想主动去
+//    词汇表页，词条抽屉里有个「在词汇表查看」按钮，点它才跳。
 // 出现在老师点名的五页（今日练习/造句/钉子户/活用/听力）。听力页那个框
 // 是边听边查词用的，浮窗正好不打断播放。不扩散到词汇/知识点/统计/离线。
 
@@ -170,23 +171,46 @@ var search = {
     });
   },
 
-  // 点知识点结果：浮窗展示命中片段；jump 的给「打开完整知识点」按钮才跳页。
+  // 点知识点结果：抽屉里直接展示**完整内容**。
+  // jump（有课号）→ 异步拉 /api/knowledge?lesson=N 拿完整分块，复用 knowledge.blockHtml
+  //   渲染（跟知识点页同一套：表格/列表/加粗都摆好），不再有「打开完整内容」按钮。
+  // 无课号（汇编/速查类，解不出课）→ 展示命中的片段（这类本就不进按课的知识点板块）。
   showDoc: function (d) {
     this.hide();
-    var body = esc(d.text || '（无摘要）').replace(/\n/g, '<br>');
-    var opts = null;
     if (d.jump) {
-      opts = {
-        jumpText: '打开第' + d.lesson + '课完整内容',
-        onJump: function () { search.gotoLesson(d.lesson); }
-      };
+      var self = this;
+      this.openModal(esc(d.title || ('第' + d.lesson + '课')), null, null,
+        '<div class="sm-loading">加载中…</div>');
+      app.api('/api/knowledge?lesson=' + d.lesson).then(function (kd) {
+        if (!self._mask) return; // 用户已关抽屉，别往空气里写
+        if (kd.title) self.fillTitle(esc(kd.title));
+        var html = (kd.blocks || []).map(function (b) {
+          return knowledge.blockHtml(b);
+        }).join('');
+        self.fillBody(html || '<div class="sm-empty">（本课暂无内容）</div>');
+      }).catch(function (e) {
+        if (!self._mask) return;
+        self.fillBody('<div class="sm-empty">加载失败：' + esc(e && e.message ? e.message : '') + '</div>');
+      });
+    } else {
+      var body = '<div class="sm-text">' + esc(d.text || '（无摘要）').replace(/\n/g, '<br>') + '</div>';
+      this.openModal(esc(d.title || '知识点'), null, null, body);
     }
-    this.openModal(esc(d.title || '知识点'), null, opts, body);
+  },
+
+  // 填充抽屉标题 / 正文。异步加载完整知识点后更新用。
+  fillTitle: function (html) {
+    var t = this._mask && this._mask.querySelector('.sd-title');
+    if (t) t.innerHTML = html;
+  },
+  fillBody: function (html) {
+    var b = this._mask && this._mask.querySelector('.sd-body');
+    if (b) b.innerHTML = html;
   },
 
   // openModal 开一个右侧抽屉浮窗（贴近腾讯云控制台文档浮窗的形态）。
-  // kv = [["标签","HTML内容"],...]（词条用）；bodyHtml 是自由 HTML（知识点片段用）。
-  // jumpOpts 有就在底部多一个「在词汇表查看 / 打开完整知识点」按钮。
+  // kv = [["标签","HTML内容"],...]（词条用）；bodyHtml 是自由 HTML（知识点用，直接塞 .sd-body）。
+  // jumpOpts 有就在底部多一个「在词汇表查看」按钮。
   // 点蒙层/ESC/×/切页都关。盖在当前页上，练习状态不丢。
   openModal: function (titleHtml, kv, jumpOpts, bodyHtml) {
     this.closeModal();
@@ -201,7 +225,7 @@ var search = {
           '<span class="sm-v">' + r[1] + '</span></div>';
       }).join('');
     } else if (bodyHtml) {
-      inner = '<div class="sm-text">' + bodyHtml + '</div>';
+      inner = bodyHtml;
     }
     var foot = '';
     if (jumpOpts && jumpOpts.jumpText) {
