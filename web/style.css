@@ -412,6 +412,16 @@ button.unk.on {
 .modal p { margin: 0; font-size: 13px; line-height: 1.6; }
 .modal .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 
+/* 搜索页内浮窗：点搜索结果弹出的详情（不跳页，盖在练习页上） */
+.search-modal { max-width: 520px; width: 100%; max-height: 82vh; display: flex; flex-direction: column; }
+.search-modal h4 { word-break: break-word; }
+.search-modal .sm-body { overflow: auto; margin: 6px 0 2px; }
+.sm-kv { display: flex; gap: 12px; padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
+.sm-kv:last-child { border-bottom: none; }
+.sm-k { flex: 0 0 48px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.sm-v { flex: 1; line-height: 1.7; }
+.sm-text { font-size: 14px; line-height: 1.7; color: var(--ink); }
+
 /* 统计 */
 .stat-block { margin-bottom: 18px; }
 .stat-block h4 { margin: 0 0 6px; font-size: 14px; }
