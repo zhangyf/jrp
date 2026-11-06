@@ -87,18 +87,9 @@
       <view class="bar-num">{{n4Pct}}%</view>
     </view>
 
-    <!-- 听力进度条：跟本页 N5/N4 两根条同一套画法，两级各一根。
-         右侧写实际分钟数而不是百分比：8/4500 四舍五入成 0%，
-         老师会以为「听了 6 分钟统计里没数据」（2026-11-06）。完整口径在 hint。 -->
-    <view class="bar-wrap" wx:for="{{listening}}" wx:for-item="l" wx:key="level">
-      <view class="bar-label wide">听力{{l.level}}</view>
-      <view class="bar"><view class="bar-in listen" style="width:{{l.pct}}%"></view></view>
-      <view class="bar-num">{{l.min}}分</view>
-    </view>
-    <view class="hint" wx:if="{{listeningHint}}">{{listeningHint}}</view>
-
+    <!-- N5/N4 各一根总进度条：词汇 + 课次 + 听力三维平均，本页不画分项条 -->
     <view class="hint">
-      N5 门槛 {{jlpt.n5.vocab}} 词 / 第 {{jlpt.n5.lesson}} 课　·　N4 门槛 {{jlpt.n4.vocab}} 词 / 第 {{jlpt.n4.lesson}} 课
+      N5 门槛 {{jlpt.n5.vocab}} 词 / 第 {{jlpt.n5.lesson}} 课 / 听力 {{n5ListenGoal}} 分　·　N4 门槛 {{jlpt.n4.vocab}} 词 / 第 {{jlpt.n4.lesson}} 课 / 听力 {{n4ListenGoal}} 分
     </view>
   </view>
 

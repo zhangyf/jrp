@@ -51,8 +51,8 @@ Page({
     err: '',
     period: '',
     jlpt: null,
-    listening: [],
-    listeningHint: '',
+    n5ListenGoal: 0,
+    n4ListenGoal: 0,
     n5Pct: 0,
     n4Pct: 0,
     kpis: [],
@@ -176,34 +176,22 @@ Page({
           needs: s.needs_consol || 0, errors: s.errors || 0
         }));
 
-        // --- 听力进度条：跟本页 N5/N4 两根条同一套画法，两级各一根。
-        //     目标后端注入，没配用内置默认（N5=4500 / N4=6000 分钟）。
-        //     ⚠️ 右侧必须写实际分钟数：8/4500 四舍五入成 0%，只显示百分比
-        //     会让人以为「听了 6 分多钟统计里没数据」（2026-11-06）。
-        const listening = ((j && j.listening) || []).map((l) => {
-          const min = Math.round((l.seconds || 0) / 60);
-          const goal = l.goal_minutes || 0;
-          return {
-            level: l.level || '',
-            min,
-            goal,
-            pct: goal ? Math.min(100, Math.round((min * 100) / goal)) : 0
-          };
+        // --- 听力并入 N5/N4 总进度条（本页没有分项条，听力不另起一根）。
+        //     后端 listening 是 [{level, seconds, goal_minutes}]，按 level 取分钟和目标。
+        const listenByLevel = {};
+        ((j && j.listening) || []).forEach((l) => {
+          listenByLevel[l.level] = { min: Math.round((l.seconds || 0) / 60), goal: l.goal_minutes || 0 };
         });
-        // 一行把两级「实际 / 目标」都写出来，数字不藏在百分比里。
-        const listeningHint = listening.length
-          ? '听力累计 ' + listening.map((l) =>
-              l.level + ' ' + l.min + ' / ' + l.goal + ' 分钟').join('　·　') +
-            '（目标外置可调：jrp listening-goal）'
-          : '';
+        const n5Listen = listenByLevel.N5 || { min: 0, goal: 0 };
+        const n4Listen = listenByLevel.N4 || { min: 0, goal: 0 };
 
         this.setData({
           loading: false,
           jlpt: j,
-          listening,
-          listeningHint,
-          n5Pct: j ? pct(j.vocab_firm, j.lesson, j.n5) : 0,
-          n4Pct: j ? pct(j.vocab_firm, j.lesson, j.n4) : 0,
+          n5ListenGoal: n5Listen.goal,
+          n4ListenGoal: n4Listen.goal,
+          n5Pct: j ? pct(j.vocab_firm, j.lesson, n5Listen, j.n5) : 0,
+          n4Pct: j ? pct(j.vocab_firm, j.lesson, n4Listen, j.n4) : 0,
           period: hasCmp
             ? '对比区间 ' + first.date + ' → ' + last.date + '（' + snaps.length + ' 个存档点）'
             : (last ? '只有 ' + last.date + ' 一个存档点，暂无对比' : ''),
@@ -240,14 +228,16 @@ function hardRows(hw) {
   ];
 }
 
-// JLPT 进度百分比。
+// JLPT 总进度百分比（词汇 + 课次 + 听力三维平均）。
 //
 // ⚠️ 后端 jlpt.n5 / jlpt.n4 里的 vocab / lesson 是**门槛值**（N5 = 800 词 / 第 22 课），
 // 不是当前值；当前值是顶层的 vocab_firm 和 lesson。别把门槛当进度直接显示。
-// 词汇与课次各占一半：偏科（词够了但课没跟上）不算达标。
-function pct(firm, lesson, lvl) {
+// listen 是本级的 { min, goal }，来自后端 listening 数组里对应等级那一行。
+// 三维各占 1/3：偏科（词够了但课没跟上、或没练听力）不算达标。
+function pct(firm, lesson, listen, lvl) {
   if (!lvl) return 0;
   const v = lvl.vocab ? Math.min(100, Math.round((firm * 100) / lvl.vocab)) : 0;
   const l = lvl.lesson ? Math.min(100, Math.round((lesson * 100) / lvl.lesson)) : 0;
-  return Math.round((v + l) / 2);
+  const a = listen && listen.goal ? Math.min(100, Math.round((listen.min * 100) / listen.goal)) : 0;
+  return Math.round((v + l + a) / 3);
 }
