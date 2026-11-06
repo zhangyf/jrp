@@ -6,11 +6,15 @@
 //    这里监听 video 的 onTimeUpdate 拿当前秒，二分/线性找当前句高亮；
 //    点某句就 wx.createVideoContext().seek 到那句的 start。不碰 COS、不碰签名。
 //
-// 2. **视频地址是带时效的签名 URL**（3 小时）。每次进详情都现拉一次接口拿新 URL，
-//    别缓存 —— 过期了 video 会报错，重进页面即恢复。字幕文件缺失不算错（纯播放）。
+// 2. **视频地址是 EO 域名裸路径**（https://listening.110105.xyz/{Nx}/{file}），
+//    不带 COS 签名，EO 侧回源时自动补真实 key 前缀。字幕缺失不算错（纯播放）。
 //
 // 3. **未登录（含体验版）锁住**。/api/listening 不在体验版白名单里，trial 用户
 //    请求会 403，所以进页面就按 trial.js 锁：点级别/视频先弹登录浮层。
+//
+// 4. **字幕跟着播放连续滚**：每换一句都更新 scroll-into-view，别只在「跑出可见区」
+//    时才滚 —— 那样高亮会一路走到当前页最后一句才停，SRT 句子间还常有空隙，
+//    idx 不变期间更是一动不动。web 端同理（只写字幕框自己的 scrollTop）。
 
 const app = getApp();
 const trial = require('../../utils/trial.js');
@@ -28,6 +32,7 @@ Page({
     videoUrl: '',
     cues: [],        // [{start,end,text}]
     active: -1,      // 当前高亮的字幕下标
+    scrollInto: '',  // scroll-view 的 scroll-into-view，每换一句给新 id 才会滚
     note: '',
     // trial 门禁
     trial: false,
@@ -79,7 +84,7 @@ Page({
     if (!file) return;
     if (trial.locked(this)) { this.onTapLocked(); return; }
     const self = this;
-    this.setData({ loading: true, err: '', playing: false, active: -1 });
+    this.setData({ loading: true, err: '', playing: false, active: -1, scrollInto: '' });
     const q = '/api/listening?level=' + encodeURIComponent(this.data.curLevel) +
       '&file=' + encodeURIComponent(file);
     app.request(q, 'GET', {}, true)
@@ -125,21 +130,24 @@ Page({
     }
     if (idx < 0 && cues.length && t >= cues[cues.length - 1].end) idx = cues.length - 1;
     if (idx !== this.data.active) {
-      this.setData({ active: idx });
-      // 高亮句滚动到可见区（字幕容器中间）。id 前缀避免纯数字。
-      if (idx >= 0) {
-        const self = this;
-        wx.createSelectorQuery().select('#cue-' + idx).boundingClientRect((rect) => {
-          if (!rect) return;
-          wx.createSelectorQuery().select('#cueBox').boundingClientRect((box) => {
-            if (!box) return;
-            if (rect.top < box.top || rect.bottom > box.bottom) {
-              self.setData({ scrollInto: 'cue-' + idx });
-            }
-          }).exec();
-        }).exec();
+      // ⚠️ 每换一句都设 scroll-into-view，不能只在「跑出可见区」时才设：
+      //    那样字幕会等高亮走到当前屏最后一句才跳一下，中间大段空隙完全不动。
+      //    连续设值配合 scroll-with-animation，字幕就跟着播放平滑往下走。
+      //    ⚠️ scroll-into-view 只在值变化时生效，同一句重复设同一个值不会滚，
+      //    所以这里带上了下标，每句都是新值。
+      const patch = { active: idx };
+      // 用户正手动翻字幕回看时，高亮照常更新，但别把滚动位置抢回去
+      if (Date.now() >= (this.followPause || 0)) {
+        patch.scrollInto = idx >= 0 ? 'cue-' + idx : '';
       }
+      this.setData(patch);
     }
+  },
+
+  // 手指碰字幕列表 → 自动跟随让位 6 秒，之后恢复跟着播放滚。
+  // 只认 touchstart，不认 bindscroll（后者会把程序自己触发的滚动也算进去）。
+  pauseFollow() {
+    this.followPause = Date.now() + 6000;
   },
 
   // 把攒下的时长上报给后端。失败静默（下次再攒再报，不影响播放）。
@@ -163,7 +171,9 @@ Page({
     this.videoCtx = this.videoCtx || wx.createVideoContext('player', this);
     this.videoCtx.seek(cue.start);
     this.videoCtx.play();
-    this.setData({ active: i });
+    // 点句跳转后也让字幕跟着落位（播放中 timeupdate 随后会继续接管跟随）
+    this.followPause = 0;
+    this.setData({ active: i, scrollInto: 'cue-' + i });
   },
 
   onVideoError(e) {

@@ -680,7 +680,8 @@ details[open] summary { margin-bottom: 10px; }
 .ls-title { font-size: 15px; font-weight: 600; margin: 10px 0 8px; color: var(--ink); }
 .ls-player { width: 100%; max-height: 56vh; background: #000; border-radius: 8px; display: block; }
 /* 字幕：播放到哪句高亮哪句，点哪句跳到哪句 */
-.ls-cues { margin-top: 12px; max-height: 40vh; overflow-y: auto; }
+/* 字幕跟着播放滚：JS 每换一句写一次 scrollTop，平滑由 CSS 负责（不牵连页面滚动） */
+.ls-cues { margin-top: 12px; max-height: 40vh; overflow-y: auto; scroll-behavior: smooth; }
 .ls-cue {
   display: flex; gap: 8px; padding: 7px 10px;
   border-radius: 6px; cursor: pointer; font-size: 14px; line-height: 1.5;

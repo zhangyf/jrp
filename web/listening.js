@@ -6,13 +6,18 @@
 //    这里监听 <video> 的 timeupdate 拿当前秒，线性找当前句高亮；点某句就
 //    video.currentTime = 那句的 start。不碰 COS、不碰签名。
 //
-// 2. **视频地址是带时效的签名 URL**（3 小时）。每次进详情都现拉一次接口拿新
-//    URL，别缓存 —— 过期了 video 会报错，重进即恢复。字幕缺失不算错（纯播放）。
+// 2. **视频地址是 EO 域名裸路径**（https://listening.110105.xyz/{Nx}/{file}），
+//    不带 COS 签名，EO 侧回源时自动补真实 key 前缀。字幕缺失不算错（纯播放）。
 //
 // 3. **实际播放时长上报**（/api/listening/progress）。口径是老师定的：
 //    只算**正在播放**的秒数，暂停、拖动跳过的不算。做法：timeupdate 里拿
 //    相邻两次 currentTime 的差值，差值在 [0, 1.5] 秒内（正常播放节奏）才累加；
 //    seek 造成的大跳变（> 1.5s）直接丢弃。攒够 15 秒或离开播放器时上报一次。
+//
+// 4. **字幕跟着播放连续滚**。只写字幕框自己的 scrollTop，不用 scrollIntoView：
+//    后者会连带滚动全部祖先（含整个页面）把视频顶出屏幕，block:'center' 又是按
+//    视口算的，字幕框在页面下半部分时压根滚不到位。改完每换一句都把当前句摆到
+//    框内约 1/3 处，不会「高亮走到当前页最后一句就停住」。
 //
 // ⚠️ 全局只留一个顶层符号 listening：web/*.js 是老式多 script 全局挂载，
 // 顶层 function 会覆盖先加载文件里的同名 var（2026-09-21 出过整站白屏事故）。
@@ -28,6 +33,7 @@ var listening = {
   cues: [],
   active: -1,
   curLevel: '', // 正在播的这个视频所属级别（上报用）
+  followPause: 0, // 用户手动翻字幕后，暂时别抢回滚动位置（毫秒时间戳）
 
   load: function () {
     var self = this;
@@ -132,9 +138,19 @@ var listening = {
         if (!cue) return;
         v.currentTime = cue.start;
         v.play();
+        self.followPause = 0;
         self.setActive(i);
       });
     });
+    // 用户自己拖字幕回看时，自动跟随让位 6 秒；之后恢复跟着播放滚。
+    // 只认 wheel / touchstart，不认 scroll —— 后者会把程序自己写的 scrollTop
+    // 也算进去，等于自己把自己暂停了。
+    var cueBox = el('lsCueBox');
+    if (cueBox) {
+      var pause = function () { self.followPause = Date.now() + 6000; };
+      cueBox.addEventListener('wheel', pause, { passive: true });
+      cueBox.addEventListener('touchstart', pause, { passive: true });
+    }
     el('lsBack').addEventListener('click', function () {
       self.flush(); // 离开播放器把没上报的时长交上去
       self.playing = false;
@@ -188,15 +204,31 @@ var listening = {
     Array.prototype.forEach.call(box.querySelectorAll('.ls-cue'), function (row, k) {
       row.classList.toggle('on', k === i);
     });
-    // 高亮句滚到可见区
+    // 字幕跟着播放连续滚：每换一句都把当前句摆到框内约 1/3 处。
+    //
+    // ⚠️ 两处别退回去：
+    //  ① 只在「高亮句超出可见区」时才滚 → 高亮一路走到当前页最后一句才停，
+    //     SRT 句子间常有空隙（如 59.1s~66.8s），idx 不变期间更是一动不动。
+    //  ② cur.scrollIntoView() → 会连带滚动所有可滚动祖先（包括整个页面），
+    //     把视频顶出屏幕；block:'center' 又是按视口算的，字幕框在页面下半部
+    //     时根本落不到位。这里只写字幕框自己的 scrollTop，页面绝对不动。
     var cur = el('ls-cue-' + i);
-    if (cur && i >= 0) {
-      var cr = cur.getBoundingClientRect();
-      var br = box.getBoundingClientRect();
-      if (cr.top < br.top || cr.bottom > br.bottom) {
-        cur.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      }
-    }
+    if (!cur || i < 0) return;
+    // 高亮照常更新，只是不抢滚动位置（用户正在手动翻看）
+    if (Date.now() < this.followPause) return;
+    var cr = cur.getBoundingClientRect();
+    var br = box.getBoundingClientRect();
+    var h = box.clientHeight || br.height;
+    if (!h) return;
+    // cr.top - br.top 是「当前句相对框可视区顶」的偏移，加上已滚掉的量才是
+    // 它在整段字幕里的位置；减 1/3 框高，让当前句落在偏上而非贴边。
+    // 这个式子与平滑动画的中间态无关：box.scrollTop + (cr.top - br.top)
+    // 恒等于「当前句在整段字幕里的绝对位置」，动画被打断也不会算偏。
+    var target = box.scrollTop + (cr.top - br.top) - h / 3;
+    if (target < 0) target = 0;
+    // 只赋 scrollTop，平滑交给 CSS 的 scroll-behavior（比 scrollTo 的 options
+    // 兼容性好，jsdom 也能直接测到这条路径）。
+    box.scrollTop = target;
   },
 
   // 把攒下的时长上报给后端。失败静默（下次再攒再报，不影响播放）。

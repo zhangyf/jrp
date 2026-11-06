@@ -12,7 +12,7 @@
     <view class="note" wx:if="{{note}}">{{note}}</view>
 
     <scroll-view id="cueBox" class="cues" scroll-y scroll-into-view="{{scrollInto}}"
-                 scroll-with-animation>
+                 scroll-with-animation bindtouchstart="pauseFollow">
       <view id="cue-{{index}}"
             class="cue {{index === active ? 'on' : ''}}"
             wx:for="{{cues}}" wx:key="index"
