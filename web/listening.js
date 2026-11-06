@@ -14,7 +14,10 @@
 //    相邻两次 currentTime 的差值，差值在 [0, 1.5] 秒内（正常播放节奏）才累加；
 //    seek 造成的大跳变（> 1.5s）直接丢弃。攒够 15 秒或离开播放器时上报一次。
 //
-// 4. **字幕跟着播放连续滚**。只写字幕框自己的 scrollTop，不用 scrollIntoView：
+// 4. **记住上次听到哪里**。按「级别|文件名」把 currentTime 存 localStorage，
+//    进播放器等 loadedmetadata 后跳过去，刷新 / 重开不用从头听。纯前端，不碰后端。
+//
+// 5. **字幕跟着播放连续滚**。只写字幕框自己的 scrollTop，不用 scrollIntoView：
 //    后者会连带滚动全部祖先（含整个页面）把视频顶出屏幕，block:'center' 又是按
 //    视口算的，字幕框在页面下半部分时压根滚不到位。改完每换一句都把当前句摆到
 //    框内约 1/3 处，不会「高亮走到当前页最后一句就停住」。
@@ -135,6 +138,19 @@ var listening = {
     v.src = url;
     this.bindPlayer(v);
 
+    // 上次听到哪里：等元数据加载完再跳，避免 currentTime 被后续加载重置。
+    var resume = lsGetPos(this.curLevel, this.title);
+    if (resume > 1) {
+      v.addEventListener('loadedmetadata', function once() {
+        v.removeEventListener('loadedmetadata', once);
+        // 只在用户还没手动拖过时跳，别跟人抢
+        if (v.currentTime < 0.5) {
+          v.currentTime = resume;
+          el('lsMsg').textContent = '已定位到上次进度 ' + lsFmt(resume) + '，点播放继续';
+        }
+      });
+    }
+
     Array.prototype.forEach.call(el('lsCueBox').querySelectorAll('.ls-cue'), function (row) {
       row.addEventListener('click', function () {
         var i = parseInt(row.dataset.i, 10);
@@ -167,6 +183,7 @@ var listening = {
     var self = this;
     this.lastT = -1;
     this.pending = 0;   // 还没上报的秒数
+    this.lastSave = 0;  // 上次写 localStorage 的时间戳（节流用）
     v.addEventListener('timeupdate', function () {
       var t = v.currentTime;
       // —— 时长累加：只算正常播放节奏的差值，seek 大跳变丢弃 ——
@@ -178,12 +195,19 @@ var listening = {
       // 攒够 15 秒上报一次
       if (self.pending >= 15) self.flush();
 
+      // 记住进度：每 ~5 秒存一次（timeupdate 一秒好几次，别每次都写 localStorage）
+      var now = Date.now();
+      if (!self.lastSave || now - self.lastSave > 5000) {
+        self.lastSave = now;
+        lsSetPos(self.curLevel, self.title, t);
+      }
+
       // —— 字幕高亮 ——
       self.highlight(t);
     });
     // 暂停 / 结束也交一次，别把尾巴上的几秒弄丢
-    v.addEventListener('pause', function () { self.flush(); });
-    v.addEventListener('ended', function () { self.flush(); });
+    v.addEventListener('pause', function () { self.flush(); lsSetPos(self.curLevel, self.title, v.currentTime); });
+    v.addEventListener('ended', function () { self.flush(); lsSetPos(self.curLevel, self.title, v.currentTime); });
     v.addEventListener('error', function () {
       el('lsMsg').textContent = '视频加载失败 · 若已播放一段时间，返回重进刷新地址';
     });
@@ -245,3 +269,25 @@ var listening = {
       .catch(function () { /* 上报失败不吵用户 */ });
   }
 };
+
+// —— 上次进度：localStorage 按「级别|标题」存秒数。纯前端，失败静默 ——
+// key 里带 title（含文件名），同一个视频换设备/换文件名不会串。
+function lsPosKey(level, title) {
+  return 'jrp_listen_pos|' + (level || '') + '|' + (title || '');
+}
+function lsGetPos(level, title) {
+  try {
+    var raw = localStorage.getItem(lsPosKey(level, title));
+    var n = raw === null ? 0 : parseFloat(raw);
+    return isNaN(n) ? 0 : n;
+  } catch (e) { return 0; }
+}
+function lsSetPos(level, title, t) {
+  try { localStorage.setItem(lsPosKey(level, title), String(Math.floor(t))); } catch (e) {}
+}
+// 秒 → m:ss，给「已定位到上次进度」提示用
+function lsFmt(s) {
+  s = Math.max(0, Math.floor(s));
+  var m = Math.floor(s / 60), r = s % 60;
+  return m + ':' + (r < 10 ? '0' : '') + r;
+}
