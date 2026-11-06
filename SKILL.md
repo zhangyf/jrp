@@ -1070,6 +1070,14 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
 - **方案 A（纯文本、不给视频）**：只修「语言层能确定」的错（同音词/搭配/固定指令句/番号），
   数字/专名/选择题选项这类必须听音频才知道的**保持原样**——宁可漏改不改坏。
   这是与老师对齐的口径（2026-11-06），纯文本模型解决不了「八番 vs 一番」这种。
+- **prompt 外置**（照 judge-prompt 同套路，2026-11-06）：`configs/refine_prompt.txt`，
+  内置兜底 + `ValidateRefinePrompt`（**无占位符**，只要求非空 + 含「编号」输出格式说明）+
+  `ChooseRefinePrompt`（坏了回退内置）+ `RefinePromptVersion`（sha256 前 12 位）+
+  60 秒缓存 `ResolveRefinePrompt`（`refineCues` 用它，改模板不用重新部署）+
+  CLI `jrp --lang ja refine-prompt`（`--file` 上传 / `--builtin` 打印 / `--reset` 回退 /
+  `--dry-run` 演练）。内置 prompt 按 ①② 调过：加 JLPT 领域锚点（固定套话/番号递增/
+  高频 ASR 混淆对聴解↔懲戒 等）+ 放宽碎片句尺度（上下文可推断的可修，数字/专名/选项
+  仍保持原样）。③（更大上下文窗口）老师明确说先不写。
 - **纯函数层** `internal/listening/refine.go`：`RefinePrompt`（内置兜底，保守规则有单测盯）、
   `BuildRefineInput`（带编号、**不带时间轴**喂模型）、`ParseRefineReply`（只认「编号: 文本」，
   忽略代码块/解释/「无」）、`ApplyRefinements`（只替换点名的编号，越界忽略，时间轴不动）、
