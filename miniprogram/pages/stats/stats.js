@@ -52,6 +52,7 @@ Page({
     period: '',
     jlpt: null,
     listening: [],
+    listeningHint: '',
     n5Pct: 0,
     n4Pct: 0,
     kpis: [],
@@ -175,9 +176,10 @@ Page({
           needs: s.needs_consol || 0, errors: s.errors || 0
         }));
 
-        // --- 听力进度条：跟 N5/N4 词汇/语法同一套画法。
-        //     当前累计分钟 ÷ 满格目标(goal_minutes) = 百分比。目标后端注入，
-        //     没配用内置默认（N5=1500/N4=3000 分钟）。没听过为空。
+        // --- 听力进度条：跟本页 N5/N4 两根条同一套画法，两级各一根。
+        //     目标后端注入，没配用内置默认（N5=4500 / N4=6000 分钟）。
+        //     ⚠️ 右侧必须写实际分钟数：8/4500 四舍五入成 0%，只显示百分比
+        //     会让人以为「听了 6 分多钟统计里没数据」（2026-11-06）。
         const listening = ((j && j.listening) || []).map((l) => {
           const min = Math.round((l.seconds || 0) / 60);
           const goal = l.goal_minutes || 0;
@@ -188,11 +190,18 @@ Page({
             pct: goal ? Math.min(100, Math.round((min * 100) / goal)) : 0
           };
         });
+        // 一行把两级「实际 / 目标」都写出来，数字不藏在百分比里。
+        const listeningHint = listening.length
+          ? '听力累计 ' + listening.map((l) =>
+              l.level + ' ' + l.min + ' / ' + l.goal + ' 分钟').join('　·　') +
+            '（目标外置可调：jrp listening-goal）'
+          : '';
 
         this.setData({
           loading: false,
           jlpt: j,
           listening,
+          listeningHint,
           n5Pct: j ? pct(j.vocab_firm, j.lesson, j.n5) : 0,
           n4Pct: j ? pct(j.vocab_firm, j.lesson, j.n4) : 0,
           period: hasCmp

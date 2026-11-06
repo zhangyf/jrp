@@ -281,7 +281,8 @@
   </section>
 
   <!-- 听力：视频 + 同名 SRT 字幕，边播边看逐句高亮（web 端 2026-11-05 补，
-       跟小程序同一个 /api/listening 接口）。按级别分组，点视频拉签名 URL。
+       跟小程序同一个 /api/listening 接口）。按级别分组，点视频取 EO 域名裸路径
+       （不带 COS 签名，回源由 EO 补真实 key 前缀）。
        实际播放时长上报 /api/listening/progress，统计页 JLPT 卡里能看到。 -->
   <section id="page-listening" class="page hidden">
     <div id="lsLevels" class="kb-lessons"></div>
@@ -295,7 +296,7 @@
      拿不到码（未登录 / 服务端没配微信凭证）时整个隐藏，不留破图。 -->
 <div id="toast" class="hidden"></div>
 
-<!-- 全局搜索：四页（今日练习/造句/钉子户/活用）右上角的浮动搜索框。
+<!-- 全局搜索：五页（今日练习/造句/钉子户/活用/听力）右上角的浮动搜索框。
      position:fixed 钉在屏幕右上角，滚到哪儿都跟着，不占页头。
      默认 hidden，由 web/search.js 按当前页显隐；结果浮层 absolute 挂在框正下方往下展开
      （脱离文档流，面板变长只往下长，不把输入框顶得往上移）。

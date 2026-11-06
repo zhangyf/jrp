@@ -41,9 +41,11 @@ var stats = {
 // 词库涨了、课次推进了，图自己跟着变。
 // 颜色是「过了 N5 没有」的信号：琥珀=还在 N5 线以下，绿色=已越过 N5 在冲 N4。
 //
-// 听力：跟词汇/语法一样**一根条**，N5 目标当虚线门槛、N4 目标当满格，
-// 当前值 = N4 素材的累计时长（练 N4 素材就是在冲 N4）。sub 里把 N5/N4 各自
-// 累计都标出来，一眼能看到两级分别听了多久。后端保证 N5、N4 各一行。
+// 听力：跟词汇/语法一样**一根条**，N5 目标当虚线门槛、N4 目标当满格。
+// 当前值 = N5+N4 **总**累计分钟：两个级别的素材都在练耳朵，只取 N4 会让
+// 只听 N5 的人永远显示 0（2026-11-06 老师「听了 6 分多钟统计里没数据」就是它）。
+// 分级明细放底部宽框；sub 只有 130px，塞两组数字会被进度条盖住。
+// 后端 sortedListeningLevels 固定给 N5、N4 各一行，没听过也是 0。
 function stJlpt(p) {
   if (!p || !p.n4 || !p.n4.vocab || !p.n4.lesson) return '';
 
@@ -54,18 +56,22 @@ function stJlpt(p) {
     { label: '语法进度', sub: '第' + p.lesson + '课', cur: p.lesson, n5: p.n5.lesson, n4: p.n4.lesson }
   ];
 
-  // 听力一根条：N5 目标 4500 当虚线、N4 目标 6000 当满格，跟词汇同款两段式。
-  // sub 只留一句（累计分钟），别塞 N5/N4 两组数 —— 那块宽度只有 130px，
-  // 塞两组会被进度条盖住（老师截图抓到）；详细数字在底部小结框里。
+  // 听力一根条：N5 目标当虚线、N4 目标当满格，跟词汇同款两段式。
+  // cur 取两级总累计，别只取 N4 —— 老师听的是 N5 素材，只取 N4 就是恒 0。
+  // sub 只留一句，详细数字在底部小结框里（那块宽，不会被进度条盖住）。
   var lsByLevel = {};
   (p.listening || []).forEach(function (l) { lsByLevel[l.level] = l; });
   var l5 = lsByLevel['N5'], l4 = lsByLevel['N4'];
-  if (l4 && l4.goal_minutes) {
-    var min4 = Math.round((l4.seconds || 0) / 60);
+  var hasListening = !!(l5 && l4 && l5.goal_minutes && l4.goal_minutes);
+  var lm5 = 0, lm4 = 0;
+  if (hasListening) {
+    lm5 = Math.round((l5.seconds || 0) / 60);
+    lm4 = Math.round((l4.seconds || 0) / 60);
+    var minAll = lm5 + lm4;
     rows.push({
       label: '听力',
-      sub: min4 + ' / ' + l4.goal_minutes + ' 分钟',
-      cur: min4, n5: l5.goal_minutes, n4: l4.goal_minutes
+      sub: minAll + ' / ' + l4.goal_minutes + ' 分钟',
+      cur: minAll, n5: l5.goal_minutes, n4: l4.goal_minutes
     });
   }
 
@@ -106,9 +112,12 @@ function stJlpt(p) {
     s += '<line x1="' + (X0 + n5w).toFixed(1) + '" y1="' + (cy - 16) + '" x2="' + (X0 + n5w).toFixed(1) +
       '" y2="' + (cy + 16) + '" stroke="' + chart.PALETTE.muted + '" stroke-width="1" stroke-dasharray="3 3"/>';
 
+    // 有进度但不足 1% 时别显示 0%：老师刚听过 8 分钟，四舍五入成 0
+    // 会让人以为统计压根没记上。所有行统一口径，不是听力专用。
+    var pct = Math.round(Math.min(1, r.n4 ? r.cur / r.n4 : 0) * 100);
+    var pctText = (r.cur > 0 && pct === 0) ? '&lt;1%' : pct + '%';
     s += '<text x="580" y="' + cy + '" font-size="13" font-weight="500" ' +
-      'fill="var(--ink)" dominant-baseline="central">' +
-      Math.round(Math.min(1, r.n4 ? r.cur / r.n4 : 0) * 100) + '%</text>';
+      'fill="var(--ink)" dominant-baseline="central">' + pctText + '</text>';
   });
 
   var gapFirm = Math.max(0, p.n5.vocab - p.vocab_firm);
@@ -122,12 +131,11 @@ function stJlpt(p) {
   var detail = '词汇量 ' + p.vocab_total + ' / ' + p.n5.vocab +
     '　熟练 ' + p.vocab_firm + ' / ' + p.n5.vocab +
     '　语法 第' + p.lesson + ' / ' + p.n5.lesson + '课';
-  var l5b = lsByLevel['N5'], l4b = lsByLevel['N4'];
-  if (l4b && l4b.goal_minutes) {
-    var lm5 = Math.round(((l5b && l5b.seconds) || 0) / 60);
-    var lm4 = Math.round((l4b.seconds || 0) / 60);
-    detail += '　听力 N5 ' + lm5 + ' / ' + l5b.goal_minutes +
-      '　N4 ' + lm4 + ' / ' + l4b.goal_minutes;
+  // 听力是动态维度（目标外置可调），有口径就补上；两级实际值都写出来。
+  // lm5/lm4 上面算过，直接复用，别再算一遍。
+  if (hasListening) {
+    detail += '　听力 N5 ' + lm5 + ' / ' + l5.goal_minutes +
+      '　N4 ' + lm4 + ' / ' + l4.goal_minutes + ' 分钟';
   }
 
   s += '<rect x="40" y="' + boxY + '" width="600" height="60" rx="12" ' +

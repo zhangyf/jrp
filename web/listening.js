@@ -37,6 +37,10 @@ var listening = {
 
   load: function () {
     var self = this;
+    // 播放器开着时切走再切回来，别重建列表：app.go 只切 .hidden，DOM 还在，
+    // render() 会把 <video> 连同播放进度一起清掉（听力页加了全局搜索后，
+    // 点搜索结果跳词汇表再回来就会踩到）。列表要刷新就先点「← 返回列表」。
+    if (this.playing && el('lsPlayer')) return;
     if (this.loaded) { this.render(); return; }
     el('lsBody').innerHTML = '<p class="muted">加载中…</p>';
     app.api('/api/listening').then(function (d) {

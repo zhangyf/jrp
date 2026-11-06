@@ -1,4 +1,4 @@
-// web/search.js —— 四页右上角的全局搜索（词汇字面 + 知识点语义）。
+// web/search.js —— 五页右上角的全局搜索（词汇字面 + 知识点语义）。
 //
 // ⚠️ 顶层只挂一个 `var search`：web/*.js 是老式多 script 全局挂载，
 // 顶层 function 会覆盖先加载文件里的同名 var（2026-09-21 整站白屏事故）。
@@ -6,11 +6,13 @@
 //
 // 数据源：GET /api/search?q=（服务端并行两路，挂 withUser，trial/匿名不给用）。
 // 结果只在浮层里展示，不落 localStorage、不缓存全库，点结果跳对应页。
-// 只出现在老师点名的四页（今日练习/造句/钉子户/活用），不扩散到词汇/知识点/统计/离线。
+// 出现在老师点名的五页（今日练习/造句/钉子户/活用/听力）。听力页那个框
+// 是边听边查词用的：跳到词汇表/知识点后回来，播放器不能丢（见 listening.load）。
+// 不扩散到词汇/知识点/统计/离线。
 
 var search = {
   // 允许出现搜索框的页（按老师点名的范围）。
-  pages: { practice: 1, sentence: 1, hard: 1, conj: 1 },
+  pages: { practice: 1, sentence: 1, hard: 1, conj: 1, listening: 1 },
   timer: null,
   seq: 0,        // 只认最后一次请求的响应，防快速输入时旧响应盖新结果
   lastWords: [],

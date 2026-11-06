@@ -66,7 +66,7 @@ type JlptLevel struct {
 //   - Seconds：累计实际播放秒数（float，前端上报带小数）。
 //   - GoalMinutes：该等级的满格目标（分钟），后端从 COS 配置注入。
 //     前端用 Seconds/60 ÷ GoalMinutes 算百分比，跟词汇/语法进度条同一套画法。
-//     没配目标时后端给内置默认（N5=1500 / N4=3000 分钟）。
+//     没配目标时后端给内置默认（N5=4500 / N4=6000 分钟）。
 type ListeningLevel struct {
 	Level       string  `json:"level"`
 	Seconds     float64 `json:"seconds"`

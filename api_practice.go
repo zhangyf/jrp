@@ -793,7 +793,7 @@ func (s *server) handleStats(w http.ResponseWriter, r *http.Request, st *Storage
 	}
 
 	// 听力进度：塞进 jlpt 段，前端在 JLPT 进度卡里按等级画进度条。
-	// 目标值从 COS 配置读（60 秒缓存），没配用内置默认（N5=1500 / N4=3000 分钟）。
+	// 目标值从 COS 配置读（60 秒缓存），没配用内置默认（N5=4500 / N4=6000 分钟）。
 	// 非日语 / 没听过都是空数组，前端按「没有听力数据」处理。
 	if res.Jlpt != nil {
 		goal, _ := resolveListeningGoal(s.ctx(), st)
