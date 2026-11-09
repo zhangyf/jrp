@@ -134,42 +134,43 @@ func TestGroupProtosByLesson(t *testing.T) {
 	}
 }
 
-// ---------- PickPrototypes：同课优先、先高课后低课、未知课兜底、n<=0 ----------
+// ---------- PickPrototypes：单词与句式解绑、词性匹配优先、长句优先、n<=0 ----------
 
 func TestPickPrototypes(t *testing.T) {
+	// 解绑核心回归：第 1 课的词，也要能挑到高课的复杂长句，而不是被绑在第 1 课的短句上。
 	ss := []BankSentence{
-		{ID: "P1", Lesson: "第4课", Source: "基本课文", Answer: "部屋に 机と 椅子が あります。"},
-		{ID: "P2", Lesson: "第4课", Source: "基本课文", Answer: "机の 上に 猫が います。"},
-		{ID: "Q1", Lesson: "第2课", Source: "基本课文", Answer: "これは 本です。"},
+		{ID: "short1", Lesson: "第1课", Source: "基本课文", Answer: "これは 本です。"},
+		{ID: "long18", Lesson: "第18课", Source: "基本课文", Answer: "李さんは 毎日 日本語で 手紙を 書きます。"},
 	}
 	by := GroupProtosByLesson(ss)
-	// 同课够用不跨课
-	got := PickPrototypes(by, 4, 2, "名词")
+	got := PickPrototypes(by, 1, 2, "名词")
 	if len(got) != 2 {
 		t.Fatalf("要 2 条给 %d 条", len(got))
 	}
-	for _, g := range got {
-		if g.Lesson != "第4课" {
-			t.Errorf("同课够用时不该跨课：%s", g.ID)
-		}
+	// 长句（14-26字）应排短句前面，即便长句在别的课
+	if got[0].ID != "long18" {
+		t.Errorf("解绑后应按长句优先挑高课句，实际 %s", got[0].ID)
 	}
 	// 课号未知：全库按打分兜底给满
 	gotUnknown := PickPrototypes(by, 0, 2, "名词")
 	if len(gotUnknown) != 2 {
 		t.Errorf("课号未知应给满 2 条，实际 %d", len(gotUnknown))
 	}
-	// 跨课先往高课扩
+	if gotUnknown[0].ID != "long18" {
+		t.Errorf("课号未知时也应按长句优先，实际 %s", gotUnknown[0].ID)
+	}
+	// 同分时同课的略优先（tie-break，不再是起始位置的决定因素）
 	ss2 := []BankSentence{
-		{ID: "H1", Lesson: "第8课", Answer: "高い課の 文です。"},
-		{ID: "L1", Lesson: "第6课", Answer: "低い課の 文です。"},
+		{ID: "same1", Lesson: "第5课", Answer: "これは 机です。"},
+		{ID: "same2", Lesson: "第9课", Answer: "あれは 椅子です。"},
 	}
 	by2 := GroupProtosByLesson(ss2)
-	gotNear := PickPrototypes(by2, 7, 2, "名词")
-	if len(gotNear) != 2 {
-		t.Fatalf("要 2 条给 %d 条", len(gotNear))
+	gotTie := PickPrototypes(by2, 5, 1, "名词")
+	if len(gotTie) != 1 {
+		t.Fatalf("要 1 条给 %d 条", len(gotTie))
 	}
-	if gotNear[0].ID != "H1" || gotNear[1].ID != "L1" {
-		t.Errorf("应先高课后低课，实际 %s, %s", gotNear[0].ID, gotNear[1].ID)
+	if gotTie[0].ID != "same1" {
+		t.Errorf("同分时应同课优先，实际 %s", gotTie[0].ID)
 	}
 	// n<=0
 	if PickPrototypes(by, 4, 0, "名词") != nil {

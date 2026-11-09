@@ -122,67 +122,44 @@ func ProtoScore(s BankSentence, pos string) int {
 	return score
 }
 
-// PickPrototypes 给某个词挑 n 条原型句骨架：先同课，再按课号距离往外扩；
-// 同课内按「这个词能不能套进去」（ProtoScore）排序。
-// 同课的句子最可能就是这个词在课文里出现的句型。
+// PickPrototypes 给某个词挑 n 条原型句骨架。
+//
+// 2026-11-09 解绑「单词」和「句式」：原来「先同课、再按课号距离往外扩」——
+// 第 1 课的词被强制配第 1 课的「～は～です」简单句，回炉句越练越简单
+// （实测前 7 课占 254/397 = 64%，第 18-22 课 0 句）。
+// 老师明确：单词是前面的单词没关系，句式要用后面课的复杂句式，且要多样。
+//
+// 新逻辑：全库摊平，按 ProtoScore（词性槽位能不能套进去 + 长句偏好）全局排序
+// 取前 n，不再按课号外扩。词性匹配仍是第一优先（套不进去的句子排后面），
+// 长句偏好天然倾向高课的复杂长句；lesson 退化为「同分时同课略优先」的
+// tie-break（同课句子含这个词的概率更高），不再决定起始位置。
 func PickPrototypes(byLesson map[int][]BankSentence, lesson int, n int, pos string) []BankSentence {
 	if n <= 0 {
 		return nil
 	}
-	// 课号未知（「追加词汇（8/7）」这类补充分组，62 个分组里有 6 个）：
-	// 没法靠课号定位，就在全库里按「这个词能不能套进去」打分挑。
-	if lesson <= 0 {
-		var all []BankSentence
-		for _, list := range byLesson {
-			all = append(all, list...)
-		}
-		sort.SliceStable(all, func(i, j int) bool {
-			return ProtoScore(all[i], pos) > ProtoScore(all[j], pos)
-		})
-		if len(all) > n {
-			all = all[:n]
-		}
-		return all
+	var all []BankSentence
+	for _, list := range byLesson {
+		all = append(all, list...)
 	}
-	var out []BankSentence
-	seen := map[string]bool{}
-	for d := 0; d <= 30 && len(out) < n; d++ {
-		var ls []int
-		if d == 0 {
-			ls = []int{lesson}
-		} else {
-			// ⚠️ 先往高课扩、再往低课扩（2026-10-20 改）。
-			// 原来先 -d 再 +d，结果跨课补的句子都来自更简单的老课。
-			// 高课的句型更复杂，先拿高课的骨架才不会把变形句越造越简单。
-			ls = []int{lesson + d, lesson - d}
-		}
-		for _, l := range ls {
-			if l <= 0 {
-				continue
-			}
-			cands := append([]BankSentence(nil), byLesson[l]...)
-			sort.SliceStable(cands, func(i, j int) bool {
-				return ProtoScore(cands[i], pos) > ProtoScore(cands[j], pos)
-			})
-			for _, s := range cands {
-				if seen[s.ID] {
-					continue
-				}
-				seen[s.ID] = true
-				out = append(out, s)
-				if len(out) >= n {
-					break
-				}
-			}
-			if len(out) >= n {
-				break
-			}
-		}
-	}
-	if len(out) == 0 {
+	if len(all) == 0 {
 		return nil
 	}
-	return out
+	sort.SliceStable(all, func(i, j int) bool {
+		si, sj := ProtoScore(all[i], pos), ProtoScore(all[j], pos)
+		if si != sj {
+			return si > sj
+		}
+		// 同分 tie-break：同课的略优先（更可能含这个词），再按 ID 稳定排序。
+		li, lj := GroupLesson(all[i].Lesson), GroupLesson(all[j].Lesson)
+		if (li == lesson) != (lj == lesson) {
+			return li == lesson
+		}
+		return all[i].ID < all[j].ID
+	})
+	if len(all) > n {
+		all = all[:n]
+	}
+	return all
 }
 
 func ProtoList(ss []BankSentence) []ProtoSuggest {

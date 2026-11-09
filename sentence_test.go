@@ -74,44 +74,36 @@ func TestGroupProtosByLesson(t *testing.T) {
 	}
 }
 
-func TestPickPrototypesSameLessonFirst(t *testing.T) {
+// 2026-11-09 解绑：单词和句式不再按课绑定。第 1 课的词，也应优先挑到
+// 全库里「词性匹配 + 长句」的高课复杂句式，而不是被绑在低课简单句上。
+func TestPickPrototypesUnbindsWordFromLesson(t *testing.T) {
 	ss := []sentence.BankSentence{
-		{ID: "P1", Lesson: "第4课", Source: "基本课文", Answer: "部屋に 机と 椅子が あります。"},
-		{ID: "P2", Lesson: "第4课", Source: "基本课文", Answer: "机の 上に 猫が います。"},
-		{ID: "P3", Lesson: "第4课", Source: "基本课文", Answer: "売店は 駅の 外に あります。"},
-		{ID: "P4", Lesson: "第4课", Source: "基本课文", Answer: "吉田さんは 庭に います。"},
-		{ID: "Q1", Lesson: "第2课", Source: "基本课文", Answer: "これは 本です。"},
+		{ID: "low", Lesson: "第1课", Source: "基本课文", Answer: "これは 本です。"},
+		{ID: "high", Lesson: "第19课", Source: "基本课文", Answer: "李さんは 今日 早く 帰らなければ なりません。"},
 	}
 	by := sentence.GroupProtosByLesson(ss)
-	got := sentence.PickPrototypes(by, 4, 3, "名词")
-	if len(got) != 3 {
-		t.Fatalf("要 3 条，给了 %d 条", len(got))
+	got := sentence.PickPrototypes(by, 1, 2, "名词")
+	if len(got) != 2 {
+		t.Fatalf("要 2 条，给了 %d 条", len(got))
 	}
-	for _, g := range got {
-		if g.Lesson != "第4课" {
-			t.Errorf("同课的句子够用时不该跨课：%s %s", g.ID, g.Lesson)
-		}
+	if got[0].ID != "high" {
+		t.Errorf("第1课的词也应优先挑高课复杂长句，实际 %s", got[0].ID)
 	}
 }
 
-func TestPickPrototypesFallsBackToNearbyLesson(t *testing.T) {
+// 同分 tie-break：ProtoScore 相同时，同课的略优先（更可能含这个词）。
+func TestPickPrototypesSameScorePrefersSameLesson(t *testing.T) {
 	ss := []sentence.BankSentence{
-		{ID: "P1", Lesson: "第7课", Source: "基本课文", Answer: "李さんは 毎日 コーヒーを 飲みます。"},
-		{ID: "P2", Lesson: "第6课", Source: "基本课文", Answer: "李さんは 先月 北京から 来ました。"},
-		{ID: "P3", Lesson: "第8课", Source: "基本课文", Answer: "李さんは 日本語で 手紙を 書きます。"},
+		{ID: "A", Lesson: "第5课", Source: "基本课文", Answer: "これは 机です。"},
+		{ID: "B", Lesson: "第9课", Source: "基本课文", Answer: "あれは 椅子です。"},
 	}
 	by := sentence.GroupProtosByLesson(ss)
-	got := sentence.PickPrototypes(by, 7, 3, "名词")
-	if len(got) != 3 {
-		t.Fatalf("要 3 条，给了 %d 条", len(got))
+	got := sentence.PickPrototypes(by, 5, 1, "名词")
+	if len(got) != 1 {
+		t.Fatalf("要 1 条，给了 %d 条", len(got))
 	}
-	if got[0].ID != "P1" {
-		t.Errorf("第一条应该是同课的 P1，实际 %s", got[0].ID)
-	}
-	// 距离 7 相等时先加后减：第8课 在 第6课 前面
-	// （2026-10-20 改：跨课补句先往高课扩，别把变形句越造越简单）
-	if got[1].ID != "P3" || got[2].ID != "P2" {
-		t.Errorf("跨课顺序不对：%s %s", got[1].ID, got[2].ID)
+	if got[0].ID != "A" {
+		t.Errorf("同分时应同课优先，实际 %s", got[0].ID)
 	}
 }
 
