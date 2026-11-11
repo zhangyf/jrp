@@ -33,6 +33,32 @@
   tr.disabled td { color: var(--muted); }
   .empty { padding: 24px 0; color: var(--muted); font-size: 13px; text-align: center; }
 
+  /* 顶部 tab：用户管理 / 用户行为 */
+  .tabs { display: flex; gap: 6px; margin: 0 0 16px; border-bottom: 1px solid var(--line); }
+  .tabs button { border: none; background: none; color: var(--muted); font-size: 14px;
+                 padding: 8px 14px; cursor: pointer; border-bottom: 2px solid transparent; }
+  .tabs button.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+  /* 用户行为报表：横向条形图（纯 div，不引外部图表库） */
+  .abar { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 13px; }
+  .abar .lbl { flex: 0 0 180px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .abar .bar { flex: 1 1 auto; background: var(--line); border-radius: 4px; height: 18px; position: relative; overflow: hidden; }
+  .abar .bar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+  .abar .val { flex: 0 0 64px; text-align: right; color: var(--muted); white-space: nowrap; }
+  .an-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin: 0 0 16px; }
+  .an-card h2 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+  .an-card .sub { margin: 0 0 12px; font-size: 12px; color: var(--muted); }
+  .an-kv { font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+  .an-kv b { color: var(--ink); font-weight: 600; }
+  .an-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .an-tbl th, .an-tbl td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  .an-tbl th { font-size: 12px; color: var(--muted); font-weight: 500; white-space: nowrap; }
+  .an-tbl td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .an-row { display: flex; gap: 18px; flex-wrap: wrap; }
+  .an-col { flex: 1 1 320px; min-width: 280px; }
+  .an-toolbar { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; font-size: 13px; color: var(--muted); }
+  .an-toolbar select { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+
   .badge { display: inline-block; font-size: 12px; padding: 2px 10px; border-radius: 999px; white-space: nowrap; }
   .r-owner { background: var(--accent-soft); color: var(--accent); }
   .r-member { background: var(--accent-soft); color: var(--accent); }
@@ -81,19 +107,42 @@
     </p>
   </div>
 
-  <!-- 2. owner：用户表 -->
+  <!-- 2. owner：用户表 + 用户行为 -->
   <div id="panel" style="display:none">
-    <div class="msg" id="msg"></div>
-    <div class="summary" id="summary"></div>
-    <div class="card">
-      <table>
-        <thead>
-          <tr>
-            <th>账号</th><th>微信尾号</th><th>状态</th><th>首次登录</th><th>最近登录</th><th></th>
-          </tr>
-        </thead>
-        <tbody id="rows"></tbody>
-      </table>
+    <div class="tabs">
+      <button id="tabUsers" class="on" data-tab="users">用户管理</button>
+      <button id="tabAnalytics" data-tab="analytics">用户行为</button>
+    </div>
+
+    <!-- 用户管理 -->
+    <div id="view-users">
+      <div class="msg" id="msg"></div>
+      <div class="summary" id="summary"></div>
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>账号</th><th>微信尾号</th><th>状态</th><th>首次登录</th><th>最近登录</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 用户行为 -->
+    <div id="view-analytics" style="display:none">
+      <div class="msg" id="aMsg"></div>
+      <div class="an-toolbar">
+        最近
+        <select id="aDays">
+          <option value="7">7 天</option>
+          <option value="30" selected>30 天</option>
+          <option value="90">90 天</option>
+        </select>
+        <span id="aMeta" class="muted"></span>
+      </div>
+      <div id="aBody"></div>
     </div>
   </div>
 

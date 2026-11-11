@@ -114,6 +114,7 @@ var sentence = {
     s.llm = false; s.llmReason = ''; s.judging = false;
     s.correct = normSentence(s.input) === normSentence(s.answer);
     this.renderItem(i);
+    app.track('grade_sentence');
     // 字面一致就到此为止：0 延迟、不依赖外网，绝大多数句子走这条路。
     // 只有字面不一致才问模型 —— 每天最多 32 句（20 原文 + 12 回炉变形句），
     // 成本和延迟都无所谓。
@@ -444,6 +445,7 @@ var sentence = {
   send: function (rs) {
     var self = this;
     el('sentenceCommit').disabled = true;
+    app.track('commit_sentence');
     app.api('/api/record', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

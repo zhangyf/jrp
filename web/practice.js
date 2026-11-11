@@ -206,6 +206,7 @@ var practice = {
     }
     var typed = String(el('wInput').value).trim();
     var ok = gradeAnswer(typed, w.word, app.mode());
+    app.track('grade_practice');
 
     // 只记首次作答
     if (!(w.number in this.results)) {
@@ -357,6 +358,7 @@ var practice = {
     var self = this;
     var btn = el('practiceCommitCard');
     btn.disabled = true;
+    app.track('commit_practice');
     app.api('/api/record', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

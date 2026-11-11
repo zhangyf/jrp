@@ -67,6 +67,7 @@ var knowledge = {
     var self = this;
     this.cur = n;
     localStorage.setItem('jrp_kb_lesson', String(n));
+    app.track('kb_lesson');
     el('kbBody').innerHTML = '<p class="muted">加载中…</p>';
     this.msg('');
     app.api('/api/knowledge?lesson=' + n).then(function (d) {

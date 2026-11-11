@@ -121,6 +121,10 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 	mux.HandleFunc("/api/admin/users", srv.withAdmin(srv.handleAdminUsers))
 	mux.HandleFunc("/api/admin/user", srv.withAdmin(srv.handleAdminUser))
 
+	// 用户行为埋点：上报走 withUser（谁都能报自己的行为），报表走 withAdmin（只有 owner 看全站）。
+	mux.HandleFunc("/api/event", srv.withUser(srv.handleEvent))
+	mux.HandleFunc("/api/analytics", srv.withAdmin(srv.handleAnalytics))
+
 	listen := fmt.Sprintf("%s:%d", *addr, *port)
 	authNote := "（无鉴权，仅本机）"
 	if srv.token != "" {
