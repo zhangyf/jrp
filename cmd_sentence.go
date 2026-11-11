@@ -422,6 +422,7 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 	limit := fs.Int("limit", 50, "最多列出多少个待补词（0 = 全部）")
 	nproto := fs.Int("protos", 3, "每个词推荐几条原型句骨架")
 	withPending := fs.Bool("pending", false, "连「在路上」（正确率够但还没闲置满）的词一起列")
+	withCovered := fs.Bool("all", false, "连「已有变形句」的合格词一起列（整体重建回炉库时用）")
 	_ = fs.Parse(cmdArgs)
 
 	storage, err := NewStorage(lang)
@@ -505,7 +506,9 @@ func runSentenceReviewTodo(fs *flag.FlagSet, lang string) {
 				qualifiedTotal++
 				if covered[w.Word] {
 					coveredCount++
-					break
+					if !*withCovered {
+						break
+					}
 				}
 				it.Protos = sentence.ProtoList(sentence.PickPrototypes(byLesson, ln, *nproto, pos))
 				qualified = append(qualified, it)
