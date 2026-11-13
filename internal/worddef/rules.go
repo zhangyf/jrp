@@ -15,17 +15,22 @@ type Item struct {
 	Input string `json:"input"` // 老师原来打的
 	Word  string `json:"word"`  // 建议录进去的（补了汉字）
 	Def   string `json:"def"`   // 中文释义
+	Pos   string `json:"pos"`   // 词性大类（模型判，2026-11-13 起用于自动填词性）
+	Sub   string `json:"sub"`   // 细分：动词一类/二类/三类、形容词い形/な形
 }
 
-// LLMItem 模型返回的一行：word 原样 + kanji 汉字 + def 释义。
+// LLMItem 模型返回的一行：word 原样 + kanji 汉字 + def 释义 + pos/sub 词性。
 type LLMItem struct {
 	Word  string `json:"word"`
 	Kanji string `json:"kanji"`
 	Def   string `json:"def"`
+	Pos   string `json:"pos"`
+	Sub   string `json:"sub"`
 }
 
 // Prompt 是查释义模板。要求补汉字这一条不能丢（老师 2026-10-21 发现没补汉字）。
-const Prompt = `你是日语词典。给下面这些日语词条补上汉字写法和中文释义。
+// pos/sub 是 2026-11-13 老师要的：手动录入的词别再「没词性」，录入时顺手让模型判了。
+const Prompt = `你是日语词典。给下面这些日语词条补上汉字写法、中文释义和词性。
 
 词条：
 {words}
@@ -35,10 +40,16 @@ const Prompt = `你是日语词典。给下面这些日语词条补上汉字写�
 2. def 填中文意思：只给这个词本身的意思，不要例句、不要读音、不要词性说明；
    意思不止一个时用顿号并列最常见的两三个。
 3. 动词、形容词给基本形的意思。
-4. word 原样返回词条，不要改动。
+4. pos 填词性大类，只能取这些值之一：名词 / 专有名词 / 代词 / 疑问词 / 副词 /
+   助词 / 连体词 / 连词 / 感叹词 / 寒暄语 / 表达 / 慣用 / 动词 / 形容词。
+5. sub 填细分：动词填「一类 / 二类 / 三类」（五段 / 一段 / サ変カ変），
+   形容词填「い形 / な形」；其他词性填空字符串。
+6. word 原样返回词条，不要改动。
 
 只输出一行 JSON 数组，不要解释、不要代码块：
-[{"word": "みず", "kanji": "水", "def": "水"}, {"word": "さん", "kanji": "", "def": "先生、女士等称呼"}]`
+[{"word":"みず","kanji":"水","def":"水","pos":"名词","sub":""},
+ {"word":"かきます","kanji":"書きます","def":"写","pos":"动词","sub":"一类"},
+ {"word":"たかい","kanji":"高い","def":"高","pos":"形容词","sub":"い形"}]`
 
 // FillPrompt 把词条列表填进模板的 {words} 占位符。
 func FillPrompt(tpl string, words []string) string {

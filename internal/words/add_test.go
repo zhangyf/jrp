@@ -237,3 +237,122 @@ func TestAddPropagatesStoreErrors(t *testing.T) {
 		t.Errorf("UploadArchive 错误没按旧口径包装：%v", err)
 	}
 }
+
+// fakeMetaStore 是 MetaStore 的内存实现，用于断言词性表写回。
+type fakeMetaStore struct {
+	meta     *WordMeta
+	dlErr    error
+	upErr    error
+	uploads  int
+	lastMeta *WordMeta
+}
+
+func (f *fakeMetaStore) DownloadWordMeta(_ context.Context) (*WordMeta, error) {
+	if f.dlErr != nil {
+		return nil, f.dlErr
+	}
+	if f.meta == nil {
+		return &WordMeta{Items: map[string]WordPOS{}}, nil
+	}
+	return f.meta, nil
+}
+
+func (f *fakeMetaStore) UploadWordMeta(_ context.Context, m *WordMeta) error {
+	if f.upErr != nil {
+		return f.upErr
+	}
+	f.uploads++
+	f.lastMeta = m
+	return nil
+}
+
+func testParamsMeta(meta MetaStore, items ...WordToAdd) Params {
+	p := testParams(items...)
+	p.Meta = meta
+	return p
+}
+
+// 带词性的新词：Add 后词性表要有对应条目，圆级按老师 2026-11-13 的规则自动定。
+func TestAddWritesWordMeta(t *testing.T) {
+	arc := newTestStore()
+	meta := &fakeMetaStore{}
+	p := testParamsMeta(meta,
+		WordToAdd{Word: "かきます(書きます)", Definition: "写", Pos: "动词", Sub: "一类"},
+		WordToAdd{Word: "たかい(高い)", Definition: "高", Pos: "形容词", Sub: "い形"},
+		WordToAdd{Word: "ゆっくり", Definition: "慢慢地", Pos: "副词"},
+		WordToAdd{Word: "げんかん(玄関)", Definition: "玄关", Pos: "名词"},
+	)
+
+	out, err := Add(context.Background(), arc, p)
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if out.Added != 4 || len(out.AddedWords) != 4 {
+		t.Fatalf("Added/AddedWords = %d/%d, want 4/4", out.Added, len(out.AddedWords))
+	}
+	if meta.uploads != 1 {
+		t.Fatalf("词性表应写一次，实际 %d 次", meta.uploads)
+	}
+	m := meta.lastMeta
+	if m == nil {
+		t.Fatal("lastMeta 为 nil")
+	}
+	cases := map[string]struct{ pos, sub, circle string }{
+		"かきます(書きます)": {"动词", "一类", "三圆"},
+		"たかい(高い)":    {"形容词", "い形", "二圆"},
+		"ゆっくり":       {"副词", "", "二圆"},
+		"げんかん(玄関)":   {"名词", "", ""},
+	}
+	for w, want := range cases {
+		got, ok := m.Items[w]
+		if !ok {
+			t.Errorf("词性表缺 %q", w)
+			continue
+		}
+		if got.Pos != want.pos || got.Sub != want.sub || got.Circle != want.circle {
+			t.Errorf("%q = %+v, want pos=%q sub=%q circle=%q", w, got, want.pos, want.sub, want.circle)
+		}
+	}
+	if m.Updated != "2026-11-04" {
+		t.Errorf("Updated = %q, want 2026-11-04", m.Updated)
+	}
+}
+
+// 没带词性的词：不下载不写词性表。
+func TestAddNoPosSkipsWordMeta(t *testing.T) {
+	arc := newTestStore()
+	meta := &fakeMetaStore{}
+	if _, err := Add(context.Background(), arc, testParamsMeta(meta, WordToAdd{Word: "あめ(雨)", Definition: "雨"})); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if meta.uploads != 0 {
+		t.Errorf("没带词性不该写词性表，写了 %d 次", meta.uploads)
+	}
+}
+
+// Meta 为 nil（CLI 批量导入）：即便带了 pos 也不写，行为跟以前一样。
+func TestAddMetaNilSkipsWordMeta(t *testing.T) {
+	arc := newTestStore()
+	p := testParams(WordToAdd{Word: "あめ(雨)", Definition: "雨", Pos: "名词"}) // Meta 留 nil
+	if _, err := Add(context.Background(), arc, p); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	// 没有 MetaStore 可断言 —— 只要不 panic、不出错，就说明 nil 分支走对了。
+}
+
+// 词性表已有别的词，写新词不能冲掉旧条目（读-改-写整份覆盖）。
+func TestAddWordMetaPreservesExisting(t *testing.T) {
+	arc := newTestStore()
+	meta := &fakeMetaStore{meta: &WordMeta{Items: map[string]WordPOS{
+		"とおります(通ります)": {Pos: "动词", Sub: "一类", Circle: "三圆", Note: "空间上从某处穿过"},
+	}}}
+	p := testParamsMeta(meta, WordToAdd{Word: "かきます(書きます)", Definition: "写", Pos: "动词", Sub: "一类"})
+
+	if _, err := Add(context.Background(), arc, p); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	old, ok := meta.lastMeta.Items["とおります(通ります)"]
+	if !ok || old.Note != "空间上从某处穿过" || old.Circle != "三圆" {
+		t.Errorf("已有词条被冲掉了：%+v", old)
+	}
+}

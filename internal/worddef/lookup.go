@@ -64,6 +64,8 @@ func Lookup(ctx context.Context, store ArchiveStore, caller Caller, lang string,
 				it := Item{Input: w, Word: w}
 				if g, ok := byWord[w]; ok {
 					it.Def = strings.TrimSpace(g.Def)
+					it.Pos = strings.TrimSpace(g.Pos)
+					it.Sub = strings.TrimSpace(g.Sub)
 					// 汉字补进半角括号 —— 半角括号在档案里的含义就是「汉字写法」
 					if k := strings.TrimSpace(g.Kanji); k != "" && !HasParen(w) {
 						it.Word = w + "(" + k + ")"

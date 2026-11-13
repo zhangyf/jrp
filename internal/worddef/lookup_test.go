@@ -237,6 +237,41 @@ func TestLookupBlankDefinitionGoesToModel(t *testing.T) {
 	}
 }
 
+// 模型回答带了 pos/sub，要原样带出来（2026-11-13 起用于自动填词性）。
+func TestLookupModelReturnsPosSub(t *testing.T) {
+	arc := &fakeArchive{text: testArchive(nil)}
+	caller := &fakeCaller{
+		reply: `[{"word":"かきます","kanji":"書きます","def":"写","pos":"动词","sub":"一类"},` +
+			`{"word":"たかい","kanji":"高い","def":"高","pos":"形容词","sub":"い形"},` +
+			`{"word":"げんかん","kanji":"玄関","def":"玄关","pos":"名词","sub":""}]`,
+		model: "primary",
+	}
+
+	got, _ := Lookup(context.Background(), arc, caller, "ja",
+		[]string{"かきます", "たかい", "げんかん"})
+
+	assertItems(t, got, []Item{
+		{Input: "かきます", Word: "かきます(書きます)", Def: "写", Pos: "动词", Sub: "一类"},
+		{Input: "たかい", Word: "たかい(高い)", Def: "高", Pos: "形容词", Sub: "い形"},
+		{Input: "げんかん", Word: "げんかん(玄関)", Def: "玄关", Pos: "名词", Sub: ""},
+	})
+}
+
+// 档案命中的词不调模型，词性/细分也不会有（词已存在，录入会被去重跳过）。
+func TestLookupArchiveHitLeavesPosBlank(t *testing.T) {
+	arc := &fakeArchive{text: testArchive([]review.WordGroup{{Title: "第1课", Words: []review.Word{
+		{Word: "げんかん(玄関)", Definition: "玄关"},
+	}}})}
+	caller := &fakeCaller{}
+
+	got, _ := Lookup(context.Background(), arc, caller, "ja", []string{"げんかん"})
+
+	assertItems(t, got, []Item{{Input: "げんかん", Word: "げんかん(玄関)", Def: "玄关"}})
+	if caller.calls != 0 {
+		t.Errorf("档案命中不该调模型，调了 %d 次", caller.calls)
+	}
+}
+
 // prompt 只带 todo 词，且模板里 {words} 已替换。
 func TestLookupPromptOnlyCarriesTodo(t *testing.T) {
 	arc := &fakeArchive{text: testArchive([]review.WordGroup{{Title: "第1课", Words: []review.Word{

@@ -41,5 +41,7 @@ func addWordsToArchive(ctx context.Context, st *Storage, group string, items []W
 		// 时钟传函数而非提前取值：用例在「读档之后、added>0 时」才求值，
 		// 精确还原旧实现里 today := time.Now() 的时点，跨午夜边界不挪位。
 		Now: time.Now,
+		// 手动录入的词带词性时，顺手写进 word_meta.json（2026-11-13）。
+		Meta: st,
 	})
 }

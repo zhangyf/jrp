@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/zhangyf/jrp/internal/archive"
 	"github.com/zhangyf/jrp/internal/review"
@@ -33,7 +34,52 @@ func Add(ctx context.Context, store ArchiveStore, p Params) (*AddWordsOutcome, e
 			return nil, fmt.Errorf("上传新档案失败：%w", err)
 		}
 	}
+
+	// 顺手写词性表（2026-11-13）：新增词带了词性才写；Meta 为 nil（CLI 批量导入）
+	// 或这批词都没带词性，就不碰 word_meta.json。
+	if p.Meta != nil {
+		if err := writeWordMeta(ctx, p.Meta, out.AddedWords, p.Now()); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
+}
+
+// writeWordMeta 把这次新增词的词性 / 细分 / 圆级并进 word_meta.json。
+// 没有带词性的词就直接返回 —— 不下载不写，省一次 COS 往返。
+// 圆级按老师 2026-11-13 的规则自动定：动词→三圆、形容词/副词→二圆、其余不标。
+// 只改这些新词的条目，已有的词性表其它内容原样保留（读-改-写整份覆盖）。
+func writeWordMeta(ctx context.Context, meta MetaStore, added []AddedWord, now time.Time) error {
+	var pending []AddedWord
+	for _, w := range added {
+		if strings.TrimSpace(w.Pos) != "" {
+			pending = append(pending, w)
+		}
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+
+	m, err := meta.DownloadWordMeta(ctx)
+	if err != nil {
+		// 读不到（没建过 / COS 抖动）就当空表，别因为补词性把整个录入搞挂。
+		m = &WordMeta{Items: map[string]WordPOS{}}
+	}
+	if m.Items == nil {
+		m.Items = map[string]WordPOS{}
+	}
+	for _, w := range pending {
+		p := m.Items[w.Word]
+		p.Pos = w.Pos
+		p.Sub = w.Sub
+		p.Circle = CircleByPos(w.Pos)
+		m.Items[w.Word] = p
+	}
+	m.Updated = now.Format("2006-01-02")
+	if err := meta.UploadWordMeta(ctx, m); err != nil {
+		return fmt.Errorf("上传词性表失败：%w", err)
+	}
+	return nil
 }
 
 // applyTo 是纯规则核心：把 words 并进 group（没有就新建），算出去重/撞车/版本/结果，
@@ -64,6 +110,8 @@ func applyTo(arc *archive.Archive, oldFilename string, p Params) (*AddWordsOutco
 	for _, w := range p.Items {
 		w.Word = strings.TrimSpace(w.Word)
 		w.Definition = strings.TrimSpace(w.Definition)
+		w.Pos = strings.TrimSpace(w.Pos)
+		w.Sub = strings.TrimSpace(w.Sub)
 		if w.Word == "" || seen[w.Word] {
 			continue
 		}
@@ -73,6 +121,7 @@ func applyTo(arc *archive.Archive, oldFilename string, p Params) (*AddWordsOutco
 
 	var dupDefs, dupCores []string
 	added, duplicates := 0, 0
+	var addedWords []AddedWord
 	for _, w := range deduped {
 		if existing, _ := review.FindWord(arc.Groups, w.Word); existing != nil {
 			duplicates++
@@ -91,6 +140,7 @@ func applyTo(arc *archive.Archive, oldFilename string, p Params) (*AddWordsOutco
 			Definition: w.Definition,
 			Status:     "🔄待测试",
 		})
+		addedWords = append(addedWords, AddedWord{Word: w.Word, Pos: w.Pos, Sub: w.Sub})
 		added++
 	}
 
@@ -124,6 +174,6 @@ func applyTo(arc *archive.Archive, oldFilename string, p Params) (*AddWordsOutco
 		Added: added, Duplicates: duplicates, OldFilename: oldFilename,
 		NewFilename: newFilename, Version: fmt.Sprintf("v%d.%d", newMajor, newMinor),
 		MajorBump: needMajorBump, TotalWords: review.CountAllWords(arc.Groups),
-		DupDefs: dupDefs, DupCores: dupCores,
+		DupDefs: dupDefs, DupCores: dupCores, AddedWords: addedWords,
 	}, &pendingWrite{filename: newFilename, data: data}
 }

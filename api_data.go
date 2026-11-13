@@ -461,6 +461,8 @@ func (s *server) handleAddWords(w http.ResponseWriter, r *http.Request, st *Stor
 		Items []struct {
 			Word string `json:"word"`
 			Def  string `json:"def"`
+			Pos  string `json:"pos"` // 词性大类（录入页查词时模型判的，可选）
+			Sub  string `json:"sub"` // 细分（动词一类/二类、形容词い形/な形，可选）
 		} `json:"items"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -484,7 +486,7 @@ func (s *server) handleAddWords(w http.ResponseWriter, r *http.Request, st *Stor
 
 	items := make([]WordToAdd, 0, len(body.Items))
 	for _, it := range body.Items {
-		items = append(items, WordToAdd{Word: it.Word, Definition: it.Def})
+		items = append(items, WordToAdd{Word: it.Word, Definition: it.Def, Pos: it.Pos, Sub: it.Sub})
 	}
 
 	res, err := addWordsToArchive(s.ctx(), st, body.Group, items, false)
