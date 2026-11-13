@@ -461,8 +461,6 @@ func (s *server) handleAddWords(w http.ResponseWriter, r *http.Request, st *Stor
 		Items []struct {
 			Word string `json:"word"`
 			Def  string `json:"def"`
-			Pos  string `json:"pos"` // 词性大类（录入页查词时模型判的，可选）
-			Sub  string `json:"sub"` // 细分（动词一类/二类、形容词い形/な形，可选）
 		} `json:"items"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -484,9 +482,28 @@ func (s *server) handleAddWords(w http.ResponseWriter, r *http.Request, st *Stor
 		return
 	}
 
+	// 词性服务端自己查（2026-11-13 老师纠正：小程序只是展示端，不该当数据搬运工）。
+	// 复用 /api/word-def 同一份 Lookup，保证展示的词性和存进词库的一致。
+	// Lookup 先查档案再问模型：正要录的新词不在档案里，所以真正问模型的只有这批新词。
+	words := make([]string, 0, len(body.Items))
+	for _, it := range body.Items {
+		words = append(words, it.Word)
+	}
+	posByWord := map[string]WordDefItem{}
+	if defs, _ := s.lookupWordDefs(st, words); defs != nil {
+		for _, d := range defs {
+			posByWord[d.Input] = d
+		}
+	}
+
 	items := make([]WordToAdd, 0, len(body.Items))
 	for _, it := range body.Items {
-		items = append(items, WordToAdd{Word: it.Word, Definition: it.Def, Pos: it.Pos, Sub: it.Sub})
+		w := WordToAdd{Word: it.Word, Definition: it.Def}
+		if d, ok := posByWord[it.Word]; ok {
+			w.Pos = d.Pos
+			w.Sub = d.Sub
+		}
+		items = append(items, w)
 	}
 
 	res, err := addWordsToArchive(s.ctx(), st, body.Group, items, false)

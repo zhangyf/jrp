@@ -339,8 +339,6 @@ Page({
         const got = map[p.word];
         if (!got) return;
         if (!p.def) p.def = got.def;
-        if (!p.pos) p.pos = got.pos;
-        if (!p.sub) p.sub = got.sub;
         if (got.word && !hasParen(p.word)) p.word = got.word;
       });
       self.setData({ looking: false, shots: [], candCount: 0 });
@@ -361,31 +359,21 @@ Page({
     items.forEach((p) => {
       if (seen[p.word]) return;
       seen[p.word] = 1;
-      merged.push({
-        word: p.word,
-        def: p.def || '',
-        pos: p.pos || '',
-        sub: p.sub || '',
-        editing: !p.def
-      });
+      merged.push({ word: p.word, def: p.def || '', editing: !p.def });
     });
     this.setData({ pending: merged });
   },
 
   // 查中文 + 补汉字：先档案后模型，全在服务端（保证跟复习时看到的是同一份）。
-  // 回调拿到的是 { 原输入: { word: 建议词形, def: 中文, pos: 词性, sub: 细分 } }
+  // 词性不在这里查 —— 提交时服务端自己查自己存（小程序只是展示端）。
+  // 回调拿到的是 { 原输入: { word: 建议词形, def: 中文 } }
   lookup(words, cb) {
     const self = this;
     app.request('/api/word-def', 'POST', { words: words }, true)
       .then((r) => {
         const map = {};
         (r.items || []).forEach((it) => {
-          map[it.input] = {
-            word: it.word || it.input,
-            def: it.def || '',
-            pos: it.pos || '',
-            sub: it.sub || ''
-          };
+          map[it.input] = { word: it.word || it.input, def: it.def || '' };
         });
         cb(map);
       })
@@ -419,7 +407,7 @@ Page({
   },
 
   doSubmit() {
-    const items = this.data.pending.map((p) => ({ word: p.word, def: p.def, pos: p.pos, sub: p.sub }));
+    const items = this.data.pending.map((p) => ({ word: p.word, def: p.def }));
     this.setData({ saving: true });
     app.request('/api/words', 'POST', { items: items }, true)
       .then((r) => {
