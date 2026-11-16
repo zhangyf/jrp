@@ -149,6 +149,7 @@ var hard = {
     }
     var typed = String(el('hInput').value).trim();
     var ok = gradeAnswer(typed, w.word, app.mode());
+    app.track('grade_hard');
     if (!(w.number in this.results)) {
       this.results[w.number] = ok;
       if (ok) delete this.unknowns[w.number];
@@ -292,6 +293,7 @@ var hard = {
     var self = this;
     var btn = el('hardCommitCard');
     btn.disabled = true;
+    app.track('commit_hard');
     app.api('/api/record', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

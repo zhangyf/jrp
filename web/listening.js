@@ -107,6 +107,7 @@ var listening = {
       self.active = -1;
       self.curLevel = self.cur;
       self.renderPlayer(d.video_url, d.note);
+      app.track('listen_play');
     }).catch(function (e) {
       el('lsBody').innerHTML = '<button class="ghost" id="lsBack">← 返回列表</button>' +
         '<p class="muted">加载失败：' + esc(e.message || '') + '</p>';

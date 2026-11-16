@@ -93,6 +93,7 @@ var search = {
   run: function (q) {
     var self = this;
     if (!q) { this.hide(); return; }
+    app.track('search');
     var my = ++this.seq;
     var panel = el('gsearchPanel');
     panel.innerHTML = '<div class="gsearch-loading">搜索中…</div>';

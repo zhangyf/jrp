@@ -121,6 +121,7 @@ var conj = {
 
   grade: function () {
     var self = this;
+    app.track('grade_conj');
     var vals = this.values();
     var ok = 0, bad = 0, blank = 0;
 

@@ -178,6 +178,7 @@ function ListPractice(opts) {
 
   // --- 对答案：统一判分 ---
   self.gradeAll = function () {
+    var first = !self.graded;   // 只有第一次点「对答案」才算一次判分动作（regrade 不算）
     var mode = app.mode();
     // graded 必须先置位再渲染 —— renderResult 里 !graded 会把答案区清空
     // （防提前泄答案是给「判分前」用的）。放在循环后面的话，第一次点
@@ -200,6 +201,7 @@ function ListPractice(opts) {
 
     self.o.gradeBtn.textContent = '重新判分';
     self.refreshSummary();
+    if (first) app.track(self.o.hard ? 'grade_hard' : 'grade_practice');
   };
 
   // 汇总文案 + 回写按钮显隐。一处算，改判/标不会后都调这个。
@@ -374,6 +376,7 @@ function ListPractice(opts) {
   self.sendRecord = function (wr) {
     var o = self.o;
     o.commitBtn.disabled = true;
+    app.track(o.hard ? 'commit_hard' : 'commit_practice');
     app.api('/api/record', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

@@ -116,6 +116,8 @@ var app = {
 
   go: function (page) {
     this.page = page;
+    // 埋点：板块切换（进入新板块前先结算上一个板块的停留时长，见 track.js）
+    if (window.__jrpTrack) window.__jrpTrack.enter(page);
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
       b.classList.toggle('active', b.dataset.page === page);
     });
@@ -166,6 +168,11 @@ var app = {
   mode: function () { return document.getElementById('gradeMode').value; },
 
   view: function () { return document.getElementById('viewMode').value; },
+
+  // 埋核心动作（判分 / 回写 / 播放 / 搜索…）。挂了 track.js 才记，没挂静默跳过。
+  track: function (act) {
+    if (window.__jrpTrack) window.__jrpTrack.action(act);
+  },
 
   // 切判分档位后，把当前页面上「还没提交」的判定重算一遍。
   // 离线回填和练习列表都是「看过答案还没落库」的状态，必须跟着档位变。
