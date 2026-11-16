@@ -38,6 +38,21 @@ func LessonOfGroup(title string) int {
 	return n
 }
 
+// CircleByPos 手动录入词的圆级规则（老师 2026-11-13 定）：
+// 动词→三圆、形容词→二圆、副词→二圆；其他词性（名词/连体词/助词…）→空串。
+// 空串 = 手册里没收录 / 不套这个简单规则，词表里那格就空着。
+// 老写法（动/形/副）也认，跟 miniprogram/utils/pos.js 的 POS_ALIAS 同一套归一口径。
+func CircleByPos(pos string) string {
+	switch strings.TrimSpace(pos) {
+	case "动词", "动":
+		return "三圆"
+	case "形容词", "形", "副词", "副":
+		return "二圆"
+	default:
+		return ""
+	}
+}
+
 // CircleMap 摊出「词形 -> 圆级」（三圆 / 二圆 / 一圆），供造句子挑句时加权。
 //
 // 拿不到词性表（读失败 / 一条都没标）返回 nil —— 调用方按「不分层」处理，

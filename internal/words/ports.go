@@ -18,3 +18,11 @@ type ArchiveStore interface {
 	// UploadArchive 写回一份新档案。dryRun 由实现方内部处理，用例不感知。
 	UploadArchive(ctx context.Context, filename string, data []byte) error
 }
+
+// MetaStore 是「录生词顺手写词性表」需要的词性表 IO 能力（2026-11-13）。
+// *Storage 天然满足；单测传内存 fake。Params.Meta 为 nil 时跳过写词性表，
+// CLI 批量导入这类不判词性的入口不受影响。
+type MetaStore interface {
+	DownloadWordMeta(ctx context.Context) (*WordMeta, error)
+	UploadWordMeta(ctx context.Context, meta *WordMeta) error
+}

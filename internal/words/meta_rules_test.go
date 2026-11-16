@@ -5,6 +5,33 @@ import (
 	"testing"
 )
 
+func TestCircleByPos(t *testing.T) {
+	cases := []struct {
+		name string
+		pos  string
+		want string
+	}{
+		{"动词三圆", "动词", "三圆"},
+		{"形容词二圆", "形容词", "二圆"},
+		{"副词二圆", "副词", "二圆"},
+		{"名词留空", "名词", ""},
+		{"连体词留空", "连体词", ""},
+		{"助词留空", "助词", ""},
+		{"空串留空", "", ""},
+		{"带空白 trim 后动词", " 动词 ", "三圆"},
+		{"老写法动", "动", "三圆"},
+		{"老写法形", "形", "二圆"},
+		{"老写法副", "副", "二圆"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := CircleByPos(c.pos); got != c.want {
+				t.Errorf("CircleByPos(%q) = %q, want %q", c.pos, got, c.want)
+			}
+		})
+	}
+}
+
 func TestCircleGroupOf(t *testing.T) {
 	cases := []struct {
 		name string
