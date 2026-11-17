@@ -32,6 +32,8 @@ var hard = {
       tomorrow: el('hardTomorrowBox'),
       hard: true,
       draftMode: 'hard',
+      // 部分提交后自动重拉当天 plan，接着练没写的词（统一分多次练习逻辑）
+      onContinue: function () { hard.load(); },
       // 与练习页同一张回看卡（renderReviewCard，见 app.js）
       reviewBox: el('hardListReview'),
       reviewBtnId: 'hardListRequeue'
@@ -68,29 +70,18 @@ var hard = {
     el('hardTomorrowBox').innerHTML = '';
     el('hardSummary').innerHTML = '<span class="chip muted">加载中…</span>';
 
-    // 钉子户不做到期过滤，/api/hard 每次都返回同一批词。
-    // 所以先查今天有没有已回写的快照：有的话直接只读回看 —— 否则老师会
-    // 不知不觉把同一批词再练一遍，一回写就是二次改档案（间隔被改两次）。
-    var first = app.view() === 'list'
-      ? app.api('/api/review?mode=hard')
-      : Promise.resolve({ review: null });
-
-    first.then(function (rd) {
-      if (rd && rd.review && rd.review.items && rd.review.items.length) {
-        self.renderReview(rd.review);
-        return null;   // 后面的 then 收到 null 就什么都不做
-      }
-      return app.api('/api/hard');
-    }).then(function (d) {
-      if (!d) return;
+    // 三种模式统一：直接拉当天 plan。服务端把 plan 锁在当天，提交一批就
+    // 剪掉那几个词，没写的留在 plan 里、题号不变。
+    // ⚠️ 这里过去是「先查快照，有快照就整页只读回看」——那正是部分提交后
+    // 剩下的词不能再写的根因：根本没去拉 plan。现在只有 plan 真的空了
+    // （当天全交完）才进回看，见 showReview。
+    app.api('/api/hard').then(function (d) {
       self.date = d.date;
       self.words = d.words || [];
       self.submitted = {};   // 新一轮，回写记录清零
       self.answers = {};
       if (!self.words.length) {
-        el('hardSummary').innerHTML =
-          '<span class="chip">没有钉子户（正确率 &lt; ' + d.min_accuracy +
-          ' 且复习 ≥ ' + d.min_reviews + ' 次才算）</span>';
+        self.showReview(d);
         return;
       }
       renderSummary(el('hardSummary'), [
@@ -107,6 +98,25 @@ var hard = {
       self.startCard();
     }).catch(function (e) {
       el('hardSummary').innerHTML = '<span class="chip warn">' + esc(e.message) + '</span>';
+    });
+  },
+
+  // 当天 plan 已空的落脚点。服务端全交完时保留一份空 plan（不删），
+  // 所以「空」= 今天这轮练完了，不是「没有钉子户」。有快照就只读回看，
+  // 连快照都没有（新账号 / 真一个钉子户都没有）才显示空态。
+  // 列表和卡片两种视图都走这里：list.render() 自己会把列表显示出来，
+  // 回看本来就是一屏清单，卡片模式不需要另外画一张卡。
+  showReview: function (d) {
+    var self = this;
+    app.api('/api/review?mode=hard').then(function (rd) {
+      var r = rd && rd.review;
+      if (r && r.items && r.items.length) { self.renderReview(r); return; }
+      el('hardSummary').innerHTML =
+        '<span class="chip">没有钉子户（正确率 &lt; ' +
+        ((d && d.min_accuracy) || 0.6) + ' 且复习 ≥ ' +
+        ((d && d.min_reviews) || 3) + ' 次才算）</span>';
+    }).catch(function () {
+      el('hardSummary').innerHTML = '<span class="chip">没有钉子户</span>';
     });
   },
 
@@ -309,14 +319,21 @@ var hard = {
       wr.forEach(function (r) { self.submitted[r.number] = true; });
       var w = d.words || {};
       var left = self.words.length - Object.keys(self.submitted).length;
+      var remaining = (d.words_remaining == null) ? left : d.words_remaining;
       el('hardCommitResult').className = 'feedback ok';
       el('hardCommitResult').textContent =
         '已回写：正确 ' + (w.correct || 0) + '，错误 ' + (w.wrong || 0) +
         (w.not_found ? '，未匹配 ' + w.not_found : '') +
         '，档案 ' + (w.version || '') +
-        (left > 0 ? '　还剩 ' + left + ' 个没练，接着练完再点一次提交即可' : '');
-      self.reloadCardReview();
+        (remaining > 0 ? '　还剩 ' + remaining + ' 个没练，已自动接着练' : '');
       app.toast('钉子户结果已回写');
+      // 还有没练的词 → 自动重拉当天 plan（服务端已剪掉提交过的题）。
+      // 全交完时 plan 为空，load() 会自己进只读回看。
+      if (remaining > 0) {
+        setTimeout(function () { self.load(); }, 600);
+        return;
+      }
+      self.reloadCardReview();
     }).catch(function (e) {
       btn.disabled = false;
       el('hardCommitResult').className = 'feedback no';

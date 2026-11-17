@@ -107,9 +107,10 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request, st *Storage)
 		}
 	}
 
+	dateStr := targetDate.Format("2006-01-02")
 	out := map[string]interface{}{
 		"success":   true,
-		"date":      targetDate.Format("2006-01-02"),
+		"date":      dateStr,
 		"mode":      mode,
 		"read_only": readOnly,
 		"dry_run":   s.dryRun,
@@ -128,14 +129,27 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request, st *Storage)
 		out["sentences"] = plan.Sentences
 
 	default:
-		duePlan := plan.BuildDuePlan(arc, s.lang, targetDate, words.HoldSet(dueHold(ctx, st)))
+		// 当天锁定：只要 COS 上已经有这天的 plan（哪怕已被剪成空的），就原样
+		// 返回，不再重算出题。以前每次 GET 都 BuildDuePlan 覆盖一遍，题号会随
+		// 档案变化重新编，草稿和「没写的词」全对不上。换新一批只发生在第二天。
+		// 未来日期（明日预告）是纯计算，既不读也不写。
+		var duePlan *ReviewPlan
 		if !readOnly {
-			// plan JSON 供 /api/record 把序号映射回词
-			if err := st.UploadPlan(ctx, duePlan); err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-					"success": false, "error": fmt.Sprintf("upload plan: %v", err),
-				})
-				return
+			if old, err := st.DownloadPlan(ctx, dateStr); err == nil &&
+				plan.WordPlanLocked(old, dateStr) {
+				duePlan = old
+			}
+		}
+		if duePlan == nil {
+			duePlan = plan.BuildDuePlan(arc, s.lang, targetDate, words.HoldSet(dueHold(ctx, st)))
+			if !readOnly {
+				// plan JSON 供 /api/record 把序号映射回词
+				if err := st.UploadPlan(ctx, duePlan); err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+						"success": false, "error": fmt.Sprintf("upload plan: %v", err),
+					})
+					return
+				}
 			}
 		}
 		// 词性 / 备注只在这里 join 给前端显示，不写进 plan 存档
@@ -180,26 +194,48 @@ func (s *server) handleHard(w http.ResponseWriter, r *http.Request, st *Storage)
 		return
 	}
 
-	plan := plan.BuildHardPlan(arc, s.lang, targetDate, minAcc, minRev)
-	// 未来日期不写：避免污染 hard plan 之外，也避免无谓的写
-	if !targetDate.After(time.Now()) {
-		if err := st.UploadHardPlan(ctx, plan); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-				"success": false, "error": fmt.Sprintf("upload hard plan: %v", err),
-			})
-			return
+	dateStr := targetDate.Format("2006-01-02")
+	// 跟 /api/plan 用同一个 readOnly 口径：今天 / 过去都写，未来预告不写。
+	// 原来是 targetDate.After(time.Now())，但 parseDateParam 给的是 UTC 午夜、
+	// time.Now() 是本地时刻 —— 北京时间凌晨 0~8 点「今天」会被误判成未来，
+	// hard plan 不落盘，随后 /api/record 按题号映射就会全部 not_found。
+	today := time.Now()
+	readOnly := !archive.SameDay(targetDate, today) && targetDate.After(today)
+	writable := !readOnly
+
+	// 当天锁定对钉子户尤其要紧：BuildHardPlan 是全量普查、不做 IsDue 过滤，
+	// 每次重算都是同一批词。不锁的话老师提交一批后一刷新，刚练完的词又回来了，
+	// 再提交一次就是同一天二次改档案（间隔和 LastReview 各改两遍）。
+	// 全交完时留一份空 plan 当「今天已出过题」的标记，见 WordPlanLocked。
+	var hardPlan *ReviewPlan
+	if writable {
+		if old, err := st.DownloadHardPlan(ctx, dateStr); err == nil &&
+			plan.WordPlanLocked(old, dateStr) {
+			hardPlan = old
+		}
+	}
+	if hardPlan == nil {
+		hardPlan = plan.BuildHardPlan(arc, s.lang, targetDate, minAcc, minRev)
+		if writable {
+			if err := st.UploadHardPlan(ctx, hardPlan); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+					"success": false, "error": fmt.Sprintf("upload hard plan: %v", err),
+				})
+				return
+			}
 		}
 	}
 
-	s.enrichWordMeta(ctx, st, plan.Words)
+	s.enrichWordMeta(ctx, st, hardPlan.Words)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success":      true,
-		"date":         plan.Date,
-		"hard_count":   len(plan.Words),
+		"date":         hardPlan.Date,
+		"hard_count":   len(hardPlan.Words),
 		"min_accuracy": minAcc,
 		"min_reviews":  minRev,
-		"words":        plan.Words,
+		"words":        hardPlan.Words,
+		"remaining":    len(hardPlan.Words), // 当天还没提交的词数（前端据此续练）
 		"dry_run":      s.dryRun,
 	})
 }
@@ -419,6 +455,13 @@ func (s *server) handleRecord(w http.ResponseWriter, r *http.Request, st *Storag
 		}
 		out["words"] = res
 
+		// 当天分多次练习：把已提交的题从 plan 里剪掉，没写的留在 plan 里，
+		// 题号保持原编号。前端提交成功后自动重拉 plan 就能接着练剩下的。
+		// 全交完时保留一份空 plan（不删），见 WordPlanLocked 的说明。
+		// ⚠️ 必须在 ApplyRecord 之后：它靠 plan 的 number → word 映射定位词，
+		// 先剪会让这批题全部 not_found。
+		out["words_remaining"] = s.pruneSubmittedWordPlan(s.ctx(), st, input)
+
 		// 回写成功 → 存当天快照，供老师当天回看（只读）。
 		// 档案里只有累计值，不记当次对错，不存就永远查不回来了。
 		// 存失败不影响回写结果 —— 练习已经落库了，回看只是锦上添花。
@@ -510,6 +553,43 @@ func (s *server) handleRecord(w http.ResponseWriter, r *http.Request, st *Storag
 	out["tomorrow"] = s.tomorrowPreview(st)
 
 	writeJSON(w, http.StatusOK, out)
+}
+
+// pruneSubmittedWordPlan 在档案回写成功之后裁剪当天 plan，返回还剩几个词。
+//
+// 写失败不报错：最坏结果是下次拉 plan 仍是这批（多练一遍而已），不会丢数据，
+// 跟造句分支 PruneSentencePlan 的口径一致。plan 读不到 / 日期对不上 / 一道
+// 都没剪到时直接返回，不做无谓的 COS 写。
+func (s *server) pruneSubmittedWordPlan(ctx context.Context, st *Storage, in RecordInput) int {
+	submitted := make([]int, 0, len(in.WordResults))
+	for _, r := range in.WordResults {
+		submitted = append(submitted, r.Number)
+	}
+
+	var (
+		wp  *ReviewPlan
+		err error
+	)
+	if in.Hard {
+		wp, err = st.DownloadHardPlan(ctx, in.PlanDate)
+	} else {
+		wp, err = st.DownloadPlan(ctx, in.PlanDate)
+	}
+	if err != nil || wp == nil || wp.Date != in.PlanDate {
+		return 0
+	}
+
+	before := len(wp.Words)
+	remaining := plan.PruneWordPlan(wp, submitted)
+	if remaining == before {
+		return remaining // 一道都没剪到，别写
+	}
+	if in.Hard {
+		_ = st.UploadHardPlan(ctx, wp)
+	} else {
+		_ = st.UploadPlan(ctx, wp)
+	}
+	return remaining
 }
 
 // tomorrowPreview 算明天到期多少词。只读，不写任何 COS 对象。
