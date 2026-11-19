@@ -504,7 +504,7 @@ Knowledge base IDs:
 
 **精简版（出差/到期量过大时）**：老师出差或到期词爆量（>150）时，主动提出「精简版」——
 只保留 ☠️钉子户 + 🔴待巩固 + 🟡基本掌握，砍掉 🟢抽查（已掌握词的抽查，砍掉不丢进度，
-明天照常到期）。CLI **没有过滤参数**，做法：
+明天照常到期）。CLI **没有按状态分区过滤的参数**（总量上限用下方 `--max-words`），做法：
    1. 照常 `gen-plan`（全量），记住分区在计划里是**连续排序**的：钉子户 → 待巩固 →
       基本掌握 → 抽查，序号连续。用 `tmp_due_*.json` 找出最后一个要保留的序号 N。
    2. 复制 xlsx，用 openpyxl 对**两个 sheet 都** `delete_rows(start, count)` 删掉
@@ -514,6 +514,39 @@ Knowledge base IDs:
    4. 造句段在抽查段之后，删行后会自动接上，无需另处理；练习版公式引用的是答案版
       同一行号，两个 sheet 删同样的行即保持对齐。
    5. 输出文件名加后缀，如 `outputs/review_2026-09-16_v1.0_精简版64.xlsx`。
+
+**限量出题 `--max-words` + 单栏小表 `--compact`（2026-11-19 新增，英语离线打印用）**
+
+老师给初一孩子的英语复习：**不出 web / 小程序，只走 CLI 档案 + 本地 Excel 离线打印**。
+每天固定少量，由 jrp 按记忆曲线挑，不再用外部脚本轮转。
+
+```bash
+# 1) 选 5 句（句子库 outputs/english/sentences_bank.json，轮转由外部脚本管）
+python3 outputs/english/pick_sentences.py 5 /tmp/en_sentences_today.json
+# 2) 生成（--max-words 8 = 每天 8 个到期词的总量上限；--compact = 单栏手写小表）
+jrp --lang en gen-plan --date YYYY-MM-DD --max-words 8 --compact \
+    --sentences /tmp/en_sentences_today.json --output outputs/英语每日复习_YYYY-MM-DD.xlsx
+# 3) 老师报「第 3 题错了」→ 按既有 record 流程回填（编号 1..N 与 COS plan JSON 一致）
+jrp --lang en record --input /tmp/results.json
+```
+
+- `--max-words N`（0 / 不传 = 全量，原行为）：在 `BuildDuePlan` 之后按**到期顺序 + 状态优先级**
+  （☠️钉子户 → 🔴待巩固 → 🔄待测试 → 🟡基本掌握 → 🟢抽查）截断到 N 个，**重新编号 1..N**，
+  Excel 与 `plans/plan_<date>.json` 同源，`record` 按序号回填不错位。类型（单词/词组）不固定配额，
+  完全由 jrp 的到期顺序决定。被截掉的词 `LastReview` 没变、明天照样 `IsDue`，
+  **不丢进度、不打乱艾宾浩斯间隔**。
+- `--compact`：新增的独立渲染路径（`internal/offline/render_compact.go`），**不改原 8 列两栏
+  `GenerateExcel`、不改 `BuildDuePlan`、不碰 server `/api/plan`**，日语默认流程完全不变。
+  版式：单栏三列（序号 | 中文 | 语言（默写/答案））、两个 sheet、A4 一页、留白手写；
+  三块分区（一、单词 / 二、词组 / 三、句子）；**不印姓名 / 得分 / 家长签字 / 日期栏**；
+  表头按 `ReviewPlan.Language` 取语言名，不写死「日语」；练习版中文提示删掉含英文的括注防泄题
+  （保留纯中文括注，如「花（时间、钱等）」），答案版保留完整释义与搭配。
+  单词/词组序号沿用 plan JSON 的 `number`（报数字编号给 `record`），句子用 `S1..Sn`
+  （句子对错不落库，错句重练仍按 SKILL.md 既有的外部文件做法）。
+- ⚠️ **初始状态提醒**：新档案里所有词都是 🔄待测试、同状态按档案录入顺序排列，
+  所以第一天可能全出同一类（如全是 Unit 3 词组）、单词区为空。这是记忆曲线还没积累信息的
+  起点状态；**报过一次对错后**错词浮到前面、答对的间隔拉长，内容自然混合。
+  若要在新词阶段就强制单词/词组混合，需在 CLI 侧加同状态交错取样（另行处理）。
 
 **Excel structure**:
 - Sheet names: `✏️练习版` / `✅答案版`
@@ -1652,7 +1685,7 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 |---|---|---|
 | `import` | (stdin) | Import archive markdown from stdin to COS |
 | `add-words` | `--input <json>` | Add new words to archive |
-| `gen-plan` | `--date <YYYY-MM-DD>` `--sentences <json>` `--output <path>` | Generate review Excel (auto-initializes today's v1.0 archive if none exists) |
+| `gen-plan` | `--date <YYYY-MM-DD>` `--sentences <json>` `--output <path>` `--max-words <N>` `--compact` | Generate review Excel (auto-initializes today's v1.0 archive if none exists). `--max-words` caps due words by Ebbinghaus order; `--compact` renders a single-column handwriting sheet |
 | `export-hard` | `--min-accuracy <0-1>` `--min-reviews <N>` `--date <YYYY-MM-DD>` `--output <path>` | Export ALL hard words (钉子户) to Excel. Read-only: never bumps the archive version |
 | `record` | `--input <json>` `--hard` | Record review results (`--hard` resolves numbers against the export-hard plan) |
 | `update-def` | `--input <json>` | Update word definition |

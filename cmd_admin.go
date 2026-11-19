@@ -31,7 +31,7 @@ import (
 	"github.com/zhangyf/jrp/internal/judge"
 	"github.com/zhangyf/jrp/internal/listening"
 	"github.com/zhangyf/jrp/internal/offline"
-	"github.com/zhangyf/jrp/internal/plan"
+	planpkg "github.com/zhangyf/jrp/internal/plan"
 	"github.com/zhangyf/jrp/internal/planconfig"
 	"github.com/zhangyf/jrp/internal/record"
 	"github.com/zhangyf/jrp/internal/words"
@@ -46,6 +46,8 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 	sentencesFile := fs.String("sentences", "", "JSON file with sentence exercises [{\"chinese\":\"...\",\"answer\":\"...\"}]")
 	dateFlag := fs.String("date", "", "Target date for review plan (YYYY-MM-DD). Defaults to today.")
 	sentencesOnly := fs.Bool("sentences-only", false, "Sentences-only mode: no word section at all, drill sentences only (e.g. 50 sentences)")
+	maxWords := fs.Int("max-words", 0, "Cap the number of due words in the plan (0 = unlimited). Keeps the Ebbinghaus due order (hard words first); words dropped stay due tomorrow.")
+	compact := fs.Bool("compact", false, "Single-column handwriting sheet, A4 one page, no name/score/signature fields.")
 	fs.Parse(cmdArgs)
 
 	// Determine target date
@@ -115,7 +117,11 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 	// Find due words, assign categories, sort, and build the plan (reused by server)
 	dateStr := targetDate.Format("2006-01-02")
 	meta, _ := storage.DownloadWordMeta(ctx)
-	plan := plan.BuildDuePlan(arc, lang, targetDate, words.HoldSet(meta))
+	plan := planpkg.BuildDuePlan(arc, lang, targetDate, words.HoldSet(meta))
+	// --max-words：保留 BuildDuePlan 的到期顺序（错词优先）截断，并重新编号 1..N，
+	// 让 Excel 与上传 COS 的 plan JSON 同源，record 按序号回填不错位。
+	// 被截掉的词未复习、LastReview 不变，明天照样 IsDue，不丢进度、不打乱间隔。
+	dueTotal := planpkg.CapWords(plan, *maxWords)
 
 	// Sentences-only mode: drop the entire word section. Requires --sentences.
 	if *sentencesOnly {
@@ -200,10 +206,14 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 
 	// Generate Excel
 	if *outputPath == "" {
+		suffix := ""
+		if *compact {
+			suffix = "_compact"
+		}
 		if *sentencesOnly {
-			*outputPath = fmt.Sprintf("outputs/review_%s_sentences_v%d.%d.xlsx", dateStr, arcMajor, arcMinor)
+			*outputPath = fmt.Sprintf("outputs/review_%s_sentences%s_v%d.%d.xlsx", dateStr, suffix, arcMajor, arcMinor)
 		} else {
-			*outputPath = fmt.Sprintf("outputs/review_%s_v%d.%d.xlsx", dateStr, arcMajor, arcMinor)
+			*outputPath = fmt.Sprintf("outputs/review_%s%s_v%d.%d.xlsx", dateStr, suffix, arcMajor, arcMinor)
 		}
 	}
 
@@ -212,7 +222,12 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 		os.MkdirAll(dir, 0755)
 	}
 
-	if err := offline.GenerateExcel(plan, *outputPath); err != nil {
+	if *compact {
+		if err := offline.GenerateCompactExcel(plan, *outputPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Error generating compact Excel: %v\n", err)
+			os.Exit(1)
+		}
+	} else if err := offline.GenerateExcel(plan, *outputPath); err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating Excel: %v\n", err)
 		os.Exit(1)
 	}
@@ -253,6 +268,9 @@ func runGenPlan(fs *flag.FlagSet, lang string) {
 		"date":           dateStr,
 		"kind":           plan.Kind,
 		"due_count":      len(plan.Words),
+		"due_total":      dueTotal,
+		"max_words":      *maxWords,
+		"compact":        *compact,
 		"sentence_count": sentenceCount,
 		"excel_path":     *outputPath,
 		"plan_words":     plan.Words,

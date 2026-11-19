@@ -79,6 +79,32 @@ func BuildDuePlan(arc *archive.Archive, lang string, targetDate time.Time, hold 
 	return p
 }
 
+// CapWords 把到期词截断到最多 n 个（n <= 0 表示不限量），并重新编号 1..N，
+// 返回截断前的到期总数。
+//
+// 只由 CLI 的 `gen-plan --max-words` 调用；server 的 /api/plan 仍走完整的
+// BuildDuePlan，不受影响。截断保留 BuildDuePlan 的排序（状态优先级：钉子户 →
+// 待巩固 → 待测试 → 基本掌握 → 抽查），所以「按记忆曲线出题、错词优先」的语义
+// 不变。被截掉的词 LastReview 没有变化，明天照样 IsDue，不丢进度、不打乱间隔
+// （record 铁律：只更新 plan JSON 里出现的序号，未考的词完全不处理）。
+//
+// ⚠️ 编号必须在这里重排：record 按 COS plan JSON 的 number 定位词，而 Excel
+// 渲染读的是同一份 plan，两者同源才不会 not_found / 错位。
+func CapWords(p *offline.ReviewPlan, n int) int {
+	if p == nil {
+		return 0
+	}
+	total := len(p.Words)
+	if n <= 0 || total <= n {
+		return total
+	}
+	p.Words = p.Words[:n]
+	for i := range p.Words {
+		p.Words[i].Number = i + 1
+	}
+	return total
+}
+
 // BuildHardPlan 把档案里全部钉子户拉出来 —— 刻意不做 IsDue 过滤，
 // 这是跟 BuildDuePlan 的本质区别：gen-plan 只出今天到期的，这里是一次全量普查。
 //
