@@ -16,15 +16,20 @@ var offline = {
   export: function () {
     var date = el('exportDate').value || todayStr();
     var mode = el('exportMode').value;
-    // ⚠️ 别再把 token 拼进 URL（2026-10-28 安全评审）：URL 会进 nginx 日志、
-    // 浏览器历史、Referer。改成 fetch（带 Authorization 头）→ Blob → a[download]。
+    // ⚠️ 别再把凭证拼进 URL（2026-10-28 安全评审）：URL 会进 nginx 日志、
+    // 浏览器历史、Referer。改成 fetch（cookie 会话同源自带）→ Blob → a[download]。
+    // 这条要拿 blob，走不了 app.api，所以 401 得自己调 showLoginBar。
     var q = '/api/export?mode=' + encodeURIComponent(mode) +
       '&date=' + encodeURIComponent(date) +
       '&grade=' + encodeURIComponent(app.mode());
-    var headers = {};
-    if (app.token) headers['Authorization'] = 'Bearer ' + app.token;
-    fetch(q, { headers: headers })
+    fetch(q, { credentials: 'same-origin' })
       .then(function (r) {
+        if (r.status === 401) {
+          return r.json().catch(function () { return {}; }).then(function (j) {
+            app.showLoginBar(j && j.login);
+            throw new Error('请先登录');
+          });
+        }
         if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || '导出失败'); });
         return r.blob();
       })

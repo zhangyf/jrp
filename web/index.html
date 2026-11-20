@@ -67,10 +67,9 @@
   🚧 演练模式（服务端 --dry-run）：本次练习<b>不会</b>写入 COS，判分和版本号照常算，刷新即丢弃
 </div>
 
-<div id="tokenBar" class="hidden">
-  <input id="tokenInput" type="password" placeholder="访问 token（服务端设了鉴权才需要）">
-  <button id="tokenSave">保存</button>
-  <span class="muted">token 存在本机 localStorage</span>
+<div id="loginBar" class="hidden">
+  <span>还没登录，练习内容需要先登录才能加载。</span>
+  <a id="loginLink" href="/login.html">去登录 →</a>
 </div>
 
 <main>

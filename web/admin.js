@@ -13,6 +13,7 @@ var jrpAdmin = {
     if (out) {
       out.onclick = function (e) {
         e.preventDefault();
+        // 退出时顺带清掉旧版手工 token 残留（2026-11-20 起 web 只用 cookie 会话）
         fetch('/api/auth/logout', { credentials: 'same-origin' })
           .then(function () { localStorage.removeItem('jrp_token'); location.reload(); })
           .catch(function () { location.reload(); });

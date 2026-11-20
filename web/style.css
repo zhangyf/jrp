@@ -111,14 +111,18 @@ nav { display: flex; gap: 4px; flex-wrap: wrap; }
   background: #fff;
 }
 
-#tokenBar {
-  display: flex; align-items: center; gap: 8px;
+#loginBar {
+  display: flex; align-items: center; gap: 12px;
   padding: 8px 18px;
   background: #fff8e6;
   border-bottom: 1px solid var(--line);
   font-size: 13px;
 }
-#tokenInput { flex: 0 1 320px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; }
+#loginLink {
+  padding: 4px 14px; border: 1px solid var(--accent); border-radius: 5px;
+  background: var(--accent); color: #fff; text-decoration: none; white-space: nowrap;
+}
+#loginLink:hover { filter: brightness(1.08); }
 
 #dryRunBanner {
   padding: 9px 18px;

@@ -1,11 +1,13 @@
-// 公共：token、fetch 封装、页面切换、小工具。
+// 公共：fetch 封装、页面切换、小工具。
+//
+// ⚠️ web 登录走 cookie 会话（jrp_sid），没有「手工填 token」这回事。
+// 旧的 localStorage jrp_token / tokenBar 是 --auth-token 时代遗留，2026-11-20 删干净：
+// 未登录时统一显示登录引导条，别再让老师对着一个密码框猜该填什么。
 
 var app = {
-  token: '',
   page: 'practice',
 
   boot: function () {
-    this.token = localStorage.getItem('jrp_token') || '';
     document.getElementById('today').textContent = todayStr();
     document.getElementById('exportDate').value = todayStr();
 
@@ -35,13 +37,6 @@ var app = {
     this.bootMiniQr();
     this.bootBrandToggle();
     this.bootAdminLink();
-
-    document.getElementById('tokenSave').addEventListener('click', function () {
-      self.token = document.getElementById('tokenInput').value.trim();
-      localStorage.setItem('jrp_token', self.token);
-      document.getElementById('tokenBar').classList.add('hidden');
-      self.go(self.page);
-    });
 
     this.go('practice');
   },
@@ -114,6 +109,24 @@ var app = {
       .catch(function () { /* 拿不到身份就不显示 */ });
   },
 
+  // 未登录引导：顶部黄条 + 「去登录」按钮。
+  // login 由服务端 401 响应给出（withUser 返回 /login.html），没给就用默认。
+  // next 带回当前页，扫完码自动回来，不用再点一遍 tab。
+  showLoginBar: function (login) {
+    var bar = document.getElementById('loginBar');
+    if (!bar) return;
+    var a = document.getElementById('loginLink');
+    if (a) {
+      var base = login || '/login.html';
+      if (base.indexOf('next=') < 0) {
+        var next = location.pathname + location.search;
+        base += (base.indexOf('?') < 0 ? '?' : '&') + 'next=' + encodeURIComponent(next);
+      }
+      a.href = base;
+    }
+    bar.classList.remove('hidden');
+  },
+
   go: function (page) {
     this.page = page;
     // 埋点：板块切换（进入新板块前先结算上一个板块的停留时长，见 track.js）
@@ -138,20 +151,25 @@ var app = {
     else if (page === 'listening') listening.load();
   },
 
-  // api 统一走这里：带上 token，401 时弹 token 输入条。
+  // api 统一走这里：cookie 会话同源自带（fetch 默认 credentials=same-origin）。
+  // 401 = 没登录 / 会话过期 → 顶部显示登录引导条，错误文案统一成「请先登录」。
+  // ⛔ 不要再弹 token 输入框 —— 那是 --auth-token 时代的遗留，见文件头。
   api: function (path, opts) {
     opts = opts || {};
     var headers = opts.headers || {};
-    if (this.token) headers['Authorization'] = 'Bearer ' + this.token;
+    var self = this;
     var full = path + (path.indexOf('?') < 0 ? '?' : '&') + '_=' + Date.now();
     return fetch(full, {
       method: opts.method || 'GET',
       headers: headers,
+      credentials: 'same-origin',
       body: opts.body
     }).then(function (r) {
       if (r.status === 401) {
-        document.getElementById('tokenBar').classList.remove('hidden');
-        throw new Error('需要 token');
+        return r.json().catch(function () { return {}; }).then(function (j) {
+          self.showLoginBar(j && j.login);
+          throw new Error('请先登录');
+        });
       }
       return r.json();
     }).then(function (d) {
