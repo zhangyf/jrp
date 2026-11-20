@@ -700,11 +700,27 @@ const (
 // BuildHardPlan / hardSeverity 已迁 internal/plan（P2），
 // CLI export-hard 与 HTTP /api/hard、/api/export 共用同一份实现。
 
+// isMissingCOSObject 判断下载失败是不是「对象不存在」。
+// 口径跟 Storage.deleteObjectIgnore404 一致：COS 把 404 / NoSuchKey 包在 err
+// 里，没有独立错误类型。其余错误一律当真失败 —— --register 的护栏必须
+// fail-closed，读不清楚当天进度就不许写。
+func isMissingCOSObject(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "404") ||
+		strings.Contains(msg, "nosuchkey") ||
+		strings.Contains(msg, "not found")
+}
+
 func runExportHard(fs *flag.FlagSet, lang string) {
 	outputPath := fs.String("output", "", "Output Excel file path (default: outputs/hard_words_<date>_vA.B.xlsx)")
 	minAcc := fs.Float64("min-accuracy", review.DefaultHardMinAccuracy, "Accuracy threshold (0-1); words below this are hard words")
 	minRev := fs.Int("min-reviews", review.DefaultHardMinReviews, "Minimum review count required to qualify as a hard word")
 	dateFlag := fs.String("date", "", "Target date used in the output filename (YYYY-MM-DD). Defaults to today.")
+	register := fs.Bool("register", false,
+		"Register the hard plan to COS so CLI record --hard can resolve numbers (default: read-only export)")
 	fs.Parse(cmdArgs)
 
 	if *minAcc <= 0 || *minAcc >= 1 {
@@ -762,9 +778,9 @@ func runExportHard(fs *flag.FlagSet, lang string) {
 	}
 
 	dateStr := targetDate.Format("2006-01-02")
-	plan := plan.BuildHardPlan(arc, lang, targetDate, *minAcc, *minRev)
+	hardPlan := plan.BuildHardPlan(arc, lang, targetDate, *minAcc, *minRev)
 
-	if len(plan.Words) == 0 {
+	if len(hardPlan.Words) == 0 {
 		outputResult(map[string]interface{}{
 			"success":          true,
 			"command":          "export-hard",
@@ -773,15 +789,34 @@ func runExportHard(fs *flag.FlagSet, lang string) {
 			"min_accuracy":     *minAcc,
 			"min_reviews":      *minRev,
 			"hard_count":       0,
+			"registered":       false,
 			"archive_filename": archiveFilename,
 			"message":          "No hard words found under the given thresholds",
 		})
 		return
 	}
 
+	// --register 是唯一的写盘开关。默认纯只读：除 DownloadLatestArchive 外
+	// 一次 COS 都不碰，连 hard plan 都不下载。
+	//
+	// plans/hard_<date>.json 现在是网页端「当天锁定 + 提交剪枝」的进度对象，
+	// 覆盖前必须确认没被剪过，否则老师当天还没写的词会被全量普查抹掉。
+	if *register {
+		old, err := storage.DownloadHardPlan(ctx, dateStr)
+		if err != nil && !isMissingCOSObject(err) {
+			fmt.Fprintf(os.Stderr, "Error: 无法确认 %s 的 hard plan 状态，为防覆盖已拒绝 --register: %v\n", dateStr, err)
+			os.Exit(1)
+		}
+		if err == nil && plan.HardPlanRegistrationBlocked(old, hardPlan, dateStr) {
+			fmt.Fprintf(os.Stderr, "Error: %s 的 hard plan 已被提交剪枝（或与本次全量口径不同），拒绝覆盖。\n", dateStr)
+			fmt.Fprintln(os.Stderr, "       只导清单请去掉 --register；当天继续练请走网页端。")
+			os.Exit(1)
+		}
+	}
+
 	// Count severity buckets
 	severe, moderate, mild := 0, 0, 0
-	for _, w := range plan.Words {
+	for _, w := range hardPlan.Words {
 		switch w.Status {
 		case HardSevere:
 			severe++
@@ -799,38 +834,37 @@ func runExportHard(fs *flag.FlagSet, lang string) {
 		os.MkdirAll(dir, 0755)
 	}
 
-	if err := offline.GenerateHardExcel(plan, *outputPath); err != nil {
+	if err := offline.GenerateHardExcel(hardPlan, *outputPath); err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating Excel: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Upload the plan JSON so that `record --hard` can resolve word numbers.
-	if err := storage.UploadHardPlan(ctx, plan); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to upload hard plan: %v\n", err)
-	}
-
-	// Upload Excel to COS (backup)
-	if err := storage.UploadHardExcel(ctx, dateStr, arcMajor, arcMinor, *outputPath); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to upload Excel backup: %v\n", err)
-	}
-
-	outputResult(map[string]interface{}{
+	result := map[string]interface{}{
 		"success":          true,
 		"command":          "export-hard",
 		"date":             dateStr,
 		"language":         lang,
 		"min_accuracy":     *minAcc,
 		"min_reviews":      *minRev,
-		"hard_count":       len(plan.Words),
+		"hard_count":       len(hardPlan.Words),
 		"severe_count":     severe,
 		"moderate_count":   moderate,
 		"mild_count":       mild,
 		"excel_path":       *outputPath,
-		"plan_key":         fmt.Sprintf("plans/hard_%s.json", dateStr),
+		"registered":       *register,
 		"archive_filename": archiveFilename,
 		"version":          fmt.Sprintf("v%d.%d", arcMajor, arcMinor),
-		"plan_words":       plan.Words,
-	})
+		"plan_words":       hardPlan.Words,
+	}
+	if *register {
+		// 只有真登记成功才报 plan_key，别再让默认只读导出谎报一个写过的对象。
+		if err := storage.UploadHardPlan(ctx, hardPlan); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: failed to upload hard plan: %v\n", err)
+			os.Exit(1)
+		}
+		result["plan_key"] = fmt.Sprintf("plans/hard_%s.json", dateStr)
+	}
+	outputResult(result)
 }
 
 // ==========================================================================

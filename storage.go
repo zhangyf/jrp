@@ -536,19 +536,6 @@ func (s *Storage) UploadSentenceExcel(ctx context.Context, date string, major, m
 	return s.store.PutObject(ctx, key, data)
 }
 
-// UploadHardExcel uploads a hard-word Excel file to COS.
-func (s *Storage) UploadHardExcel(ctx context.Context, date string, major, minor int, localPath string) error {
-	if s.dryRun {
-		return nil
-	}
-	key := fmt.Sprintf("%s/plans/hard_words_%s_v%d.%d.xlsx", s.personalBase(), date, major, minor)
-	data, err := os.ReadFile(localPath)
-	if err != nil {
-		return fmt.Errorf("failed to read excel file: %w", err)
-	}
-	return s.store.PutObject(ctx, key, data)
-}
-
 // UploadKnowledge uploads a knowledge document to COS.
 func (s *Storage) UploadKnowledge(ctx context.Context, filename string, data []byte) error {
 	if s.dryRun {
