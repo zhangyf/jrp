@@ -124,6 +124,9 @@ nav { display: flex; gap: 4px; flex-wrap: wrap; }
 }
 #loginLink:hover { filter: brightness(1.08); }
 
+/* 401 静默错误兜底：万一某处没走 isLoginError，空 chip 也不占位 */
+.chip.warn:empty { display: none; }
+
 #dryRunBanner {
   padding: 9px 18px;
   background: #ffe8e8;

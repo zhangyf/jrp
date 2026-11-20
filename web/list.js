@@ -419,6 +419,7 @@ function ListPractice(opts) {
       self.enterReview();
       self.mergeServerReview();    // 把当天前面几批的错词也并进来（异步重画）
     }).catch(function (e) {
+      if (app.isLoginError(e)) { o.commitBtn.disabled = false; return; }
       o.commitBtn.disabled = false;
       o.msg.className = 'feedback no';
       o.msg.textContent = '回写失败：' + e.message;

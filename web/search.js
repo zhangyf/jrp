@@ -103,6 +103,7 @@ var search = {
       self.render(d || {});
     }).catch(function (err) {
       if (my !== self.seq) return;
+      if (app.isLoginError(err)) { panel.classList.add('hidden'); return; }
       var msg = err && err.message ? err.message : '请登录后重试';
       panel.innerHTML = '<div class="gsearch-empty">搜索不可用：' + esc(msg) + '</div>';
     });
@@ -192,6 +193,7 @@ var search = {
         }).join('');
         self.fillBody(html || '<div class="sm-empty">（本课暂无内容）</div>');
       }).catch(function (e) {
+        if (app.isLoginError(e)) return;
         if (!self._mask) return;
         self.fillBody('<div class="sm-empty">加载失败：' + esc(e && e.message ? e.message : '') + '</div>');
       });

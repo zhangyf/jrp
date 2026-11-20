@@ -31,6 +31,7 @@ var stats = {
         stTopReviewed(d.detail || {}) +
         stDetail(d.snapshots || []);
     }).catch(function (e) {
+      if (app.isLoginError(e)) return;
       el('statsBody').innerHTML = '<div class="card"><span class="chip warn">' + esc(e.message) + '</span></div>';
     });
   }

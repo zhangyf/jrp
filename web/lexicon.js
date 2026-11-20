@@ -31,6 +31,7 @@ var lexicon = {
       self.bind();
       self.render();
     }).catch(function (e) {
+      if (app.isLoginError(e)) return;
       el('lexBody').innerHTML = '<p class="chip warn">加载失败：' + esc(e.message) + '</p>';
     });
   },

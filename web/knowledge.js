@@ -41,6 +41,7 @@ var knowledge = {
       var cur = self.lessons.indexOf(last) >= 0 ? last : self.lessons[self.lessons.length - 1];
       self.loadLesson(cur);
     }).catch(function (e) {
+      if (app.isLoginError(e)) return;
       self.fail(e);
     });
   },
@@ -78,6 +79,7 @@ var knowledge = {
       self.render();
       window.scrollTo(0, 0);
     }).catch(function (e) {
+      if (app.isLoginError(e)) return;
       self.fail(e);
     });
   },

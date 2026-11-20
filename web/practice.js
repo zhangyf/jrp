@@ -162,6 +162,7 @@ var practice = {
       }
       self.startCard();
     }).catch(function (e) {
+      if (app.isLoginError(e)) return;
       el('practiceSummary').innerHTML = '<span class="chip warn">' + esc(e.message) + '</span>';
     });
   },
@@ -396,6 +397,7 @@ var practice = {
       // 服务端按词形合并过，拉回来重画即可。
       self.reloadCardReview();
     }).catch(function (e) {
+      if (app.isLoginError(e)) { btn.disabled = false; return; }
       btn.disabled = false;
       el('commitResult').className = 'feedback no';
       el('commitResult').textContent = '回写失败：' + e.message;
