@@ -72,7 +72,8 @@ func runServe(fs_ *flag.FlagSet, lang string) {
 	}
 
 	mux := http.NewServeMux()
-	// 静态资源不鉴权：浏览器第一次打开要能拿到页面，token 在页面里输入后存 localStorage。
+	// 静态资源不鉴权：浏览器第一次打开要能拿到页面（含 /login.html）。
+	// 接口 401 时前端显示登录引导条，走小程序码扫码登录拿 cookie 会话。
 	mux.Handle("/", staticHandler(sub))
 
 	mux.HandleFunc("/api/plan", srv.withUser(srv.handlePlan))
