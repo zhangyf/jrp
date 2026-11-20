@@ -185,3 +185,76 @@ func TestPruneWordPlanUnknownNumbersAndNil(t *testing.T) {
 		t.Errorf("nil plan 应返回 0 且不 panic，实际 %d", l)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// export-hard --register 护栏：plans/hard_<date>.json 现在是网页端的当天进度，
+// 被剪枝过就绝不能被 CLI 全量普查覆盖。
+// ---------------------------------------------------------------------------
+
+func testFullHardPlan() *offline.ReviewPlan {
+	return &offline.ReviewPlan{
+		Date: "2026-11-20",
+		Words: []offline.PlanWord{
+			{Number: 1, Word: "あいう"},
+			{Number: 2, Word: "かきく"},
+			{Number: 3, Word: "さしす"},
+		},
+	}
+}
+
+func TestHardPlanRegistrationBlocked(t *testing.T) {
+	const date = "2026-11-20"
+	full := testFullHardPlan()
+
+	cases := []struct {
+		name string
+		old  *offline.ReviewPlan
+		full *offline.ReviewPlan
+		date string
+		want bool
+	}{
+		{"对象不存在，可以登记", nil, full, date, false},
+		{"陈年 plan 不是当天进度", &offline.ReviewPlan{
+			Date: "2026-11-19", Words: []offline.PlanWord{{Number: 2, Word: "かきく"}},
+		}, full, date, false},
+		{"同一份全量重复登记是幂等的", testFullHardPlan(), full, date, false},
+		{"全交完留下的空 plan", &offline.ReviewPlan{Date: date}, full, date, true},
+		{"部分提交后题号断号", &offline.ReviewPlan{Date: date, Words: []offline.PlanWord{
+			{Number: 1, Word: "あいう"}, {Number: 3, Word: "さしす"},
+		}}, full, date, true},
+		{"题号连着但词数少于全量（换了阈值）", &offline.ReviewPlan{Date: date, Words: []offline.PlanWord{
+			{Number: 1, Word: "あいう"}, {Number: 2, Word: "かきく"},
+		}}, full, date, true},
+		{"词数一样但词形对不上", &offline.ReviewPlan{Date: date, Words: []offline.PlanWord{
+			{Number: 1, Word: "あいう"}, {Number: 2, Word: "かきく"}, {Number: 3, Word: "たちつ"},
+		}}, full, date, true},
+		{"空 plan 即使没有 full 也拒绝", &offline.ReviewPlan{Date: date}, nil, date, true},
+		{"完好的全量即使没有 full 也放行", testFullHardPlan(), nil, date, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := HardPlanRegistrationBlocked(c.old, c.full, c.date); got != c.want {
+				t.Fatalf("HardPlanRegistrationBlocked = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// 走真实链路：/api/record 用 PruneWordPlan 剪完，护栏必须立刻拦住。
+func TestHardPlanRegistrationBlockedAfterPrune(t *testing.T) {
+	full := testFullHardPlan()
+	old := testFullHardPlan()
+	if HardPlanRegistrationBlocked(old, full, "2026-11-20") {
+		t.Fatal("没提交过的全量 plan 不该被拦")
+	}
+	if l := PruneWordPlan(old, []int{2}); l != 2 {
+		t.Fatalf("剪完应剩 2，实际 %d", l)
+	}
+	if !HardPlanRegistrationBlocked(old, full, "2026-11-20") {
+		t.Fatal("部分提交后的当天 plan 必须拒绝 CLI 覆盖")
+	}
+	PruneWordPlan(old, []int{1, 3})
+	if !HardPlanRegistrationBlocked(old, full, "2026-11-20") {
+		t.Fatal("全交完的空 plan 也必须拒绝覆盖")
+	}
+}

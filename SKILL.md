@@ -94,7 +94,8 @@ language-review/
 │   ├── archives/    # Current archive files (日语学习进度档案_YYMMDD_vA.B.md)
 │   ├── history/     # Historical archive snapshots
 │   ├── plans/       # plan_<date>.json + review_<date>_vA.B.xlsx (daily)
-│   │                # hard_<date>.json + hard_words_<date>_vA.B.xlsx (export-hard)
+│   │                # hard_<date>.json (web 当天进度；export-hard 只有 --register 才写)
+│   │                # hard_words_<date>_vA.B.xlsx 只落本地 outputs/，不再上传 COS
 │   └── knowledge/   # Lesson knowledge documents
 ├── en/
 │   └── ... (same structure)
@@ -635,7 +636,7 @@ TODO：给 `jrp-src` 的 `record` 加 `--note <string>`，拼进 changelog 描�
    该词并说明它的当前状态（如刚摘帽），提醒它实际未牢固；不要伪造 record。
 
 4. Run: `jrp --lang ja record --input /tmp/results.json`
-   - Add `--hard` when the numbers come from an **export-hard** Excel (see workflow 5),
+   - Add `--hard` when the numbers come from an **export-hard --register** Excel (see workflow 5),
      otherwise the numbers will be resolved against the wrong plan
 5. Report to 老师 with a fixed template so each version is traceable at a glance:
    `到期N词 / 实写M词 / 写对X / 写错Y / 未写Z`，加上 updated 钉子户数、new version。
@@ -658,10 +659,14 @@ regardless of due date.
 
 **Steps**:
 1. Run: `jrp --lang ja export-hard`
+   - **默认纯只读**：只 `DownloadLatestArchive` 一次，不写 plan、不上传 Excel 备份、
+     不初始化新一天档案、不 bump 版本号
    - `--min-accuracy` (default 0.60) — accuracy below this counts as a hard word
    - `--min-reviews` (default 3) — small-sample guard
-   - `--date` only affects the output filename; the command is read-only and never
-     initializes a new-day archive or bumps the version
+   - `--date` 影响输出文件名与要登记的 plan 日期
+   - 只有显式 `--register` 才写 `plans/hard_<date>.json`（给离线 `record --hard` 用）。
+     ⛔ 当天 plan 若已被网页端提交剪枝（空 plan / 题号断号 / 与本次全量口径不同），
+     一律**拒绝覆盖**、报错退出。当天继续练请走网页端，别用 CLI 补。
 2. Output: `outputs/hard_words_<date>_vA.B.xlsx`, 2 sheets (`✏️练习版` / `✅答案版`),
    grouped into three severity sections by accuracy:
    - 🔥重度钉子户（正确率<30%）
@@ -670,8 +675,11 @@ regardless of due date.
    Sorted by accuracy ascending, continuous numbering across sections.
 3. Present the Excel to the user with present_files (already in workspace `outputs/`)
 4. Report the counts from the JSON: `hard_count` / `severe_count` / `moderate_count` / `mild_count`
-5. To record results from this Excel, use `record --hard` — the plan lives at a separate
-   COS key (`plans/hard_<date>.json`) so it never clobbers the daily plan
+5. To record results from this Excel offline, export with `--register` first, then use
+   `record --hard` — `record` resolves numbers against `plans/hard_<date>.json`,
+   a COS key separate from the daily plan. ⚠️ 这个 key 同时也是网页端钉子户的
+   **当天进度对象**，所以 `--register` 带剪枝护栏（见 step 1）。不登记就直接
+   `record --hard`，题号会按空/旧 plan 映射，结果全是 `not_found`。
 
 ### 6. Update Word Definition
 
@@ -1171,7 +1179,8 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
     produce a new archive whose version number is *lower* than the real one and silently
     overwrite it. For experiments use read-only commands (`export-hard`, `stats`,
     `list-knowledge`) with `--output` pointed at a temp path, or switch to an empty language
-    (`--lang en`).
+    (`--lang en`). ⚠️ `export-hard` 只有**不带 `--register`** 才是只读；加了就是写
+    `plans/hard_<date>.json`，别拿真实档案试。
 14. **Before `add-words` / `record`, confirm which archive will be picked up** — check the
     `old_filename` field in the JSON output and verify it is the expected latest version. If it
     names an unexpected file, stop and clean up the stray archive first.
@@ -1687,8 +1696,8 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 | `import` | (stdin) | Import archive markdown from stdin to COS |
 | `add-words` | `--input <json>` | Add new words to archive |
 | `gen-plan` | `--date <YYYY-MM-DD>` `--sentences <json>` `--output <path>` `--max-words <N>` `--compact` | Generate review Excel (auto-initializes today's v1.0 archive if none exists). `--max-words` caps due words by Ebbinghaus order; `--compact` renders a single-column handwriting sheet |
-| `export-hard` | `--min-accuracy <0-1>` `--min-reviews <N>` `--date <YYYY-MM-DD>` `--output <path>` | Export ALL hard words (钉子户) to Excel. Read-only: never bumps the archive version |
-| `record` | `--input <json>` `--hard` | Record review results (`--hard` resolves numbers against the export-hard plan) |
+| `export-hard` | `--min-accuracy <0-1>` `--min-reviews <N>` `--date <YYYY-MM-DD>` `--output <path>` `--register` | Export ALL hard words (钉子户) to Excel. **默认纯只读**（不写任何 COS 对象、不 bump 版本）；只有 `--register` 才登记 `plans/hard_<date>.json` 供离线 `record --hard`，且当天 plan 被剪枝过时拒绝覆盖 |
+| `record` | `--input <json>` `--hard` | Record review results (`--hard` resolves numbers against the hard plan; needs `export-hard --register` or a web-generated hard plan) |
 | `update-def` | `--input <json>` | Update word definition |
 | `update-word` | `--input <json>` | Update a word's target-language form (fix a typo like a stray long-vowel mark) |
 | `normalize-words` | `--dry-run` | Normalize word forms to `かな(漢字)`. Backs up to `history/` first; aborts if word count changes. **Always dry-run first** |

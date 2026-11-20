@@ -17,7 +17,7 @@ Commands:
   import       Import archive content from stdin to COS (initial migration)
   add-words    Add new words to the archive
   gen-plan     Generate today's review Excel plan
-  export-hard  Export ALL hard words (钉子户) to a standalone Excel
+  export-hard  Export ALL hard words (钉子户) to a standalone Excel (read-only; --register to register the plan)
   record       Record review results and update archive
   update-def   Update a word's definition
   update-word  Update a word's target-language form (fix typos)
@@ -57,6 +57,7 @@ Examples:
   jrp --lang ja gen-plan --output outputs/review.xlsx
   jrp --lang ja export-hard
   jrp --lang ja export-hard --min-accuracy 0.5 --min-reviews 3
+  jrp --lang ja export-hard --register
   jrp --lang ja record --input results.json
   jrp --lang ja record --input results.json --hard
   jrp --lang ja update-def --input def.json
