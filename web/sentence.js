@@ -99,6 +99,7 @@ var sentence = {
       // 先拿 prompt 版本：草稿里存的模型结论要是旧规矩算的，作废重新问。
       self.fetchPromptVersion().then(function () { self.loadDraft(); });
     }).catch(function (e) {
+      if (app.isLoginError(e)) return;
       el('sentenceSummary').innerHTML = '<span class="chip warn">' + esc(e.message) + '</span>';
     });
   },
@@ -480,6 +481,7 @@ var sentence = {
       // 跟小程序 sentences.js 的 doSubmit 是同一个口径。
       setTimeout(function () { self.load(); }, 600);
     }).catch(function (e) {
+      if (app.isLoginError(e)) { el('sentenceCommit').disabled = false; return; }
       el('sentenceCommit').disabled = false;
       el('sentenceCommitResult').className = 'feedback no';
       el('sentenceCommitResult').textContent = '回写失败：' + e.message;

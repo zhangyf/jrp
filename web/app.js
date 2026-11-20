@@ -127,6 +127,15 @@ var app = {
     bar.classList.remove('hidden');
   },
 
+  // 401 不是业务错误：顶部引导条已经说明原因，页面不该再渲染错误文案。
+  // 抛一个空文案、带标记的错误；各页面 catch 开头用 isLoginError 静默掉。
+  isLoginError: function (e) { return !!(e && e.loginRequired); },
+  loginError: function () {
+    var e = new Error('');
+    e.loginRequired = true;
+    return e;
+  },
+
   go: function (page) {
     this.page = page;
     // 埋点：板块切换（进入新板块前先结算上一个板块的停留时长，见 track.js）
@@ -152,7 +161,8 @@ var app = {
   },
 
   // api 统一走这里：cookie 会话同源自带（fetch 默认 credentials=same-origin）。
-  // 401 = 没登录 / 会话过期 → 顶部显示登录引导条，错误文案统一成「请先登录」。
+  // 401 = 没登录 / 会话过期 → 顶部显示登录引导条；错误是「静默」的（空文案 + 标记），
+  // 页面 catch 用 isLoginError 跳过渲染，避免黄条之外再冒一颗「请先登录」。
   // ⛔ 不要再弹 token 输入框 —— 那是 --auth-token 时代的遗留，见文件头。
   api: function (path, opts) {
     opts = opts || {};
@@ -168,7 +178,7 @@ var app = {
       if (r.status === 401) {
         return r.json().catch(function () { return {}; }).then(function (j) {
           self.showLoginBar(j && j.login);
-          throw new Error('请先登录');
+          throw self.loginError();
         });
       }
       return r.json();

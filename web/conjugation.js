@@ -61,6 +61,7 @@ var conj = {
         self.render();
       })
       .catch(function (e) {
+        if (app.isLoginError(e)) return;
         el('conjSummary').innerHTML = '<span class="chip warn">' + esc(e.message) + '</span>';
       });
   },

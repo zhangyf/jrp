@@ -97,6 +97,7 @@ var hard = {
       }
       self.startCard();
     }).catch(function (e) {
+      if (app.isLoginError(e)) return;
       el('hardSummary').innerHTML = '<span class="chip warn">' + esc(e.message) + '</span>';
     });
   },
@@ -335,6 +336,7 @@ var hard = {
       }
       self.reloadCardReview();
     }).catch(function (e) {
+      if (app.isLoginError(e)) { btn.disabled = false; return; }
       btn.disabled = false;
       el('hardCommitResult').className = 'feedback no';
       el('hardCommitResult').textContent = '回写失败：' + e.message;

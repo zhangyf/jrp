@@ -27,7 +27,7 @@ var offline = {
         if (r.status === 401) {
           return r.json().catch(function () { return {}; }).then(function (j) {
             app.showLoginBar(j && j.login);
-            throw new Error('请先登录');
+            throw app.loginError();
           });
         }
         if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || '导出失败'); });
@@ -43,7 +43,10 @@ var offline = {
         document.body.removeChild(a);
         setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
       })
-      .catch(function (e) { app.toast(e.message || '导出失败'); });
+      .catch(function (e) {
+        if (app.isLoginError(e)) return;   // 未登录：顶部引导条已说明，不再弹 toast
+        app.toast(e.message || '导出失败');
+      });
   },
 
   parse: function () {
@@ -84,6 +87,7 @@ var offline = {
       self.regrade();
       self.render();
     }).catch(function (e) {
+      if (app.isLoginError(e)) { el('importInfo').textContent = ''; return; }
       el('importInfo').className = 'feedback no';
       el('importInfo').textContent = '解析失败：' + e.message;
     });
@@ -260,6 +264,7 @@ var offline = {
       renderTomorrow(el('importCommitResult'), d.tomorrow, true);
       app.toast('离线结果已回写');
     }).catch(function (e) {
+      if (app.isLoginError(e)) { el('importCommit').disabled = false; return; }
       el('importCommit').disabled = false;
       el('importCommitResult').className = 'feedback no';
       el('importCommitResult').textContent = '提交失败：' + e.message;

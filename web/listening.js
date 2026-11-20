@@ -56,6 +56,7 @@ var listening = {
       self.loaded = true;
       self.render();
     }).catch(function (e) {
+      if (app.isLoginError(e)) return;
       el('lsBody').innerHTML = '';
       el('lsMsg').textContent = '加载失败：' + (e && e.message ? e.message : '未知错误');
     });
@@ -109,6 +110,7 @@ var listening = {
       self.renderPlayer(d.video_url, d.note);
       app.track('listen_play');
     }).catch(function (e) {
+      if (app.isLoginError(e)) return;
       el('lsBody').innerHTML = '<button class="ghost" id="lsBack">← 返回列表</button>' +
         '<p class="muted">加载失败：' + esc(e.message || '') + '</p>';
       var b = el('lsBack');
