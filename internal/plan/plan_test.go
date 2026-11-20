@@ -90,3 +90,98 @@ func TestBuildHardPlanOrderAndZeroAccuracy(t *testing.T) {
 		t.Errorf("0%% 的词应排最前，实际 %q", p.Words[0].Word)
 	}
 }
+
+// ==========================================================================
+// 当天分多次练习：plan 锁定 + 提交剪枝（2026-11-17）
+// ==========================================================================
+
+// 空 plan 必须也算锁定 —— 那是「今天已经出过题且全交完」的标记。
+// 不锁的话 hard 会立刻重算同一批词，刷新一次就多回写一遍档案。
+func TestWordPlanLocked(t *testing.T) {
+	const date = "2026-11-17"
+	cases := []struct {
+		name string
+		old  *offline.ReviewPlan
+		date string
+		want bool
+	}{
+		{"下载失败 / 对象不存在", nil, date, false},
+		{"陈年 plan", &offline.ReviewPlan{Date: "2026-11-16", Words: []offline.PlanWord{{Number: 1}}}, date, false},
+		{"当天有词", &offline.ReviewPlan{Date: date, Words: []offline.PlanWord{{Number: 1}}}, date, true},
+		{"当天全交完的空 plan", &offline.ReviewPlan{Date: date}, date, true},
+		{"请求日期对不上", &offline.ReviewPlan{Date: date}, "2026-11-18", false},
+	}
+	for _, c := range cases {
+		if got := WordPlanLocked(c.old, c.date); got != c.want {
+			t.Errorf("%s: WordPlanLocked = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func testWordPlan() *offline.ReviewPlan {
+	return &offline.ReviewPlan{
+		Date: "2026-11-17",
+		Words: []offline.PlanWord{
+			{Number: 1, Word: "みず(水)"},
+			{Number: 2, Word: "はし(橋)"},
+			{Number: 3, Word: "なつ(夏)"},
+			{Number: 4, Word: "ゆき(雪)"},
+		},
+	}
+}
+
+// 部分提交：剩下的词留在 plan 里，题号保持原编号。
+func TestPruneWordPlanPartial(t *testing.T) {
+	p := testWordPlan()
+	left := PruneWordPlan(p, []int{1, 3})
+	if left != 2 || len(p.Words) != 2 {
+		t.Fatalf("应剩 #2 #4，实际 left=%d words=%+v", left, p.Words)
+	}
+	if p.Words[0].Number != 2 || p.Words[0].Word != "はし(橋)" ||
+		p.Words[1].Number != 4 || p.Words[1].Word != "ゆき(雪)" {
+		t.Fatalf("题号被重排或词对不上：%+v", p.Words)
+	}
+}
+
+// 全交完 → 空 plan。上层保留这份空对象，不删。
+func TestPruneWordPlanAll(t *testing.T) {
+	p := testWordPlan()
+	left := PruneWordPlan(p, []int{1, 2, 3, 4})
+	if left != 0 || len(p.Words) != 0 {
+		t.Fatalf("全交完应清空：left=%d words=%+v", left, p.Words)
+	}
+	if p.Date != "2026-11-17" {
+		t.Errorf("剪枝不该动 Date：%q", p.Date)
+	}
+}
+
+// 一天分三次提交：每次只剪本批，已剪掉的不受影响，剩下的题号仍然原样。
+func TestPruneWordPlanTwice(t *testing.T) {
+	p := testWordPlan()
+	if l := PruneWordPlan(p, []int{2}); l != 3 {
+		t.Fatalf("第一次后应剩 3，实际 %d", l)
+	}
+	if l := PruneWordPlan(p, []int{4}); l != 2 {
+		t.Fatalf("第二次后应剩 2，实际 %d", l)
+	}
+	if p.Words[0].Number != 1 || p.Words[1].Number != 3 {
+		t.Fatalf("应只剩 #1 #3：%+v", p.Words)
+	}
+	if l := PruneWordPlan(p, []int{1, 3, 999}); l != 0 {
+		t.Fatalf("第三次应全清空，实际 %d", l)
+	}
+}
+
+// 题号对不上（老 plan / 外部 CLI 生成的 plan / 客户端多报）不能误删任何词。
+func TestPruneWordPlanUnknownNumbersAndNil(t *testing.T) {
+	p := testWordPlan()
+	if l := PruneWordPlan(p, []int{88, 999}); l != 4 {
+		t.Errorf("对不上的题号不该剪掉词，实际剩 %d", l)
+	}
+	if l := PruneWordPlan(p, nil); l != 4 {
+		t.Errorf("空提交不该剪掉词，实际剩 %d", l)
+	}
+	if l := PruneWordPlan(nil, []int{1}); l != 0 {
+		t.Errorf("nil plan 应返回 0 且不 panic，实际 %d", l)
+	}
+}

@@ -300,6 +300,202 @@ func TestApplyRecordReviewBoundary(t *testing.T) {
 }
 
 // ==========================================================================
+// 当天分多次练习（2026-11-17）：plan 锁定 + 提交剪枝
+// ==========================================================================
+
+// 固定夹具档案：两个从没测过的到期词 + 两个明确的钉子户（正确率 0% / 25%）。
+// 这样「重算」和「复用已锁定的 plan」结果一定不同，锁定失效就会被测出来。
+const multiSessionArchive = "## \U0001f4cb 版本历史\n\n" +
+	"|日期|版本|总词数|已掌握|基本掌握|待巩固|待测试|累计答错|钉子户|变化内容|\n" +
+	"|---|---|---|---|---|---|---|---|---|---|\n" +
+	"|261117|v1.0|4|0|0|0|4|0|0|固定夹具|\n\n" +
+	"# 日语单词学习进度档案\n最后更新：11/17\n\n" +
+	"## \U0001f4c5 单词列表（按课分组）\n\n" +
+	"### 第1课\n\n" +
+	"|日语单词|中文释义|复习总次数|答错次数|连续正确次数|最近复习日期|状态|\n" +
+	"|---|---|---|---|---|---|---|\n" +
+	"|みず(水)|水|0|0|0||\U0001f504待测试|\n" +
+	"|はし(橋)|桥|0|0|0||\U0001f504待测试|\n" +
+	"|なつ(夏)|夏天|5|5|0|11/01|\U0001f534待巩固|\n" +
+	"|ゆき(雪)|雪|4|3|0|11/01|\U0001f534待巩固|\n"
+
+// multiSessionFixture 造一份「今天」的档案，可选注入当天的 daily / hard plan。
+// 返回 server、内存 COS 和日期字符串；直接调 handler（绕过 withUser）。
+func multiSessionFixture(t *testing.T, planKind, planJSON string) (*server, *Storage, *memObjStore, string) {
+	t.Helper()
+	now := time.Now()
+	date := now.Format("2006-01-02")
+	mem := newMemObjStore()
+
+	arcKey := "language-review/ja/archives/" +
+		archive.Filename(LangConfigs["ja"].FilePrefix, now, 1, 0)
+	mem.objs[arcKey] = []byte(multiSessionArchive)
+	mem.mod[arcKey] = now
+
+	if planJSON != "" {
+		// 允许夹具里写 "DATE" 占位符，由这里换成真正的今天（避免调用方在
+		// := 右侧引用刚声明的 date 变量）。
+		planJSON = strings.Replace(planJSON, "DATE", date, 1)
+		key := "language-review/ja/plans/plan_" + date + ".json"
+		if planKind == "hard" {
+			key = "language-review/ja/plans/hard_" + date + ".json"
+		}
+		mem.objs[key] = []byte(planJSON)
+		mem.mod[key] = now
+	}
+	st := &Storage{lang: "ja", store: mem}
+	return &server{storage: st, lang: "ja"}, st, mem, date
+}
+
+// 同一天反复 GET /api/plan 必须复用已存的 plan，不能按档案重算换一批题。
+func TestMultiSessionHandlePlanReusesTodayPlan(t *testing.T) {
+	srv, st, mem, date := multiSessionFixture(t, "", "")
+	// 故意用跟档案算出来完全不同的词和题号，锁定失效会立刻露馅。
+	stored := `{"date":"` + date + `","language":"ja","words":` +
+		`[{"number":7,"word":"なつ(夏)","definition":"夏天"}],"sentences":[]}`
+	key := "language-review/ja/plans/plan_" + date + ".json"
+	mem.objs[key] = []byte(stored)
+	mem.mod[key] = time.Now()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/plan?mode=words&date="+date, nil)
+	srv.handlePlan(rec, req, st)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("HTTP %d: %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Words []struct {
+			Number int    `json:"number"`
+			Word   string `json:"word"`
+		} `json:"words"`
+		DueCount int `json:"due_count"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.DueCount != 1 || len(out.Words) != 1 ||
+		out.Words[0].Number != 7 || out.Words[0].Word != "なつ(夏)" {
+		t.Fatalf("应原样返回已锁定的 #7，实际 %+v", out)
+	}
+	if string(mem.objs[key]) != stored {
+		t.Error("GET 不该覆盖当天 plan（覆盖会把题号重新编号）")
+	}
+}
+
+// 全交完留下的空 hard plan 也必须锁住：hard 是全量普查，一旦重算就会
+// 把刚练完的钉子户又发一遍，老师再提交就是同一天二次改档案。
+func TestMultiSessionHandleHardReusesEmptyTodayPlan(t *testing.T) {
+	stored := `{"date":"DATE","language":"ja","kind":"hard","words":[],"sentences":[]}`
+	srv, st, mem, date := multiSessionFixture(t, "hard", stored)
+	key := "language-review/ja/plans/hard_" + date + ".json"
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/hard?date="+date, nil)
+	srv.handleHard(rec, req, st)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("HTTP %d: %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		HardCount int `json:"hard_count"`
+		Remaining int `json:"remaining"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.HardCount != 0 || out.Remaining != 0 {
+		t.Fatalf("空 plan 应锁住（档案里其实有 2 个钉子户），实际 %+v", out)
+	}
+	if got := string(mem.objs[key]); got != strings.Replace(stored, "DATE", date, 1) {
+		t.Errorf("空 plan 被重算覆盖了：%s", got)
+	}
+}
+
+// 走完整的 /api/record：分两次提交，验证服务端剪枝、题号不重排、
+// 返回 words_remaining，以及全交完保留空 plan 当「今天出过题」的标记。
+func TestMultiSessionHandleRecordPrunesWordPlan(t *testing.T) {
+	srv, st, mem, date := multiSessionFixture(t, "", "")
+	stored := `{"date":"` + date + `","language":"ja","words":` +
+		`[{"number":1,"word":"みず(水)"},{"number":2,"word":"はし(橋)"},` +
+		`{"number":3,"word":"なつ(夏)"},{"number":4,"word":"ゆき(雪)"}],"sentences":[]}`
+	key := "language-review/ja/plans/plan_" + date + ".json"
+	mem.objs[key] = []byte(stored)
+	mem.mod[key] = time.Now()
+
+	post := func(results string) float64 {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/record",
+			strings.NewReader(`{"plan_date":"`+date+`","word_results":`+results+`}`))
+		srv.handleRecord(rec, req, st)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("HTTP %d: %s", rec.Code, rec.Body.String())
+		}
+		var out map[string]interface{}
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		v, ok := out["words_remaining"].(float64)
+		if !ok {
+			t.Fatalf("返回里缺 words_remaining：%s", rec.Body.String())
+		}
+		return v
+	}
+
+	// 第一批只交 #1 #3
+	if got := post(`[{"number":1,"correct":true},{"number":3,"correct":false}]`); got != 2 {
+		t.Fatalf("第一批后应剩 2，实际 %v", got)
+	}
+	p1, err := st.DownloadPlan(context.Background(), date)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p1.Words) != 2 || p1.Words[0].Number != 2 || p1.Words[0].Word != "はし(橋)" ||
+		p1.Words[1].Number != 4 || p1.Words[1].Word != "ゆき(雪)" {
+		t.Fatalf("剩下的应是原编号 #2 #4：%+v", p1.Words)
+	}
+
+	// 第二批交完，plan 变空但仍锁在当天
+	if got := post(`[{"number":2,"correct":true},{"number":4,"correct":true}]`); got != 0 {
+		t.Fatalf("第二批后应剩 0，实际 %v", got)
+	}
+	p2, err := st.DownloadPlan(context.Background(), date)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p2.Words) != 0 || !plan.WordPlanLocked(p2, date) {
+		t.Fatalf("全交完应保留一份空的当天 plan：%+v", p2)
+	}
+}
+
+// hard 提交必须剪 hard plan，绝不能误剪 daily plan（两把 COS key 别串）。
+func TestMultiSessionPruneSubmittedWordPlanUsesHardKey(t *testing.T) {
+	srv, st, mem, date := multiSessionFixture(t, "", "")
+	daily := `{"date":"` + date + `","language":"ja","words":[{"number":1,"word":"みず(水)"}],"sentences":[]}`
+	hardP := `{"date":"` + date + `","language":"ja","kind":"hard","words":` +
+		`[{"number":5,"word":"なつ(夏)"},{"number":6,"word":"ゆき(雪)"}],"sentences":[]}`
+	dailyKey := "language-review/ja/plans/plan_" + date + ".json"
+	hardKey := "language-review/ja/plans/hard_" + date + ".json"
+	mem.objs[dailyKey] = []byte(daily)
+	mem.mod[dailyKey] = time.Now()
+	mem.objs[hardKey] = []byte(hardP)
+	mem.mod[hardKey] = time.Now()
+
+	got := srv.pruneSubmittedWordPlan(context.Background(), st, RecordInput{
+		PlanDate: date, Hard: true,
+		WordResults: []RecordResult{{Number: 5, Correct: true}},
+	})
+	if got != 1 {
+		t.Fatalf("hard plan 应剩 1，实际 %d", got)
+	}
+	hp, err := st.DownloadHardPlan(context.Background(), date)
+	if err != nil || len(hp.Words) != 1 || hp.Words[0].Number != 6 {
+		t.Fatalf("hard plan 应只剩 #6：%+v err=%v", hp, err)
+	}
+	if string(mem.objs[dailyKey]) != daily {
+		t.Error("daily plan 被误改了")
+	}
+}
+
+// ==========================================================================
 // 原 draft_test.go
 // ==========================================================================
 
@@ -608,8 +804,7 @@ func TestWordPOSNoteRoundTrip(t *testing.T) {
 		t.Errorf("没备注的词读回来应为空，got %q", got)
 	}
 	// omitempty：写了备注的才序列化，没写的不该往 900 多条的文件里塞一堆空字段
-	if one := toJSON(m.Items["とおります(通ります)"]);
-		!strings.Contains(one, `"note"`) || !strings.Contains(one, "空间上穿过") {
+	if one := toJSON(m.Items["とおります(通ります)"]); !strings.Contains(one, `"note"`) || !strings.Contains(one, "空间上穿过") {
 		t.Errorf("写了备注的应序列化出来，got %s", one)
 	}
 	if one := toJSON(m.Items["おふろ(お風呂)"]); strings.Contains(one, "note") {

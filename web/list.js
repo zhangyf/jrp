@@ -397,27 +397,27 @@ function ListPractice(opts) {
       var line = '已回写：正确 ' + (w.correct || 0) + '，错误 ' + (w.wrong || 0) +
         (w.not_found ? '，未匹配 ' + w.not_found : '') + '，档案 ' + (w.version || '');
       var left = self.pendLeft || 0;
+      // 服务端按提交题号剪过当天 plan，这个数才是「还剩几个没写」的权威来源；
+      // 老服务端没这个字段时退回本地算的 pendLeft。
+      var remaining = (d.words_remaining == null) ? left : d.words_remaining;
       o.msg.className = 'feedback ok';
-      o.msg.textContent = line + (left ? '　还剩 ' + left + ' 个没写' : '');
+      o.msg.textContent = line + (remaining ? '　还剩 ' + remaining + ' 个没写，正在继续' : '');
       renderTomorrow(o.tomorrow, d.tomorrow);
+      app.toast('已回写');
 
-      // 部分提交后想接着把剩下的练完：回到本页重新拉 plan。
-      // 没回写的词到期日没动，还在 plan 里；已回写的被推到未来，不会再冒出来。
-      if (left) {
-        var cont = document.createElement('button');
-        cont.className = 'ghost';
-        cont.style.marginLeft = '8px';
-        cont.textContent = '继续练剩下的 ' + left + ' 个';
-        cont.addEventListener('click', function () { app.go(o.hard ? 'hard' : 'practice'); });
-        o.msg.appendChild(cont);
+      // 当天允许分多次练习：还有没写的词 → 自动重拉 plan 接着练。
+      // 服务端已把提交过的题从当天 plan 里剪掉，重拉回来只剩没写的那几个、
+      // 题号保持原编号，所以既不用「继续练剩下的」按钮，也不锁成只读回看。
+      if (remaining > 0 && self.o.onContinue) {
+        setTimeout(function () { self.o.onContinue(); }, 600);
+        return;
       }
 
-      // 不再自动切进第二轮：那样答对的词当场就消失了，老师连自己写了什么都看不到。
-      // 改成整份列表原地变只读回看，错词巩固交给回看卡上的「再练这 N 个错词」。
+      // 全交完才进只读回看：那样答对的词当场就消失了，老师连自己写了什么
+      // 都看不到。整份列表原地变只读，错词巩固交给回看卡上的按钮。
       self.savedAt = nowStamp();   // 刚回写的，卡标题上写这一刻
       self.enterReview();
       self.mergeServerReview();    // 把当天前面几批的错词也并进来（异步重画）
-      app.toast('已回写');
     }).catch(function (e) {
       o.commitBtn.disabled = false;
       o.msg.className = 'feedback no';

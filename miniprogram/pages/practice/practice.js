@@ -67,20 +67,12 @@ Page({
 
   load() {
     this.setData({ loading: true, err: '', requeue: false });
-    if (this.data.mode === 'hard') {
-      // ⚠️ 钉子户不做到期过滤，/api/hard 每次都返回同一批词 —— 所以跟 web 的
-      // hard.js 一样：先查今天有没有已回写的快照，有就直接只读回看。
-      // 否则会不知不觉把同一批词再练一遍，一回写就是二次改档案（间隔被改两次）。
-      app.request('/api/review?mode=hard', 'GET', {}, true)
-        .then((res) => {
-          const r = res.review;
-          if (r && r.items && r.items.length) { this.applyReview(r); return; }
-          this.loadPlan('/api/hard');
-        })
-        .catch((e) => this.setData({ err: e.message, loading: false }));
-      return;
-    }
-    this.loadPlan('/api/plan?mode=words');
+    // 三种模式统一：直接拉当天 plan。服务端把 plan 锁在当天，提交一批就
+    // 剪掉那几个词，没写的留在 plan 里、题号不变；plan 空（全交完）才由
+    // loadPlan 转只读回看。
+    // ⚠️ 过去 hard 分支先查快照、有快照就整页只读回看 —— 那正是部分提交后
+    // 剩下的词不能再写的根因。已跟 web/hard.js 一起删掉。
+    this.loadPlan(this.data.mode === 'hard' ? '/api/hard' : '/api/plan?mode=words');
   },
 
   loadPlan(path) {
@@ -476,12 +468,14 @@ Page({
         // 已落库，草稿没用了 —— 不删的话下次打开会恢复出一堆早就写完的答案
         this.clearDraft();
         const ok = wordResults.filter((r) => r.correct).length;
-        wx.showModal({
-          title: '已提交 ' + wordResults.length + ' 题',
-          content: '对 ' + ok + ' / 错 ' + (wordResults.length - ok),
-          showCancel: false,
-          success: () => this.load()
+        wx.showToast({
+          title: '提交 ' + wordResults.length + ' 题 · 对 ' + ok + ' 错 ' + (wordResults.length - ok),
+          icon: 'none', duration: 1500
         });
+        // 自动重拉当天 plan 接着练，不用点弹窗（web 端同口径）。
+        // 部分提交 → 服务端剪枝后只剩没写的词；全交完 → plan 空，loadPlan
+        // 会转只读回看。
+        setTimeout(() => this.load(), 900);
       })
       .catch((e) => {
         this.setData({ submitting: false });

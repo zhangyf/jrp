@@ -463,19 +463,22 @@ var sentence = {
       el('sentenceCommitResult').textContent =
         '已回写：正确 ' + (s.correct || 0) + '，错误 ' + (s.wrong || 0) +
         '（错句会按 3/7/14 天重出）' +
-        (left > 0 ? '　另 ' + left + ' 句没写，已留在今天这批里 —— 刷新页面还在，写完再提交一次即可' : '');
+        (left > 0 ? '　另 ' + left + ' 句没写，正在继续这一批' : '　这一批写完了，正在换新的一批');
       // 草稿跟着提交结果走：全交完 → 整份草稿没用了，清掉（后端也删了 plan，
       // 下次装载才是新的一批）；只交了一部分 → 只留没交那几句的草稿，
-      // 刷新后题和写了一半的答案都还在。
+      // 重拉后题和写了一半的答案都还在。
       var submitted = {};
       rs.forEach(function (r) { submitted[r.number] = true; });
       if (left > 0) self.pruneDraft(submitted);
       else self.clearDraft();
-      // 「换下一批」只在全交完时出现；还剩句子时刷新了也还是这批，别误导。
-      if (left > 0) el('sentenceNext').classList.add('hidden');
-      else el('sentenceNext').classList.remove('hidden');
       self.dropDraftBar();
       app.toast('造句结果已回写');
+
+      // 三种模式统一：提交成功后自动重拉 plan，不等老师点「换下一批」。
+      // 部分提交 → 服务端只剪掉已交的句子，剩下的原编号留在当天 plan；
+      // 全交完 → 服务端删掉 plan，重拉出全新一批。
+      // 跟小程序 sentences.js 的 doSubmit 是同一个口径。
+      setTimeout(function () { self.load(); }, 600);
     }).catch(function (e) {
       el('sentenceCommit').disabled = false;
       el('sentenceCommitResult').className = 'feedback no';

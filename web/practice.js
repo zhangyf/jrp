@@ -34,6 +34,8 @@ var practice = {
       tomorrow: el('tomorrowBox'),
       hard: false,
       draftMode: 'words',
+      // 部分提交后自动重拉当天 plan，接着练没写的词（统一分多次练习逻辑）
+      onContinue: function () { practice.load(); },
       // 只读回看时那张「今天这轮已回写」的卡（与卡片模式同一版式，见 app.js 的 renderReviewCard）
       reviewBox: el('practiceListReview'),
       reviewBtnId: 'practiceListRequeue'
@@ -374,16 +376,25 @@ var practice = {
       wr.forEach(function (r) { self.submitted[r.number] = true; });
       var w = d.words || {};
       var left = self.words.length - Object.keys(self.submitted).length;
+      var remaining = (d.words_remaining == null) ? left : d.words_remaining;
       var msg = '已回写：正确 ' + (w.correct || 0) + '，错误 ' + (w.wrong || 0) +
         '，档案 ' + (w.version || '') + '（原 ' + (w.old_filename || '') + '）';
-      if (left > 0) msg += '　还剩 ' + left + ' 个没练，接着练完再点一次提交即可';
+      if (remaining > 0) msg += '　还剩 ' + remaining + ' 个没练，已自动接着练';
       el('commitResult').className = 'feedback ok';
       el('commitResult').textContent = msg;
       renderTomorrow(el('tomorrowBoxCard'), d.tomorrow);
-      // 回看要显示「当天所有批次的错词」，不是只剩刚提交这批 ——
-      // 服务端按题号合并过，拉回来重画即可。
-      self.reloadCardReview();
       app.toast('已回写');
+
+      // 还有没练的词 → 自动重拉当天 plan（服务端已剪掉提交过的题）。
+      // 不再靠内存里的 submitted 撑着、让老师再点一次提交 —— 刷新页面
+      // 内存就清了，剩下的词会被当成没出过题。全交完才回看。
+      if (remaining > 0) {
+        setTimeout(function () { self.load(); }, 600);
+        return;
+      }
+      // 回看要显示「当天所有批次的错词」，不是只剩刚提交这批 ——
+      // 服务端按词形合并过，拉回来重画即可。
+      self.reloadCardReview();
     }).catch(function (e) {
       btn.disabled = false;
       el('commitResult').className = 'feedback no';

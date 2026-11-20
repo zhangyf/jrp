@@ -142,12 +142,13 @@ Page({
       .then(() => {
         this.setData({ submitting: false });
         const ok = done.filter((it) => it.correct).length;
-        wx.showModal({
-          title: '已提交 ' + done.length + ' 句',
-          content: '对 ' + ok + ' / 错 ' + (done.length - ok),
-          showCancel: false,
-          success: () => this.load()
+        wx.showToast({
+          title: '提交 ' + done.length + ' 句 · 对 ' + ok + ' 错 ' + (done.length - ok),
+          icon: 'none', duration: 1500
         });
+        // 部分提交 → 服务端剪枝后只剩没写的句；全交完 → 删 plan 换新一批。
+        // 跟 web/sentence.js 一样自动重拉，不用点弹窗。
+        setTimeout(() => this.load(), 900);
       })
       .catch((e) => {
         this.setData({ submitting: false });
