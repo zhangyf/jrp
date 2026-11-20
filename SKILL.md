@@ -1665,6 +1665,7 @@ Dependencies: `github.com/xuri/excelize/v2`, `github.com/zhangyf/objstore`
 - R2：17 个 `api_*.go` + 7 个 `storage*.go` → 5（`api_practice` / `api_llm` / `api_auth` / `api_data` / `storage`），42→23。
 - 收尾：22 个根 `*_test.go` → 5（按被测域）。**根目录 `.go` 总数 86→28**（生产 23 + 测试 5）。`main.go` 分发 / `serve.go` 路由一字未改。
 - ⚠️ 报「根目录文件数」要给**总数**（生产 + 测试），别只报生产口径。
+- ⛔ **R2 之后新增功能也要按域收拢**：不许按「一个子功能一个文件」平铺。听力模块是 R2 之后（11-05/11-06）加的，当时平铺了 `api_listening.go` / `api_listening_progress.go` / `api_listening_refine.go` + 2 个独立 test，是唯一不合群的域。2026-11-20 老师拍板收拢成 `api_listening.go` + `api_listening_test.go` 各 1 个，函数体逐字不动、import 并集去重、文件头补来源清单 + 分区标注，`serve.go` 三条路由一字未改。收拢后根目录 `.go` 总数 **36**（生产 28 + 测试 8），7 个 `api_` 域各 1 个文件。以后新增 handler 优先并进对应域文件；确需新域才新建 1 个文件 + 1 个 test，文件头照样写来源清单。
 
 **腿二 2A：internal 小包按功能相近合并**（21→17 包）
 - R3-A 句子域：`sentence` + `sentencereview` + `lessonimport` → `internal/sentence`。三包零符号重名；后两包原本反向 import `sentence`，合并后删该 import + 去 `sentence.` 前缀；导出符号 122 / 测试 73 零丢失。
