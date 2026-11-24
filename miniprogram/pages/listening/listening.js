@@ -43,7 +43,10 @@ Page({
     trial: false,
     needLogin: false,
     // 上次进度（秒）：进播放器时由 video 的 initial-time 跳过去
-    initialTime: 0
+    initialTime: 0,
+    // 视频缓存三态：none=未缓存 / downloading=下载中 / cached=已缓存
+    cacheState: 'none',
+    cacheLabel: '缓存'
   },
 
   onLoad() {
@@ -93,6 +96,7 @@ Page({
     const self = this;
     this.setData({ loading: true, err: '', playing: false, active: -1, scrollInto: '' });
     const level = this.data.curLevel;
+    self.curFile = file; // 记下原始文件名（含扩展名），缓存按钮删/下都要用，别靠拼 title
     const q = '/api/listening?level=' + encodeURIComponent(level) +
       '&file=' + encodeURIComponent(file);
 
@@ -125,6 +129,8 @@ Page({
           // 上次听到哪里：>1 秒才跳（太小没意义），initial-time 交给 video
           initialTime: lsGetPos(level, title) > 1 ? lsGetPos(level, title) : 0
         });
+        // 同步标题栏缓存按钮的三态。
+        self.setCacheState(cache.getVideoState(level, file));
         // 视频缓存：本地命中直接用（不占网络），没命中就后台下到本地，下次秒开。
         // 拿到 video_url 后再缓存，这里异步不阻塞播放。
         if (res.video_url) {
@@ -136,6 +142,7 @@ Page({
               if (p && self.data.videoUrl === res.video_url) {
                 self.setData({ videoUrl: p });
               }
+              self.setCacheState(cache.getVideoState(level, file));
             });
           }
         }
@@ -234,12 +241,59 @@ Page({
     this.setData({ note: msg + ' · 若已播放一段时间，退出重进刷新地址' });
   },
 
+  // 把缓存状态映射成标题栏按钮的文案，一次 setData 搞定。
+  setCacheState(state) {
+    const label = state === 'cached' ? '已缓存' : (state === 'downloading' ? '下载中…' : '缓存');
+    this.setData({ cacheState: state, cacheLabel: label });
+  },
+
+  // 标题栏缓存按钮三态：
+  //   none → 手动下载；downloading → 点了没用（防重复）；cached → 弹确认删本地缓存。
+  onCacheTap() {
+    const level = this.data.curLevel;
+    const file = this.curFile || '';
+    const self = this;
+    if (!file) return;
+    const st = this.data.cacheState;
+    if (st === 'downloading') return;
+    if (st === 'cached') {
+      wx.showModal({
+        title: '删除本地缓存',
+        content: '删除后下次播放会重新走网络下载。',
+        confirmText: '删除',
+        confirmColor: '#d9534f',
+        success(res) {
+          if (!res.confirm) return;
+          cache.deleteVideo(level, file);
+          self.setCacheState(cache.getVideoState(level, file));
+          wx.showToast({ title: '已删除', icon: 'none' });
+        }
+      });
+      return;
+    }
+    // none → 下载。视频当前若正在播，videoUrl 已是本地或远程；手动缓存拿远程地址下。
+    if (!this.data.videoUrl) return;
+    this.setCacheState('downloading');
+    cache.cacheVideo(level, file, this.data.videoUrl).then((p) => {
+      if (p) {
+        self.setCacheState('cached');
+        // 正在用远程地址播的话，切到本地路径（缓存完就该用本地）。
+        if (self.data.videoUrl !== p) self.setData({ videoUrl: p });
+        wx.showToast({ title: '已缓存', icon: 'none' });
+      } else {
+        self.setCacheState('none');
+        wx.showToast({ title: '缓存失败', icon: 'none' });
+      }
+    });
+  },
+
   back() {
     this.flush(); // 离开播放器把没上报的时长交上去
     this.savePos(); // 记住进度，下次进来接着听
     this.lastT = -1;
     this.pending = 0;
-    this.setData({ playing: false, videoUrl: '', cues: [], active: -1, title: '', initialTime: 0 });
+    this.setData({ playing: false, videoUrl: '', cues: [], active: -1, title: '', initialTime: 0, cacheState: 'none', cacheLabel: '缓存' });
+    this.curFile = '';
   },
 
   // utils/trial.js 要求的挂法

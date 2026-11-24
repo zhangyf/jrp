@@ -90,12 +90,40 @@
 
 /* ===== 详情态 ===== */
 .vtitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 30rpx;
   font-weight: 600;
   color: #23231f;
   margin-bottom: 14rpx;
   line-height: 1.4;
   word-break: break-all;
+}
+.vtitle-name {
+  flex: 1;
+  min-width: 0; /* 标题长时能被按钮挤缩，不顶爆布局 */
+}
+.cachebtn {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+  padding: 8rpx 22rpx;
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #2f6f4f;
+  background: #ffffff;
+  border: 1rpx solid #2f6f4f;
+  border-radius: 999rpx;
+  white-space: nowrap;
+}
+.cachebtn.cache-cached {
+  color: #8a8a80;
+  border-color: #c9c9c0;
+  background: #f5f5f0;
+}
+.cachebtn.cache-downloading {
+  color: #8a8a80;
+  border-color: #c9c9c0;
 }
 .player {
   width: 100%;

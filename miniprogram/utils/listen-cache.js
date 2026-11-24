@@ -182,7 +182,39 @@ function ensureRoom(need) {
   } catch (e) { /* 逐出失败：saveFile 自己会兜底 fail */ }
 }
 
-// 手动清空某个级别的视频缓存（预留，暂未挂 UI）。
+// 查单个视频的缓存状态：'none'（没缓存）/ 'cached'（已缓存）。
+// 下载中态由页面自己记（downloadFile 是异步 Promise，这里不管）。
+function getVideoState(level, file) {
+  const key = encodeURIComponent(level || '') + '/' + encodeURIComponent(file || '');
+  const arr = readIndex();
+  const hit = arr.find((it) => it.key === key);
+  if (!hit) return 'none';
+  // 文件可能被系统清了，校验一下；没了就当没缓存
+  try {
+    wx.getFileSystemManager().accessSync(hit.path);
+    return 'cached';
+  } catch (e) {
+    arr.splice(arr.indexOf(hit), 1);
+    writeIndex(arr);
+    return 'none';
+  }
+}
+
+// 删单个视频的本地缓存文件 + 索引条目。返回是否真的删了（文件/索引可能已没）。
+function deleteVideo(level, file) {
+  const key = encodeURIComponent(level || '') + '/' + encodeURIComponent(file || '');
+  const arr = readIndex();
+  const idx = arr.findIndex((it) => it.key === key);
+  let removed = false;
+  if (idx >= 0) {
+    try { wx.getFileSystemManager().unlinkSync(arr[idx].path); removed = true; } catch (e) { /* 文件已没 */ }
+    arr.splice(idx, 1);
+    writeIndex(arr);
+  }
+  return removed;
+}
+
+// 手动清空所有视频缓存（预留，暂未挂 UI）。
 function clearVideos() {
   try {
     const arr = readIndex();
@@ -194,5 +226,5 @@ function clearVideos() {
 
 module.exports = {
   getCues, setCues,
-  getVideo, cacheVideo, clearVideos
+  getVideo, cacheVideo, deleteVideo, getVideoState, clearVideos
 };
