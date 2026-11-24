@@ -22,6 +22,7 @@
 
 const app = getApp();
 const trial = require('../../utils/trial.js');
+const cache = require('../../utils/listen-cache.js');
 
 Page({
   data: {
@@ -91,24 +92,53 @@ Page({
     if (trial.locked(this)) { this.onTapLocked(); return; }
     const self = this;
     this.setData({ loading: true, err: '', playing: false, active: -1, scrollInto: '' });
-    const q = '/api/listening?level=' + encodeURIComponent(this.data.curLevel) +
+    const level = this.data.curLevel;
+    const q = '/api/listening?level=' + encodeURIComponent(level) +
       '&file=' + encodeURIComponent(file);
+
+    // 字幕优先吃缓存：命中就直接本地秒开，还省一次网络往返。视频同理。
+    // 但标题（res.title）只有服务端有，所以命中缓存也要再发一次请求拿 title。
+    const cachedCue = cache.getCues(level, file);
+
     app.request(q, 'GET', {}, true)
       .then((res) => {
         self.lastT = -1;
         self.pending = 0;
         self.lastSave = 0;
         const title = res.title || file;
+        // 字幕：缓存命中用缓存的，否则用服务端下发的并顺手写缓存。
+        let cues = res.cues || [];
+        let note = res.note || '';
+        if (cachedCue) {
+          cues = cachedCue.cues;
+          if (cachedCue.note) note = cachedCue.note;
+        } else if (cues.length) {
+          cache.setCues(level, file, cues, note);
+        }
         self.setData({
           loading: false,
           playing: true,
           title: title,
           videoUrl: res.video_url || '',
-          cues: res.cues || [],
-          note: res.note || '',
+          cues: cues,
+          note: note,
           // 上次听到哪里：>1 秒才跳（太小没意义），initial-time 交给 video
-          initialTime: lsGetPos(self.data.curLevel, title) > 1 ? lsGetPos(self.data.curLevel, title) : 0
+          initialTime: lsGetPos(level, title) > 1 ? lsGetPos(level, title) : 0
         });
+        // 视频缓存：本地命中直接用（不占网络），没命中就后台下到本地，下次秒开。
+        // 拿到 video_url 后再缓存，这里异步不阻塞播放。
+        if (res.video_url) {
+          const local = cache.getVideo(level, file);
+          if (local) {
+            self.setData({ videoUrl: local });
+          } else {
+            cache.cacheVideo(level, file, res.video_url).then((p) => {
+              if (p && self.data.videoUrl === res.video_url) {
+                self.setData({ videoUrl: p });
+              }
+            });
+          }
+        }
       })
       .catch((e2) => self.setData({ loading: false, err: e2.message || '加载失败' }));
   },
