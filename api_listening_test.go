@@ -6,16 +6,20 @@
 // 来源与顶层声明：
 // api_listening_progress_test.go: TestListeningProgressRejectsBadLevel, TestListeningProgressCapsAndClamps, TestListeningProgressRejectsBadBody, TestListeningProgressRejectsNonPost, TestSortedListeningLevels, TestSortedListeningLevelsAlwaysShowsBoth, TestSortedListeningLevelsBadGoalFallback
 // api_listening_refine_test.go: TestRefinePathToken, TestCheckRefineTarget桶名不对, TestCheckRefineTarget桶名对但key越界, TestCheckRefineTarget完全在听力目录下通过, TestCheckRefineTarget只给Output也认, TestCheckRefineTarget桶名前缀相似不误判
+// 2026-11-25 新增（缓存指纹）: listeningFixture, callListeningVideo, TestListeningVideoFingerprintsStable, TestListeningVideoSRTChangeBumpsSRTHash, TestListeningVideoReuploadBumpsVideoFP, TestListeningVideoNoSRTHasEmptyFP, TestListeningObjectFPStripsQuotes
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zhangyf/jrp/internal/listening"
+	"github.com/zhangyf/objstore"
 )
 
 // =========================================================================
@@ -235,5 +239,132 @@ func TestCheckRefineTarget桶名前缀相似不误判(t *testing.T) {
 	}
 	if err := checkRefineTarget(d, st); err == nil {
 		t.Fatal("前缀相似的桶名应被拒（不能 HasPrefix，要精确相等）")
+	}
+}
+
+// =========================================================================
+// 听力详情缓存指纹（2026-11-25 新增）
+// =========================================================================
+
+// 小程序按 video_fp / srt_fp 比对本地缓存。COS 上同名文件被覆盖后指纹必须变，
+// 否则用户会一直播旧视频 / 看旧字幕（老师 2026-11-25 提的问题）。
+// 这里用 memObjStore 直接打 listeningVideo，不碰线上 COS。
+
+func listeningFixture(t *testing.T) (*server, *Storage, *memObjStore, string, string) {
+	t.Helper()
+	mem := newMemObjStore()
+	st := &Storage{lang: "ja", store: mem}
+	srv := &server{storage: st}
+	base := st.sharedBase() + listeningDir + "N5/"
+	vk := base + "JLPT N5 20261117.mp4"
+	sk := base + "JLPT N5 20261117.srt"
+	ctx := context.Background()
+	if err := mem.PutObject(ctx, vk, []byte("video-bytes")); err != nil {
+		t.Fatalf("放视频失败：%v", err)
+	}
+	if err := mem.PutObject(ctx, sk, []byte("1\n00:00:00,000 --> 00:00:02,000\nこんにちは\n")); err != nil {
+		t.Fatalf("放字幕失败：%v", err)
+	}
+	return srv, st, mem, vk, sk
+}
+
+func callListeningVideo(t *testing.T, srv *server, st *Storage) map[string]interface{} {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/listening?level=N5&file=x.mp4", nil)
+	rec := httptest.NewRecorder()
+	srv.listeningVideo(rec, req, st, "N5", "JLPT N5 20261117.mp4")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got %d, want 200（body=%s）", rec.Code, rec.Body.String())
+	}
+	got := map[string]interface{}{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("解析响应失败：%v", err)
+	}
+	return got
+}
+
+// 文件没动时指纹必须稳定（不然每次进播放器都会重下视频，缓存白做）。
+func TestListeningVideoFingerprintsStable(t *testing.T) {
+	srv, st, _, _, _ := listeningFixture(t)
+	a := callListeningVideo(t, srv, st)
+	b := callListeningVideo(t, srv, st)
+	vfp, _ := a["video_fp"].(string)
+	sfp, _ := a["srt_fp"].(string)
+	if vfp == "" || sfp == "" {
+		t.Fatalf("指纹不能为空：video_fp=%q srt_fp=%q", vfp, sfp)
+	}
+	if a["video_fp"] != b["video_fp"] || a["srt_fp"] != b["srt_fp"] {
+		t.Errorf("文件没动指纹却变了：%v/%v → %v/%v",
+			a["video_fp"], a["srt_fp"], b["video_fp"], b["srt_fp"])
+	}
+	// URL 上要带版本参数，否则 EO 边缘会把新版本当旧对象返。
+	u, _ := a["video_url"].(string)
+	if !strings.HasSuffix(u, "?v="+vfp) {
+		t.Errorf("video_url 没挂版本参数：%q（fp=%q）", u, vfp)
+	}
+}
+
+// 精校回写 .srt（同名覆盖）后只该换 srt_fp，视频指纹不动。
+func TestListeningVideoSRTChangeBumpsSRTHash(t *testing.T) {
+	srv, st, mem, _, sk := listeningFixture(t)
+	before := callListeningVideo(t, srv, st)
+	if err := mem.PutObject(context.Background(), sk,
+		[]byte("1\n00:00:00,000 --> 00:00:02,000\nこんばんは\n")); err != nil {
+		t.Fatalf("覆盖字幕失败：%v", err)
+	}
+	after := callListeningVideo(t, srv, st)
+	if before["srt_fp"] == after["srt_fp"] {
+		t.Error("字幕内容改了 srt_fp 必须变，否则小程序会一直显示旧字幕")
+	}
+	if before["video_fp"] != after["video_fp"] {
+		t.Error("只改字幕，video_fp 不该跟着变（会白重下几十 MB 视频）")
+	}
+}
+
+// 重传视频后 video_fp 和播放 URL 都要换。
+func TestListeningVideoReuploadBumpsVideoFP(t *testing.T) {
+	srv, st, mem, vk, _ := listeningFixture(t)
+	before := callListeningVideo(t, srv, st)
+	if err := mem.PutObject(context.Background(), vk, []byte("video-bytes-reuploaded-v2")); err != nil {
+		t.Fatalf("覆盖视频失败：%v", err)
+	}
+	after := callListeningVideo(t, srv, st)
+	if before["video_fp"] == after["video_fp"] {
+		t.Error("视频重传了 video_fp 必须变，否则永远播旧视频")
+	}
+	if before["video_url"] == after["video_url"] {
+		t.Error("指纹换了但播放 URL 没换，绕不过 EO 边缘的旧缓存")
+	}
+}
+
+// 没字幕时 srt_fp 必须是空串：小程序约定「没指纹就不启用缓存」。
+func TestListeningVideoNoSRTHasEmptyFP(t *testing.T) {
+	srv, st, mem, _, sk := listeningFixture(t)
+	if err := mem.DeleteObject(context.Background(), sk); err != nil {
+		t.Fatalf("删字幕失败：%v", err)
+	}
+	got := callListeningVideo(t, srv, st)
+	if got["srt_fp"] != "" {
+		t.Errorf("没字幕 srt_fp 应为空，got %v", got["srt_fp"])
+	}
+	if got["video_fp"] == "" {
+		t.Error("没字幕不影响视频指纹")
+	}
+}
+
+// COS 的 ETag 带双引号，指纹要剥掉；ETag 变了指纹要变。
+func TestListeningObjectFPStripsQuotes(t *testing.T) {
+	ts := time.Date(2026, 11, 25, 1, 2, 3, 0, time.UTC)
+	a := listeningObjectFP(&objstore.ObjectInfo{ETag: `"abc"`, Size: 100, LastModified: ts})
+	b := listeningObjectFP(&objstore.ObjectInfo{ETag: `abc`, Size: 100, LastModified: ts})
+	if a != b || strings.HasPrefix(a, `"`) {
+		t.Errorf("ETag 引号应剥掉且结果一致：%q vs %q", a, b)
+	}
+	c := listeningObjectFP(&objstore.ObjectInfo{ETag: `"def"`, Size: 100, LastModified: ts})
+	if a == c {
+		t.Error("ETag 换了指纹必须变")
+	}
+	if listeningObjectFP(nil) != "" {
+		t.Error("nil 对象应返回空指纹")
 	}
 }

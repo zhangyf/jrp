@@ -4,7 +4,10 @@
 
   <!-- ===== 详情态：播放器 + 字幕 ===== -->
   <block wx:if="{{playing}}">
-    <view class="vtitle">{{title}}</view>
+    <view class="vtitle">
+      <text class="vtitle-name">{{title}}</text>
+      <view wx:if="{{cacheEnabled}}" class="cachebtn cache-{{cacheState}}" bindtap="onCacheTap">{{cacheLabel}}</view>
+    </view>
     <video id="player" class="player" src="{{videoUrl}}"
            initial-time="{{initialTime}}"
            controls show-center-play-btn

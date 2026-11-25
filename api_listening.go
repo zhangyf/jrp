@@ -13,7 +13,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -48,7 +50,10 @@ import (
 // 两个动作：
 //
 //	GET /api/listening                     → 各级别 + 每级视频清单（不含 URL）
-//	GET /api/listening?level=N5&file=x.mp4 → 单个视频的签名 URL + 解析后的字幕
+//	GET /api/listening?level=N5&file=x.mp4 → 播放 URL + 解析后的字幕 + 缓存指纹
+//
+// 详情另外下发 video_fp / srt_fp：小程序本地缓存按指纹比对，COS 上同名文件被
+// 覆盖（重传视频 / 精校回写 SRT）后旧缓存自动失效，绝不一直播老版本。
 //
 // 挂 withUser（教材内容但按级别组织，先只给登录用户；体验版不在白名单，跟 /api/search 一致）。
 
@@ -66,6 +71,26 @@ var levelRe = regexp.MustCompile(`^N[1-5]$`)
 // 列表仍走默认桶（内部 SDK ListObjects），只有下发给前端的播放地址换这个域名。
 // ⚠️ {Nx} 是等级（N5 这种，注意大小写），{file} 是最终文件名（不含路径前缀）。
 const listeningCDNBase = "https://listening.110105.xyz/"
+
+// listeningObjectFP 视频对象指纹，给小程序本地缓存做版本比对。
+//
+// 视频几十 MB，不能为了算指纹去拉内容，只能用 HEAD 拿到的元数据：
+// ETag（COS 普通上传是内容 MD5，同名覆盖必变）+ Size + LastModified。
+// 三者任一变化都判为「新版本」——宁可多重下一次，也不能让文件变了还播旧缓存。
+func listeningObjectFP(info *objstore.ObjectInfo) string {
+	if info == nil {
+		return ""
+	}
+	etag := strings.Trim(strings.TrimSpace(info.ETag), `"`)
+	return fmt.Sprintf("%s_%d_%d", etag, info.Size, info.LastModified.UTC().Unix())
+}
+
+// listeningSRTHash 字幕已经在内存里，直接用内容 sha256 前 8 字节当指纹。
+// 精校回写 COS（PutObject 覆盖同名 .srt）后内容变指纹必变，比 HEAD 的 ETag 更准。
+func listeningSRTHash(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:8])
+}
 
 // handleListening 听力模块唯一入口。
 func (s *server) handleListening(w http.ResponseWriter, r *http.Request, st *Storage) {
@@ -185,18 +210,27 @@ func (s *server) listeningVideo(w http.ResponseWriter, r *http.Request, st *Stor
 
 	// 播放地址：EO 域名 + 等级 + 文件名。文件名含空格/日文，逐段 URL 编码
 	// （等级和文件名分开编，斜杠是路径分隔符不能编）。
-	videoURL := listeningCDNBase + url.PathEscape(level) + "/" + url.PathEscape(file)
+	//
+	// 视频指纹顺手挂到 URL 当版本参数：COS 同名覆盖后 EO 边缘/播放器可能还留着
+	// 旧对象，只换 query 才会被当成新资源回源。否则小程序就算按指纹删了本地缓存，
+	// 重新下载拿到的仍是 EO 缓存里的旧视频，然后又被存成「新版本」，永远更不了。
+	videoFP := listeningObjectFP(info)
+	videoURL := listeningCDNBase + url.PathEscape(level) + "/" + url.PathEscape(file) +
+		"?v=" + url.QueryEscape(videoFP)
 
 	// SRT：同名换扩展名。缺失不算错（前端降级成纯播放、无字幕联动）。
 	// 文本同理走 EO 域名（EO 回源重写会补前缀），前端按需拉取。
 	srtKey := base + strings.TrimSuffix(file, path.Ext(file)) + ".srt"
 	var cues []listening.Cue
 	var srtNote string
+	var srtFP string
 	srtData, err := st.store.GetAll(ctx, srtKey)
 	if err != nil {
 		srtNote = "没有找到字幕文件，仅播放视频"
 		cues = []listening.Cue{}
 	} else {
+		// 字幕缺失时 srt_fp 保持空：小程序约定「没指纹就不启用缓存」。
+		srtFP = listeningSRTHash(srtData)
 		cues = listening.ParseSRT(string(srtData))
 		if len(cues) == 0 {
 			srtNote = "字幕文件解析为空"
@@ -210,6 +244,8 @@ func (s *server) listeningVideo(w http.ResponseWriter, r *http.Request, st *Stor
 		"title":     strings.TrimSuffix(file, path.Ext(file)),
 		"size":      info.Size,
 		"video_url": videoURL,
+		"video_fp":  videoFP,
+		"srt_fp":    srtFP,
 		"cues":      cues,
 		"cue_count": len(cues),
 		"note":      srtNote,

@@ -19,9 +19,15 @@
 // 5. **记住上次听到哪里**：按「级别|标题」把 currentTime 存本地存储
 //    （key 跟 web 端一致：jrp_listen_pos|<level>|<title>），进播放器用 video 的
 //    initial-time 跳过去，重开不用从头听。纯前端，不碰后端。
+//
+// 6. **缓存按指纹比对**（2026-11-25）：服务端下发 video_fp / srt_fp，本地缓存
+//    记录带 fp，进播放器先比对；COS 同名文件被覆盖（重传视频 / 字幕精校回写）
+//    后旧缓存自动失效、重新拉新的。服务端没给指纹就整个不启用缓存、按钮隐藏
+//    —— 宁可每次走网络，也绝不播旧内容。详见 utils/listen-cache.js。
 
 const app = getApp();
 const trial = require('../../utils/trial.js');
+const cache = require('../../utils/listen-cache.js');
 
 Page({
   data: {
@@ -42,7 +48,12 @@ Page({
     trial: false,
     needLogin: false,
     // 上次进度（秒）：进播放器时由 video 的 initial-time 跳过去
-    initialTime: 0
+    initialTime: 0,
+    // 视频缓存三态：none=未缓存 / downloading=下载中 / cached=已缓存
+    cacheState: 'none',
+    cacheLabel: '缓存',
+    // 服务端没下发指纹时隐藏缓存按钮（老版本服务端不赌缓存是新的）
+    cacheEnabled: false
   },
 
   onLoad() {
@@ -90,25 +101,68 @@ Page({
     if (!file) return;
     if (trial.locked(this)) { this.onTapLocked(); return; }
     const self = this;
-    this.setData({ loading: true, err: '', playing: false, active: -1, scrollInto: '' });
-    const q = '/api/listening?level=' + encodeURIComponent(this.data.curLevel) +
+    this.setData({ loading: true, err: '', playing: false, active: -1, scrollInto: '', cacheEnabled: false });
+    const level = this.data.curLevel;
+    self.curFile = file; // 记下原始文件名（含扩展名），缓存按钮删/下都要用，别靠拼 title
+    self.curVideoFp = '';
+    self.curVideoUrl = ''; // 手动缓存要用远程地址，别拿可能被换成本地路径的 videoUrl
+    const q = '/api/listening?level=' + encodeURIComponent(level) +
       '&file=' + encodeURIComponent(file);
+
+    // ⚠️ 指纹在响应里，字幕缓存必须等拿到 res.srt_fp 才能判命中。
+    // 标题（res.title）也只有服务端有，所以无论如何都要发这一次请求。
     app.request(q, 'GET', {}, true)
       .then((res) => {
         self.lastT = -1;
         self.pending = 0;
         self.lastSave = 0;
         const title = res.title || file;
+        const videoFp = res.video_fp || '';
+        const srtFp = res.srt_fp || '';
+        self.curVideoFp = videoFp;
+        self.curVideoUrl = res.video_url || '';
+
+        // 字幕：指纹一致才用缓存；不一致（COS 上 SRT 被精校覆盖）就用服务端
+        // 的新字幕并覆盖写缓存。没指纹时 getCues/setCues 自动不启用。
+        const cachedCue = cache.getCues(level, file, srtFp);
+        let cues = res.cues || [];
+        let note = res.note || '';
+        if (cachedCue) {
+          cues = cachedCue.cues;
+          if (cachedCue.note) note = cachedCue.note;
+        } else if (cues.length) {
+          cache.setCues(level, file, cues, note, srtFp);
+        }
         self.setData({
           loading: false,
           playing: true,
           title: title,
           videoUrl: res.video_url || '',
-          cues: res.cues || [],
-          note: res.note || '',
+          cues: cues,
+          note: note,
+          cacheEnabled: !!videoFp,
           // 上次听到哪里：>1 秒才跳（太小没意义），initial-time 交给 video
-          initialTime: lsGetPos(self.data.curLevel, title) > 1 ? lsGetPos(self.data.curLevel, title) : 0
+          initialTime: lsGetPos(level, title) > 1 ? lsGetPos(level, title) : 0
         });
+        // 同步标题栏缓存按钮的三态（指纹对不上的旧缓存会被就地清掉）。
+        self.setCacheState(cache.getVideoState(level, file, videoFp));
+        // 视频缓存：本地命中且版本一致才直接用；否则后台下新版，下次秒开。
+        // 拿到 video_url（带 ?v=fp）后再缓存，异步不阻塞播放。
+        if (videoFp && res.video_url) {
+          const local = cache.getVideo(level, file, videoFp);
+          if (local) {
+            self.setData({ videoUrl: local });
+          } else {
+            self.setCacheState('downloading');
+            cache.cacheVideo(level, file, res.video_url, videoFp).then((p) => {
+              if (self.curFile !== file) return; // 已经切了别的视频，别污染当前页
+              if (p && self.data.videoUrl === res.video_url) {
+                self.setData({ videoUrl: p });
+              }
+              self.setCacheState(cache.getVideoState(level, file, videoFp));
+            });
+          }
+        }
       })
       .catch((e2) => self.setData({ loading: false, err: e2.message || '加载失败' }));
   },
@@ -204,12 +258,74 @@ Page({
     this.setData({ note: msg + ' · 若已播放一段时间，退出重进刷新地址' });
   },
 
+  // 把缓存状态映射成标题栏按钮的文案，一次 setData 搞定。
+  setCacheState(state) {
+    const label = state === 'cached' ? '已缓存' : (state === 'downloading' ? '下载中…' : '缓存');
+    this.setData({ cacheState: state, cacheLabel: label });
+  },
+
+  // 标题栏缓存按钮三态：
+  //   none → 手动下载；downloading → 点了没用（防重复）；cached → 弹确认删本地缓存。
+  onCacheTap() {
+    const level = this.data.curLevel;
+    const file = this.curFile || '';
+    const fp = this.curVideoFp || '';
+    const self = this;
+    if (!file) return;
+    // 老服务端没下发指纹：按钮本该隐藏，这里兜底也不许缓存（绝不播旧内容）。
+    if (!fp) {
+      wx.showToast({ title: '当前版本不支持缓存', icon: 'none' });
+      return;
+    }
+    const st = this.data.cacheState;
+    if (st === 'downloading') return;
+    if (st === 'cached') {
+      wx.showModal({
+        title: '删除本地缓存',
+        content: '删除后下次播放会重新走网络下载。',
+        confirmText: '删除',
+        confirmColor: '#d9534f',
+        success(res) {
+          if (!res.confirm) return;
+          cache.deleteVideo(level, file);
+          // 本地文件已删，把 src 换回远程地址，别让播放器指着不存在的文件。
+          if (self.curVideoUrl) self.setData({ videoUrl: self.curVideoUrl });
+          self.setCacheState(cache.getVideoState(level, file, fp));
+          wx.showToast({ title: '已删除', icon: 'none' });
+        }
+      });
+      return;
+    }
+    // none → 下载。用服务端给的远程地址（带 ?v=fp），不能用可能已被换成本地路径的 videoUrl。
+    const url = this.curVideoUrl || this.data.videoUrl;
+    if (!url) return;
+    this.setCacheState('downloading');
+    cache.cacheVideo(level, file, url, fp).then((p) => {
+      if (self.curFile !== file) return; // 已经切了别的视频
+      if (p) {
+        self.setCacheState(cache.getVideoState(level, file, fp));
+        // 正在用远程地址播的话，切到本地路径（缓存完就该用本地）。
+        if (self.data.videoUrl !== p) self.setData({ videoUrl: p });
+        wx.showToast({ title: '已缓存', icon: 'none' });
+      } else {
+        self.setCacheState('none');
+        wx.showToast({ title: '缓存失败', icon: 'none' });
+      }
+    });
+  },
+
   back() {
     this.flush(); // 离开播放器把没上报的时长交上去
     this.savePos(); // 记住进度，下次进来接着听
     this.lastT = -1;
     this.pending = 0;
-    this.setData({ playing: false, videoUrl: '', cues: [], active: -1, title: '', initialTime: 0 });
+    this.setData({
+      playing: false, videoUrl: '', cues: [], active: -1, title: '', initialTime: 0,
+      cacheState: 'none', cacheLabel: '缓存', cacheEnabled: false
+    });
+    this.curFile = '';
+    this.curVideoFp = '';
+    this.curVideoUrl = '';
   },
 
   // utils/trial.js 要求的挂法
