@@ -28,6 +28,7 @@
 const app = getApp();
 const trial = require('../../utils/trial.js');
 const cache = require('../../utils/listen-cache.js');
+const version = require('../../utils/version.js');
 
 Page({
   data: {
@@ -309,8 +310,14 @@ Page({
         wx.showToast({ title: '已缓存', icon: 'none' });
       } else {
         self.setCacheState('none');
-        // 短原因给 toast，完整 errMsg 在 console（真机调试可见）。
-        wx.showToast({ title: cache.getLastError() || '缓存失败', icon: 'none', duration: 2500 });
+        // ⚠️ 自动后台缓存与本次手动缓存并发时，模块级 lastError 可能被后完成的
+        //    成功清空，只剩「缓存失败」四个字。优先读不会被成功覆盖的失败快照；
+        //    连快照都空说明 setError 一次都没走到，把构建码带上自证包版本。
+        const why = cache.getLastFailure() || cache.getLastError();
+        wx.showToast({
+          title: why || ('缓存失败(无原因/' + version.CODE_VERSION + ')'),
+          icon: 'none', duration: 2500
+        });
       }
     });
   },

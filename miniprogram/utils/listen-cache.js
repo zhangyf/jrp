@@ -46,13 +46,20 @@ const VID_INDEX_KEY = 'jrp_listen_videos';
 // 分不清是合法域名没配、下载超时、还是 saveFile 配额满。这里记一句短原因给
 // 标题栏 toast，完整 errMsg 打 console（真机调试一眼能定位）。
 let lastError = '';
+// 最近一次失败原因，成功路径不清。⚠️ 自动后台缓存（openVideo）和手动缓存
+// （onCacheTap）会并发跑在两条 Promise 上，而 lastError 是模块级单例：
+// 后完成的成功会 lastError='' 把先失败的原因冲掉，页面读到的就是空串，
+// 只剩「缓存失败」四个字。页面 toast 优先读这份不会被成功覆盖的快照。
+let lastFailure = '';
 
 function setError(short, detail) {
   lastError = short;
+  lastFailure = short;
   try { console.error('[listen-cache] ' + short, detail || ''); } catch (e) {}
 }
 
 function getLastError() { return lastError; }
+function getLastFailure() { return lastFailure; }
 
 function shortDownloadError(e) {
   const m = (e && e.errMsg) || '';
@@ -358,5 +365,5 @@ function clearVideos() {
 module.exports = {
   getCues, setCues,
   getVideo, cacheVideo, deleteVideo, getVideoState, clearVideos,
-  getLastError
+  getLastError, getLastFailure
 };
