@@ -169,6 +169,9 @@ Page({
             // ⚠️ 后台自动缓存也要接详情事件流：老师看到的「下载中」常常就是这里，
             //    不传 onStage 就永远只有一个死文案。seq 与手动点击共用，手动一接管
             //    自动的事件自动失效，两条并发不会互相刷详情。
+            // ⚠️ 退出页面再进来：back() 不 abort，下载还在跑。cacheVideo 内部按
+            //    key+fp 去重，这里拿到的是同一条任务的 Promise，onStage 会先收到
+            //    「续接上次下载」的进度快照，再接着收后续进度，不会重新下 32MB。
             const autoSeq = self.cacheSeq;
             const onAutoStage = (stage, info) => self.applyCacheStage(stage, info, autoSeq, file);
             self.setCacheState('downloading');

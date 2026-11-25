@@ -69,6 +69,14 @@ const PROGRESS_MIN_MS = 200;   // 进度回调节流：微信约每 100ms 一次
 // 正在下载的 DownloadTask（按 key 存数组：自动后台缓存和手动缓存可能并发）。
 // cancelCache() 用来 abort，让「卡住了」有个出口，而不是干等 120s 超时。
 const activeTasks = {};
+// 在途下载注册表（跨页面共享，同一小程序进程内有效）。
+// ⚠️ 只活在内存里：小程序被系统杀掉 / 冷启动后就没了，wx.downloadFile 也没有
+//    官方断点续传，跨进程「接着下」做不到。这里解决的是「退出页面再进去又起一条
+//    32MB 下载」—— 复用同一个 Promise，新页面接着看进度、等同一个结果。
+// ⚠️ 按 key+fp 登记：COS 中途重传（fp 变了）时两条互不复用，避免用旧版本结果
+//    去顶新版本。
+const inflight = {};
+function inflightKey(key, fp) { return key + '|' + fp; }
 let callSeq = 0;
 // 老版本写进本地存储的废弃 key：升级后第一次缓存时抹掉，避免以后有人误读又自锁。
 let legacyLimitCleared = false;
@@ -275,6 +283,14 @@ function getVideo(level, file, fp) {
 //   info : { text, label, percent, written, total, elapsed, cleaned, at, stalled, ... }
 //   done 的第二个参数仍是数字（本次清了几项），保持老约定。
 // 只做观测，不改缓存判定：指纹、LRU、落盘逻辑一条没动。
+//
+// ⚠️ 跨页面（2026-11-25 老师问「换个页面能不能接着下」）：
+//   back() / onHide() / onUnload() 都**不 abort**，同一小程序进程里下载本来就继续跑，
+//   落盘和 writeIndex 在回调里做，跟页面生命周期无关。以前的问题是重进页面时
+//   getVideo() 还查不到（索引没写），于是又起一条 32MB 下载。现在按 key+fp
+//   登记在途任务：重进时复用同一个 Promise、回放最新阶段快照、订阅后续进度。
+//   ⛔ 进程被系统杀掉 / 冷启动：内存里的在途表没了，wx.downloadFile 也没有官方
+//      断点续传，跨进程接着下做不到，别拿这个表去赌。
 function cacheVideo(level, file, url, fp, expectedSize, onStage) {
   onStage = typeof onStage === 'function' ? onStage : function () {};
   clearLegacyLimit();
@@ -291,6 +307,13 @@ function cacheVideo(level, file, url, fp, expectedSize, onStage) {
   let nextStallAt = STALL_SECONDS * 1000;
   let task = null;
   let key = '';
+  let ikey = '';
+  let rec = null;                 // 本条下载在 inflight 里的记录
+  const listeners = [onStage];   // 重进页面的 onStage 追加进来，进度一起播
+  let resolveP = null;           // 本次调用的 Promise resolver
+  let resolveJoin = null;
+  // dedup 复用这条 Promise：从「登记在途」那一刻起就有值，不会有空窗。
+  const joined = new Promise((r) => { resolveJoin = r; });
 
   const elapsed = () => Math.floor((Date.now() - startedAt) / 1000);
   const at = () => STAGE_LABELS[currentStage] || currentStage;
@@ -304,7 +327,10 @@ function cacheVideo(level, file, url, fp, expectedSize, onStage) {
       stalled: false, stallSeconds: 0
     };
     if (extra) Object.keys(extra).forEach(function (k) { info[k] = extra[k]; });
-    try { onStage(stage, info); } catch (e) {}
+    // 记下最新阶段：退出页面再进来时，新页面立刻看到真实进度，不用从 0% 重来。
+    if (rec) rec.last = { stage: stage, info: info };
+    // 广播给所有订阅者：原页面 + 后来重进的页面（同一条任务，不另起下载）。
+    listeners.forEach(function (fn) { try { fn(stage, info); } catch (e) {} });
     // ⚠️ 只有实质动作（阶段切换 / 百分比真的涨了）才刷新卡住计时。
     //    若进度一直卡在 42% 还照常 tick，stalled 就永远不会触发。
     if (real !== false && stage !== 'stalled') tick();
@@ -334,20 +360,26 @@ function cacheVideo(level, file, url, fp, expectedSize, onStage) {
     } catch (e) {}
   }
 
-  function finish() { try { onStage('done', cleaned); } catch (e) {} }
-  // 提前返回（fp 为空 / 命中 / 空间不够）和 Promise 内都走这里，保证定时器、
-  // 取消句柄、'done' 事件都只收一次。resolve 传 null 时表示没有 Promise 要结。
+  function finish() {
+    listeners.forEach(function (fn) { try { fn('done', cleaned); } catch (e) {} });
+  }
+  // 提前返回（fp 为空 / 命中 / 空间不够）和下载回调都走这里，保证定时器、
+  // 取消句柄、在途记录、'done' 事件都只收一次。
+  // ⚠️ 页面走了也不影响这里：落盘和 writeIndex 都在回调里做，跟页面生命周期无关。
   function end(v, resolve) {
     if (settled) return;
     settled = true;
     stopStall();
     unregisterTask(key, handle);
+    if (rec && inflight[ikey] === rec) delete inflight[ikey];
     finish();
     if (resolve) resolve(v);
+    // 重进页面等的是 joined，跟本调用的 p 一起收口，值完全一致。
+    if (resolveJoin) resolveJoin(v);
   }
+  function done(v) { end(v, resolveP); }
 
   const handle = {
-    resolve: null,
     cancel: function () {
       if (cancelled) return;
       cancelled = true;
@@ -355,7 +387,7 @@ function cacheVideo(level, file, url, fp, expectedSize, onStage) {
       emit('cancelled', { text: '已取消本次缓存', label: '已取消' });
       try { if (task && typeof task.abort === 'function') task.abort(); } catch (e) {}
       // ⚠️ 不依赖微信 abort 后一定回调 fail：这里直接收口，否则 Promise 永远悬着。
-      if (handle.resolve) handle.resolve(null);
+      done(null);
     }
   };
 
@@ -366,13 +398,32 @@ function cacheVideo(level, file, url, fp, expectedSize, onStage) {
     return Promise.resolve(null);
   }
   key = videoKey(level, file);
+  ikey = inflightKey(key, fp);
+  // 退出页面再进来 / 切换页面：同一 key+fp 已有一条下载在跑，绝不再起第二条。
+  // 32MB 白下一遍是小事，两条任务抢同一个 dest 才要命。复用同一个 Promise，
+  // 把最新阶段快照回放给新页面，进度条接着走，终态也等同一个结果。
+  const running = inflight[ikey];
+  if (running) {
+    if (running.last) {
+      const s = running.last;
+      const snap = {};
+      Object.keys(s.info).forEach(function (k) { snap[k] = s.info[k]; });
+      snap.text = '续接上次下载 · ' + (s.info.text || '');
+      try { onStage(s.stage, snap); } catch (e) {}
+    }
+    running.listeners.push(onStage);
+    return running.promise;
+  }
   // 已有同版本缓存直接返回，不重复下
   const hit = getVideo(level, file, fp);
   if (hit) {
     lastError = '';
-    end(null, null);
+    end(hit, null);
     return Promise.resolve(hit);
   }
+  // 从这一刻起登记在途：后续所有 emit 都会记快照、广播给所有订阅页面。
+  rec = { fp: fp, promise: joined, listeners: listeners, last: null };
+  inflight[ikey] = rec;
 
   // ⚠️ 下载前先看真实占用 + 服务端给的 size：不够就按 LRU 清（同时通知页面把
   //    按钮锁成「清理中…」），清完够了才自动下；仍不够直接不下载 + 明确终态，
@@ -400,9 +451,8 @@ function cacheVideo(level, file, url, fp, expectedSize, onStage) {
     label: '下载 0%', percent: 0
   });
 
-  return new Promise((resolve) => {
-    const done = (v) => end(v, resolve);
-    handle.resolve = done;
+  const p = new Promise((resolve) => {
+    resolveP = resolve;
 
     // 微信 DownloadTask.onProgressUpdate：progress(0~100) / totalBytesWritten /
     // totalBytesExpectedToWrite。⛔ 别每个回调都 setData，节流到 200ms 且进度
@@ -501,6 +551,7 @@ function cacheVideo(level, file, url, fp, expectedSize, onStage) {
       done(null);
     }
   });
+  return p;
 }
 
 // —— 持久落盘（2026-11-25 改成双路径）——
