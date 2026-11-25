@@ -1196,6 +1196,30 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
   `maximum size` 时把「已用 + 本次大小」记成观测上限 `jrp_listen_limit`，下次下载前按更小的
   cap 判断，避免反复白下 32MB。⛔ utils 不弹过程 toast，阶段一律走 `onStage` 交给按钮态；
   清理数按调用经 `onStage('done', n)` 回传，⛔ 不落模块级单例（并发会串数）。
+- ⚠️ **进度详情可见**（2026-11-25 老师要求「不知道当前什么进度、是不是卡住了」）：
+  * `wx.downloadFile` 返回的 **`DownloadTask` 必须接住**（原来直接丢了）：注册
+    `onProgressUpdate(res)` 读 `progress` / `totalBytesWritten` / `totalBytesExpectedToWrite`，
+    节流 **200ms + 进度至少跳 1%**，别每帧 `setData`；`abort()` 供取消。
+  * `onStage(stage, info)` 事件流：`preparing / cleaning / downloading / writing / retry /
+    stalled / cancelled / done`，`info` 带 `{text, label, percent, written, total, elapsed,
+    cleaned, at, stalled, ...}`。⛔ **`done` 第二参数仍是数字**（清理数），保持老约定。
+    按钮文案随阶段变（下载 42% / 写入中… / 重试 2/3），标题栏下加进度条 + 一行浅色详情。
+  * ⛔ **「下载中」不等于在下载**：32MB 下完还有 `copyFile` 写盘 + LRU 重试，这两段必须
+    有独立文案，否则用户看着像卡死。15 秒无任何进展 → `stalled` 事件，详情行变色并写明
+    「停在「写入本地文件」」；定时器在 `end()` 里 `clearInterval`，别泄漏。
+    ⚠️ **只有百分比真的涨了才算进展**（`emit(..., real)` 第三参数）：同百分比的
+    「已用 N 秒」刷新一律 `real=false`，不许给卡住计时续命；`tick()` 恢复进展时把
+    `nextStallAt` 复位到 15 秒，否则第二次卡住要等 30/45 秒才报。
+  * 进行中点按钮 **不许再 `return` 装死** → `showModal` 给完整诊断（阶段/字节/耗时/清理数/
+    重试轮次/构建码）+「取消本次缓存」→ `cancelCache(level, file)` 按 key abort 所有并发任务。
+    ⚠️ `abort()` 不保证回调 `fail`，`handle.resolve` 直接收口，否则 Promise 永远悬着。
+  * ⚠️ **自动后台缓存（`openVideo`）也必须传 `onStage`**，老师看到的「下载中」多半是它。
+    手动 / 自动两条链路共用 `cacheSeq` 隔离阶段事件，共用 `settleCache(p, seq, file, silent)`
+    收终态（后台那条 silent）。⛔ 原来自动缓存结束后按钮永远停在「下载中…」—— 终态判断
+    把自动缓存自己设的 `downloading` 当成「手动锁定态」挡掉了，这个 bug 已修。
+  * ⚠️ **进度/阶段是正常反馈，正式版照常显示**；失败原因、原始 `errMsg`、构建码属于调试信息，
+    只在 `develop` / `trial` 给（`diagEnabled()`，与 `origin/main` PR #36 逐字一致）。
+    正式版失败详情行只留「缓存未完成，点按钮可重试」，不弹诊断 toast。
 - ⚠️ **两端都要发**：服务端字段要重编 `/usr/local/bin/jrp` 才生效；小程序由老师自己上传，
   **上传后的版本直接可体验，不需要在 mp 后台再操作什么**（2026-11-25 老师纠正，
   ⛔ 别再提「选为体验版」）。只发一端时小程序拿不到指纹 → 缓存自动停用（不会播旧内容）。

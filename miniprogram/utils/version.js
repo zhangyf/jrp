@@ -9,6 +9,6 @@
 //    commit 写不进自己的 hash，所以 hex 天生指向代码基线：
 //    看到它变了 = 换包了；看到它没变 = 跑的还是上一批代码（2026-11-25 老师的用法）。
 //    漏 bump 会让缓存排查时根本分不清跑的是哪份代码，别漏。
-const CODE_VERSION = '9672330';
+const CODE_VERSION = 'ff03330';
 
 module.exports = { CODE_VERSION };

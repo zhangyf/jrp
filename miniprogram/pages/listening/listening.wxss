@@ -125,6 +125,38 @@
   color: #8a8a80;
   border-color: #c9c9c0;
 }
+.cachebtn.cache-cleaning {
+  color: #8a8a80;
+  border-color: #c9c9c0;
+}
+.cachebtn.cache-blocked {
+  color: #a05a2c;
+  border-color: #d9b48c;
+  background: #fdf6ee;
+}
+/* 缓存过程详情：进度条 + 一行浅色小字；只在缓存进行时占两行，不挤播放器 */
+.cachebar {
+  height: 4rpx;
+  margin: 10rpx 0 6rpx;
+  background: #ecece5;
+  border-radius: 999rpx;
+  overflow: hidden;
+}
+.cachebar-fill {
+  height: 100%;
+  background: #2f6f4f;
+  border-radius: 999rpx;
+  transition: width 0.2s linear;
+}
+.cachedetail {
+  font-size: 20rpx;
+  line-height: 1.5;
+  color: #8a8a80;
+  word-break: break-all;
+}
+.cachedetail.is-stalled {
+  color: #a05a2c;
+}
 .player {
   width: 100%;
   height: 420rpx;

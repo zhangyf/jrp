@@ -59,6 +59,35 @@ let lastDetail = '';
 const pendingDests = {};
 const MAX_EVICT_RETRY = 3;
 const LIMIT_KEY = 'jrp_listen_limit';
+const STALL_SECONDS = 15;      // 多少秒没有任何进展就标「可能卡住」
+const PROGRESS_MIN_MS = 200;   // 进度回调节流：微信约每 100ms 一次，别刷 setData
+
+// 正在下载的 DownloadTask（按 key 存数组：自动后台缓存和手动缓存可能并发）。
+// cancelCache() 用来 abort，让「卡住了」有个出口，而不是干等 120s 超时。
+const activeTasks = {};
+let callSeq = 0;
+
+function registerTask(key, handle) {
+  if (!activeTasks[key]) activeTasks[key] = [];
+  activeTasks[key].push(handle);
+}
+function unregisterTask(key, handle) {
+  const arr = activeTasks[key] || [];
+  const i = arr.indexOf(handle);
+  if (i >= 0) arr.splice(i, 1);
+  if (!arr.length) delete activeTasks[key];
+}
+// 取消某个视频正在进行的所有下载（含并发的自动缓存那一支）。返回取消了几条。
+function cancelCache(level, file) {
+  const key = videoKey(level, file);
+  const arr = (activeTasks[key] || []).slice();
+  arr.forEach(function (h) { try { h.cancel(); } catch (e) {} });
+  return arr.length;
+}
+
+function mbText(n) {
+  return (Number(n || 0) / (1024 * 1024)).toFixed(1);
+}
 
 function setError(short, detail) {
   lastError = short;
@@ -69,6 +98,7 @@ function setError(short, detail) {
 
 function getLastError() { return lastError; }
 function getLastFailure() { return lastFailure; }
+function getLastDetail() { return lastDetail; }
 
 // ⚠️ 微信不公开真实配额，180MB 只是我们自己的软上限，跟平台上限对不上：
 //    以前每次都判断「够」→ 白下 32MB → 落盘才报 maximum size。
@@ -88,6 +118,18 @@ function isSpaceError(msg) {
   return /maximum size|storage limit|exceeded|quota|space|not enough/i.test(String(msg || ''));
 }
 
+// 诊断 toast（域名未加白名单 / 下载超时 / 保存失败）只给开发版、体验版看。
+// 正式发布（release）保持安静：按钮从「下载中…」回到「缓存」就是反馈，
+// 不让用户看到技术黑话。完整 errMsg 仍打 console，正式版接真机调试也查得到。
+// ⚠️ 老基础库可能没有 getAccountInfoSync，拿不到 envVersion 一律按正式版处理
+//    （宁可不弹，也不能在用户手机上冒出调试信息）。
+function diagEnabled() {
+  try {
+    const env = wx.getAccountInfoSync().miniProgram.envVersion;
+    return env === 'develop' || env === 'trial';
+  } catch (e) { return false; }
+}
+
 function shortDownloadError(e) {
   const m = (e && e.errMsg) || '';
   if (/domain/i.test(m)) return '域名未加白名单';
@@ -98,12 +140,18 @@ function shortDownloadError(e) {
 // 包住异步回调里的同步逻辑：抛异常也要留下原因并结束 Promise。
 // 不这么做的话 Promise 永远悬着（按钮一直「下载中…」），或 lastError 还是空的，
 // 页面只剩「缓存失败」四个字，真机上完全分不清是哪一步坏了。
+// resolve 传的是 cacheVideo 里的 done（会顺手停掉卡住检测定时器、注销取消句柄）。
 function guard(resolve, fn) {
   try { fn(); } catch (e) {
     setError('本地处理异常', (e && (e.errMsg || e.message)) || String(e));
     resolve(null);
   }
 }
+
+const STAGE_LABELS = {
+  preparing: '检查缓存空间', cleaning: '清理旧缓存', downloading: '下载',
+  writing: '写入本地文件', retry: '清理重试'
+};
 
 // 空指纹 = 不启用缓存。绝不能拿 undefined 去跟缓存里的字符串比。
 function fpOf(fp) {
@@ -224,74 +272,197 @@ function getVideo(level, file, fp) {
 
 // 把远程视频下载并落到持久目录，返回 savedFilePath；失败返回 null（走网络）。
 // 下载前先按 LRU 腾空间；落盘时把该 key 下的旧 fp 条目一并清掉。
+//
+// onStage(stage, info) 是「详情」事件流（2026-11-25 老师要求能看到在干嘛）：
+//   stage: preparing / cleaning / downloading / writing / retry / stalled / cancelled / done
+//   info : { text, label, percent, written, total, elapsed, cleaned, at, stalled, ... }
+//   done 的第二个参数仍是数字（本次清了几项），保持老约定。
+// 只做观测，不改缓存判定：指纹、LRU、落盘逻辑一条没动。
 function cacheVideo(level, file, url, fp, expectedSize, onStage) {
   onStage = typeof onStage === 'function' ? onStage : function () {};
-  // 本次调用清掉几项旧缓存；'done' 阶段把它带回页面，页面据此给终态提示。
   let cleaned = 0;
-  const finish = function () { try { onStage('done', cleaned); } catch (e) {} };
+  const startedAt = Date.now();
+  const total = Number(expectedSize) || 0;
+  let currentStage = 'preparing';
+  let lastTickAt = startedAt;
+  let lastEmitAt = 0;
+  let lastPercent = -1;
+  let settled = false;
+  let cancelled = false;
+  let stallTimer = null;
+  let nextStallAt = STALL_SECONDS * 1000;
+  let task = null;
+  let key = '';
+
+  const elapsed = () => Math.floor((Date.now() - startedAt) / 1000);
+  const at = () => STAGE_LABELS[currentStage] || currentStage;
+
+  // real=false 表示「只是刷新耗时文案，没有实质进展」，不刷新卡住计时。
+  function emit(stage, extra, real) {
+    if (stage !== 'stalled' && STAGE_LABELS[stage]) currentStage = stage;
+    const info = {
+      text: '', label: '', percent: -1, written: 0, total: total,
+      elapsed: elapsed(), cleaned: cleaned, at: at(),
+      stalled: false, stallSeconds: 0
+    };
+    if (extra) Object.keys(extra).forEach(function (k) { info[k] = extra[k]; });
+    try { onStage(stage, info); } catch (e) {}
+    // ⚠️ 只有实质动作（阶段切换 / 百分比真的涨了）才刷新卡住计时。
+    //    若进度一直卡在 42% 还照常 tick，stalled 就永远不会触发。
+    if (real !== false && stage !== 'stalled') tick();
+  }
+
+  // 有实质动作（阶段切换 / 收到进度）就刷新「最后活动时间」，并把下一次
+  // 卡住告警的阈值复位到 15 秒 —— 否则恢复过一次后，第二次卡住要等 30/45 秒才报。
+  function tick() { lastTickAt = Date.now(); nextStallAt = STALL_SECONDS * 1000; }
+
+  function stopStall() {
+    if (stallTimer) { try { clearInterval(stallTimer); } catch (e) {} stallTimer = null; }
+  }
+  function startStall() {
+    if (stallTimer) return;
+    try {
+      stallTimer = setInterval(function () {
+        if (settled || cancelled) return;
+        const quiet = Date.now() - lastTickAt;
+        if (quiet < nextStallAt) return;
+        const secs = Math.floor(quiet / 1000);
+        nextStallAt += STALL_SECONDS * 1000;
+        emit('stalled', {
+          text: '已 ' + secs + ' 秒无进展，当前停在「' + at() + '」',
+          stalled: true, stallSeconds: secs
+        });
+      }, 2000);
+    } catch (e) {}
+  }
+
+  function finish() { try { onStage('done', cleaned); } catch (e) {} }
+  // 提前返回（fp 为空 / 命中 / 空间不够）和 Promise 内都走这里，保证定时器、
+  // 取消句柄、'done' 事件都只收一次。resolve 传 null 时表示没有 Promise 要结。
+  function end(v, resolve) {
+    if (settled) return;
+    settled = true;
+    stopStall();
+    unregisterTask(key, handle);
+    finish();
+    if (resolve) resolve(v);
+  }
+
+  const handle = {
+    resolve: null,
+    cancel: function () {
+      if (cancelled) return;
+      cancelled = true;
+      setError('已取消缓存', '');
+      emit('cancelled', { text: '已取消本次缓存', label: '已取消' });
+      try { if (task && typeof task.abort === 'function') task.abort(); } catch (e) {}
+      // ⚠️ 不依赖微信 abort 后一定回调 fail：这里直接收口，否则 Promise 永远悬着。
+      if (handle.resolve) handle.resolve(null);
+    }
+  };
+
   fp = fpOf(fp);
   if (!fp) {
     setError('服务端未下发指纹', '');
-    finish();
+    end(null, null);
     return Promise.resolve(null);
   }
-  const key = videoKey(level, file);
+  key = videoKey(level, file);
   // 已有同版本缓存直接返回，不重复下
   const hit = getVideo(level, file, fp);
   if (hit) {
     lastError = '';
-    finish();
+    end(null, null);
     return Promise.resolve(hit);
   }
 
   // ⚠️ 下载前先看真实占用 + 服务端给的 size：不够就按 LRU 清（同时通知页面把
   //    按钮锁成「清理中…」），清完够了才自动下；仍不够直接不下载 + 明确终态，
   //    绝不让人反复点、反复白下 32MB（老师 2026-11-25 反馈）。
+  emit('preparing', { text: '正在检查本地缓存空间…', label: '检查中…' });
   try {
     const fs0 = wx.getFileSystemManager();
-    const room = prepareRoom(fs0, key, Number(expectedSize) || 0, onStage);
+    const room = prepareRoom(fs0, key, Number(expectedSize) || 0, emit);
     cleaned += room.cleaned;
     if (!room.ok) {
       setError(room.cleaned
         ? '空间不足，已清理 ' + room.cleaned + ' 项仍不够'
         : '文件超过微信缓存上限，无法缓存',
         '清理 ' + room.cleaned + ' 项后仍不足：need=' + expectedSize + ', used=' + usedBytes(fs0));
-      finish();
+      end(null, null);
       return Promise.resolve(null);
     }
   } catch (e) { /* 拿不到 fs 就照常下载，落盘阶段还有 LRU 重试兜底 */ }
 
-  onStage('downloading');
+  registerTask(key, handle);
+  startStall();
+  emit('downloading', {
+    text: '准备下载 · ' + mbText(total) + ' MB',
+    label: '下载 0%', percent: 0
+  });
+
   return new Promise((resolve) => {
+    const done = (v) => end(v, resolve);
+    handle.resolve = done;
+
+    // 微信 DownloadTask.onProgressUpdate：progress(0~100) / totalBytesWritten /
+    // totalBytesExpectedToWrite。⛔ 别每个回调都 setData，节流到 200ms 且进度
+    // 至少跳 1%；进度没动时每 ~1 秒刷一次「已用 N 秒」，让时间看起来在走。
+    function reportProgress(res) {
+      if (settled || cancelled) return;
+      const written = Number(res && res.totalBytesWritten) || 0;
+      const expect = Number(res && res.totalBytesExpectedToWrite) || total || 0;
+      let pct = Number(res && res.progress);
+      if (!isFinite(pct) || pct < 0) pct = expect > 0 ? Math.floor(written / expect * 100) : 0;
+      pct = Math.max(0, Math.min(100, Math.round(pct)));
+      const now = Date.now();
+      const changed = pct !== lastPercent;
+      if (changed && now - lastEmitAt < PROGRESS_MIN_MS) return;
+      if (!changed && now - lastEmitAt < 1000) return;
+      lastPercent = pct;
+      lastEmitAt = now;
+      // ⚠️ 只有百分比真的涨了才算进展；同百分比的「已用 N 秒」刷新不能续命，
+      //    否则下载卡在 42% 时 15 秒卡住检测永远不触发。
+      emit('downloading', {
+        text: '正在下载 · ' + mbText(written) + ' / ' + mbText(expect) +
+          ' MB · ' + pct + '% · 已用 ' + elapsed() + ' 秒',
+        label: '下载 ' + pct + '%', percent: pct, written: written, total: expect
+      }, changed);
+    }
+
     // ⚠️ 每条 resolve(null) 的路径都必须先 setError，否则页面只会显示
     //    「缓存失败」四个字，等于把唯一有用的线索吞了。
     try {
-      wx.downloadFile({
+      task = wx.downloadFile({
         url: url,
         success(res) {
-          guard(resolve, function () {
+          guard(done, function () {
             // ⚠️ 不能只认 200：微信对大文件可能带 Range，COS/EO 回 206 也是成功。
             //    statusCode 缺失（部分机型不给）时信任 success，别误判成 HTTP 0。
             const code = Number(res.statusCode || 0);
             if (code && (code < 200 || code >= 300)) {
               setError('HTTP ' + code, res);
-              finish();
-              resolve(null);
+              done(null);
               return;
             }
             const tmp = res.tempFilePath;
             const size = (res.totalBytesExpectedToWrite || 0) || guessSize(tmp);
             cleaned += ensureRoom(size); // 老 LRU 兜底清掉的也计入终态提示
             const fs = wx.getFileSystemManager();
+            // 下载完成 ≠ 缓存完成：32MB 写入本地也要几秒，明确告诉用户这一步。
+            tick();
+            emit('writing', {
+              text: '下载完成 ' + mbText(size) + ' MB，正在写入本地文件…',
+              label: '写入中…', percent: 100, written: size
+            });
             // 主路径 copyFile 到 USER_DATA_PATH，失败回退老 saveFile（实现见下方）；
             // 落盘报空间类错误时按 LRU 清理后自动重试。
-            persistWithRetry(fs, tmp, key, fp, Number(expectedSize) || size, onStage).then(function (r) {
-              guard(resolve, function () {
+            persistWithRetry(fs, tmp, key, fp, Number(expectedSize) || size, emit).then(function (r) {
+              guard(done, function () {
                 cleaned += (r && r.cleaned) || 0;
                 const saved = r && r.saved;
                 if (!saved) {
-                  finish();
-                  resolve(null);
+                  done(null);
                   return;
                 }
                 const arr = readIndex();
@@ -312,22 +483,23 @@ function cacheVideo(level, file, url, fp, expectedSize, onStage) {
                 }
                 writeIndex(arr);
                 lastError = '';
-                finish();
-                resolve(saved);
+                done(saved);
               });
             });
           });
         },
         fail(e) {
+          if (cancelled) { done(null); return; } // cancel() 已写过原因并收口
           setError(shortDownloadError(e), (e && e.errMsg) || '');
-          finish();
-          resolve(null);
+          done(null);
         }
       });
+      if (task && typeof task.onProgressUpdate === 'function') {
+        task.onProgressUpdate(reportProgress);
+      }
     } catch (e) {
       setError('下载调用失败', (e && (e.errMsg || e.message)) || String(e));
-      finish();
-      resolve(null);
+      done(null);
     }
   });
 }
@@ -423,13 +595,17 @@ function evictOrphans(fs) {
 
 // 下载前的空间检查：不够就通知页面锁按钮 + 按 LRU 清，返回 {ok, cleaned}。
 // ⚠️ 上限取「软上限 180MB」与「上次落盘报错观测到的上界」里更小的那个。
-function prepareRoom(fs, key, need, onStage) {
+function prepareRoom(fs, key, need, emit) {
+  emit = typeof emit === 'function' ? emit : function () {};
   need = Number(need) || 0;
   // ⚠️ observedLimit 是「上次装不下时的总量」，真实上限必然小于它，所以用 < 判断，
   //    等于也要当成不够，否则第一次记录后第二次仍会误判「够」而白下一遍。
   const cap = Math.min(MAX_VIDEO_BYTES, observedLimit() || MAX_VIDEO_BYTES);
   if (!need || usedBytes(fs) + need < cap) return { ok: true, cleaned: 0 };
-  onStage('cleaning');
+  emit('cleaning', {
+    text: '空间不足，正在按 LRU 清理旧缓存…',
+    label: '清理中…'
+  });
   let cleaned = evictOrphans(fs);
   let rounds = 0;
   while (usedBytes(fs) + need >= cap && rounds++ < 50) {
@@ -467,7 +643,8 @@ function persistVideo(fs, tmp, key, fp) {
 // 落盘报空间类错误时：记下观测上限 → 通知页面锁按钮 → LRU 删一条 → 重试。
 // 删无可删说明不是占用问题，是这个文件本身超过平台上限 —— 明确说出来，
 // 别让用户反复点、反复白下 32MB。过程提示一律交给按钮状态，utils 不弹 toast。
-function persistWithRetry(fs, tmp, key, fp, need, onStage) {
+function persistWithRetry(fs, tmp, key, fp, need, emit) {
+  emit = typeof emit === 'function' ? emit : function () {};
   return new Promise((resolve) => {
     let tries = 0;
     let cleaned = 0;
@@ -490,7 +667,11 @@ function persistWithRetry(fs, tmp, key, fp, need, onStage) {
         }
         cleaned += n;
         tries++;
-        onStage('cleaning');
+        emit('retry', {
+          text: '写入报空间不足，已清 ' + cleaned + ' 项，第 ' + tries + '/' + MAX_EVICT_RETRY + ' 次重试…',
+          label: '重试 ' + tries + '/' + MAX_EVICT_RETRY,
+          round: tries, maxRounds: MAX_EVICT_RETRY
+        });
         attempt();
       });
     }
@@ -613,5 +794,5 @@ function clearVideos() {
 module.exports = {
   getCues, setCues,
   getVideo, cacheVideo, deleteVideo, getVideoState, clearVideos,
-  getLastError, getLastFailure
+  cancelCache, getLastError, getLastFailure, getLastDetail, diagEnabled
 };
