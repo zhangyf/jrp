@@ -18,8 +18,8 @@ Page({
     // 自定义导航栏（原生导航栏放不了图片，logo 画在自己画的导航里）
     statusBarH: 20,
     navH: 44,
-    // Logo 右侧的版本号：微信只在正式版给值，体验版/开发版留空（不显示假号）
-    appVersion: '',
+    // Logo 右侧的版本号：内置号打底，正式版会被微信线上号覆盖（任何环境都不空白）
+    appVersion: version.APP_VERSION,
     // 底部浅色十六进制构建码：内置常量，任何环境都在
     codeVersion: version.CODE_VERSION
   },
@@ -135,15 +135,15 @@ Page({
   }
 });
 
-// Logo 右侧的 vxx.xx.xx：微信官方明确「线上小程序版本号仅支持在正式版获取，
-// 开发版和体验版中无法获取」。所以正式版显示 v + version，其余环境返回空串留白，
-// 不再显示 v0.0.0 之类的假号，也不改成内置常量（老师 2026-11-25 定的口径）。
-// 需要判断代码版本请看页面底部那串内置十六进制构建码 codeVersion。
+// Logo 右侧的 vxx.xx.xx：正式版用微信给的线上版本号（miniProgram.version 只在
+// 正式版有值）；体验版/开发版微信不给，就回退到内置的 APP_VERSION —— 版本号要
+// 一直留着，不能因为加了底部构建码就把这一位清空（老师 2026-11-25 定稿）。
+// 底部另有内置十六进制构建码 codeVersion，两处并存。
 function readAppVersion() {
   try {
     const info = wx.getAccountInfoSync();
     const v = (info && info.miniProgram && info.miniProgram.version) || '';
-    if (!v) return '';
-    return 'v' + String(v).replace(/^v/i, '');
-  } catch (e) { return ''; }
+    if (v) return 'v' + String(v).replace(/^v/i, '');
+  } catch (e) { /* 老基础库没这个 API，走内置兜底 */ }
+  return version.APP_VERSION;
 }

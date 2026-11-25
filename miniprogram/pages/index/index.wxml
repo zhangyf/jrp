@@ -3,7 +3,7 @@
   <view class="nav" style="padding-top:{{statusBarH}}px">
     <view class="nav-row" style="height:{{navH}}px">
       <image class="nav-logo" src="/images/logo.png" mode="aspectFit" />
-      <!-- 版本号：仅正式版有值，体验版/开发版留空 -->
+      <!-- 版本号：正式版用微信线上号，体验版用内置号，始终留着 -->
       <text class="nav-title">{{appVersion}}</text>
     </view>
   </view>
