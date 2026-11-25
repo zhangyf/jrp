@@ -42,6 +42,25 @@ const MAX_VIDEO_BYTES = 180 * 1024 * 1024; // 视频总配额，留 20MB 余量�
 const CUE_PREFIX = 'jrp_listen_cue|';
 const VID_INDEX_KEY = 'jrp_listen_videos';
 
+// 失败原因：原来 fail() 把 errMsg 全吞了，真机上只看到「缓存失败」四个字，
+// 分不清是合法域名没配、下载超时、还是 saveFile 配额满。这里记一句短原因给
+// 标题栏 toast，完整 errMsg 打 console（真机调试一眼能定位）。
+let lastError = '';
+
+function setError(short, detail) {
+  lastError = short;
+  try { console.error('[listen-cache] ' + short, detail || ''); } catch (e) {}
+}
+
+function getLastError() { return lastError; }
+
+function shortDownloadError(e) {
+  const m = (e && e.errMsg) || '';
+  if (/domain/i.test(m)) return '域名未加白名单';
+  if (/timeout/i.test(m)) return '下载超时';
+  return '下载失败';
+}
+
 // 空指纹 = 不启用缓存。绝不能拿 undefined 去跟缓存里的字符串比。
 function fpOf(fp) {
   return typeof fp === 'string' && fp ? fp : '';
@@ -163,17 +182,29 @@ function getVideo(level, file, fp) {
 // 下载前先按 LRU 腾空间；落盘时把该 key 下的旧 fp 条目一并清掉。
 function cacheVideo(level, file, url, fp) {
   fp = fpOf(fp);
-  if (!fp) return Promise.resolve(null);
+  if (!fp) {
+    setError('服务端未下发指纹', '');
+    return Promise.resolve(null);
+  }
   const key = videoKey(level, file);
   // 已有同版本缓存直接返回，不重复下
   const hit = getVideo(level, file, fp);
-  if (hit) return Promise.resolve(hit);
+  if (hit) {
+    lastError = '';
+    return Promise.resolve(hit);
+  }
 
   return new Promise((resolve) => {
     wx.downloadFile({
       url: url,
       success(res) {
-        if (res.statusCode !== 200) { resolve(null); return; }
+        // ⚠️ 不能只认 200：微信对大文件可能带 Range，COS/EO 回 206 也是成功。
+        const code = Number(res.statusCode || 0);
+        if (code < 200 || code >= 300) {
+          setError('HTTP ' + code, res);
+          resolve(null);
+          return;
+        }
         const tmp = res.tempFilePath;
         const size = (res.totalBytesExpectedToWrite || 0) || guessSize(tmp);
         ensureRoom(size);
@@ -196,12 +227,19 @@ function cacheVideo(level, file, url, fp) {
               try { fs.unlinkSync(sv.savedFilePath); } catch (e) { /* 文件已没 */ }
             }
             writeIndex(arr);
+            lastError = '';
             resolve(sv.savedFilePath);
           },
-          fail() { resolve(null); } // saveFile 失败（配额满等）→ 走网络
+          fail(e) {
+            setError('保存失败', (e && e.errMsg) || '');
+            resolve(null); // 配额满 / 鸿蒙 saveFile 不支持 → 走网络
+          }
         });
       },
-      fail() { resolve(null); }
+      fail(e) {
+        setError(shortDownloadError(e), (e && e.errMsg) || '');
+        resolve(null);
+      }
     });
   });
 }
@@ -288,5 +326,6 @@ function clearVideos() {
 
 module.exports = {
   getCues, setCues,
-  getVideo, cacheVideo, deleteVideo, getVideoState, clearVideos
+  getVideo, cacheVideo, deleteVideo, getVideoState, clearVideos,
+  getLastError
 };
