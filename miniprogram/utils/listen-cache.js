@@ -54,6 +54,18 @@ function setError(short, detail) {
 
 function getLastError() { return lastError; }
 
+// 诊断 toast（域名未加白名单 / 下载超时 / 保存失败）只给开发版、体验版看。
+// 正式发布（release）保持安静：按钮从「下载中…」回到「缓存」就是反馈，
+// 不让用户看到技术黑话。完整 errMsg 仍打 console，正式版接真机调试也查得到。
+// ⚠️ 老基础库可能没有 getAccountInfoSync，拿不到 envVersion 一律按正式版处理
+//    （宁可不弹，也不能在用户手机上冒出调试信息）。
+function diagEnabled() {
+  try {
+    const env = wx.getAccountInfoSync().miniProgram.envVersion;
+    return env === 'develop' || env === 'trial';
+  } catch (e) { return false; }
+}
+
 function shortDownloadError(e) {
   const m = (e && e.errMsg) || '';
   if (/domain/i.test(m)) return '域名未加白名单';
@@ -327,5 +339,5 @@ function clearVideos() {
 module.exports = {
   getCues, setCues,
   getVideo, cacheVideo, deleteVideo, getVideoState, clearVideos,
-  getLastError
+  getLastError, diagEnabled
 };
