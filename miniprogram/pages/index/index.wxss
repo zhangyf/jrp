@@ -31,7 +31,7 @@
 
 .nav-row {
   display: flex;
-  align-items: center;
+  align-items: flex-end; /* logo 与版本号下沿对齐（老师 2026-11-25） */
   gap: 14rpx;
   padding: 0 24rpx;
 }
@@ -42,9 +42,11 @@
   height: 84rpx;
 }
 
-/* 版本号是次要信息：比原来的标题小一号，浅一点，不抢 logo */
+/* 版本号是次要信息：比原来的标题小一号，浅一点，不抢 logo。
+   line-height 收到 1，别让默认行距把小字从 logo 下沿顶起来。 */
 .nav-title {
   font-size: 22rpx;
+  line-height: 1;
   font-weight: 500;
   color: #8a8a80;
   letter-spacing: 1rpx;
