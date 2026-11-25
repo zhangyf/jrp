@@ -61,6 +61,16 @@ function shortDownloadError(e) {
   return '下载失败';
 }
 
+// 包住异步回调里的同步逻辑：抛异常也要留下原因并结束 Promise。
+// 不这么做的话 Promise 永远悬着（按钮一直「下载中…」），或 lastError 还是空的，
+// 页面只剩「缓存失败」四个字，真机上完全分不清是哪一步坏了。
+function guard(resolve, fn) {
+  try { fn(); } catch (e) {
+    setError('本地处理异常', (e && (e.errMsg || e.message)) || String(e));
+    resolve(null);
+  }
+}
+
 // 空指纹 = 不启用缓存。绝不能拿 undefined 去跟缓存里的字符串比。
 function fpOf(fp) {
   return typeof fp === 'string' && fp ? fp : '';
@@ -195,52 +205,73 @@ function cacheVideo(level, file, url, fp) {
   }
 
   return new Promise((resolve) => {
-    wx.downloadFile({
-      url: url,
-      success(res) {
-        // ⚠️ 不能只认 200：微信对大文件可能带 Range，COS/EO 回 206 也是成功。
-        const code = Number(res.statusCode || 0);
-        if (code < 200 || code >= 300) {
-          setError('HTTP ' + code, res);
-          resolve(null);
-          return;
-        }
-        const tmp = res.tempFilePath;
-        const size = (res.totalBytesExpectedToWrite || 0) || guessSize(tmp);
-        ensureRoom(size);
-        const fs = wx.getFileSystemManager();
-        fs.saveFile({
-          tempFilePath: tmp,
-          success(sv) {
-            const arr = readIndex();
-            // 并发下载可能留了旧 fp 的同 key 条目，连同文件一起替掉
-            for (let i = arr.length - 1; i >= 0; i--) {
-              if (arr[i].key === key && arr[i].fp !== fp) {
-                try { fs.unlinkSync(arr[i].path); } catch (e) { /* 文件已没 */ }
-                arr.splice(i, 1);
+    // ⚠️ 每条 resolve(null) 的路径都必须先 setError，否则页面只会显示
+    //    「缓存失败」四个字，等于把唯一有用的线索吞了。
+    try {
+      wx.downloadFile({
+        url: url,
+        success(res) {
+          guard(resolve, function () {
+            // ⚠️ 不能只认 200：微信对大文件可能带 Range，COS/EO 回 206 也是成功。
+            //    statusCode 缺失（部分机型不给）时信任 success，别误判成 HTTP 0。
+            const code = Number(res.statusCode || 0);
+            if (code && (code < 200 || code >= 300)) {
+              setError('HTTP ' + code, res);
+              resolve(null);
+              return;
+            }
+            const tmp = res.tempFilePath;
+            const size = (res.totalBytesExpectedToWrite || 0) || guessSize(tmp);
+            ensureRoom(size);
+            const fs = wx.getFileSystemManager();
+            fs.saveFile({
+              tempFilePath: tmp,
+              success(sv) {
+                guard(resolve, function () {
+                  const saved = sv && sv.savedFilePath;
+                  if (!saved) {
+                    // saveFile 回了 success 却没给 savedFilePath：原来会先清空
+                    // lastError 再 resolve(undefined)，页面落到失败分支时原因已丢，
+                    // 只剩「缓存失败」四个字。这里必须留下短原因 + 完整对象。
+                    setError('保存路径为空', 'saveFile success 未返回 savedFilePath：' + JSON.stringify(sv || {}));
+                    resolve(null);
+                    return;
+                  }
+                  const arr = readIndex();
+                  // 并发下载可能留了旧 fp 的同 key 条目，连同文件一起替掉
+                  for (let i = arr.length - 1; i >= 0; i--) {
+                    if (arr[i].key === key && arr[i].fp !== fp) {
+                      try { fs.unlinkSync(arr[i].path); } catch (e) { /* 文件已没 */ }
+                      arr.splice(i, 1);
+                    }
+                  }
+                  if (!arr.some((it) => it.key === key)) {
+                    arr.unshift({ key, path: saved, size, lastUsed: Date.now(), fp });
+                  } else {
+                    // 别的并发已经写好了同版本，删掉这次多存的重复文件
+                    try { fs.unlinkSync(saved); } catch (e) { /* 文件已没 */ }
+                  }
+                  writeIndex(arr);
+                  lastError = '';
+                  resolve(saved);
+                });
+              },
+              fail(e) {
+                setError('保存失败', (e && e.errMsg) || '');
+                resolve(null); // 配额满 / 鸿蒙 saveFile 不支持 → 走网络
               }
-            }
-            if (!arr.some((it) => it.key === key)) {
-              arr.unshift({ key, path: sv.savedFilePath, size, lastUsed: Date.now(), fp });
-            } else {
-              // 别的并发已经写好了同版本，删掉这次多存的重复文件
-              try { fs.unlinkSync(sv.savedFilePath); } catch (e) { /* 文件已没 */ }
-            }
-            writeIndex(arr);
-            lastError = '';
-            resolve(sv.savedFilePath);
-          },
-          fail(e) {
-            setError('保存失败', (e && e.errMsg) || '');
-            resolve(null); // 配额满 / 鸿蒙 saveFile 不支持 → 走网络
-          }
-        });
-      },
-      fail(e) {
-        setError(shortDownloadError(e), (e && e.errMsg) || '');
-        resolve(null);
-      }
-    });
+            });
+          });
+        },
+        fail(e) {
+          setError(shortDownloadError(e), (e && e.errMsg) || '');
+          resolve(null);
+        }
+      });
+    } catch (e) {
+      setError('下载调用失败', (e && (e.errMsg || e.message)) || String(e));
+      resolve(null);
+    }
   });
 }
 
