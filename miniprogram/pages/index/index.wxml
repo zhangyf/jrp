@@ -3,7 +3,8 @@
   <view class="nav" style="padding-top:{{statusBarH}}px">
     <view class="nav-row" style="height:{{navH}}px">
       <image class="nav-logo" src="/images/logo.png" mode="aspectFit" />
-      <text class="nav-title">每日练习</text>
+      <!-- 版本号：读当前包的真实版本（上传时填的那个），用来一眼确认跑的是哪版 -->
+      <text class="nav-title">{{appVersion}}</text>
     </view>
   </view>
   <view class="err" wx:if="{{message}}">{{message}}</view>
