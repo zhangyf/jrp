@@ -231,42 +231,30 @@ function cacheVideo(level, file, url, fp) {
             const size = (res.totalBytesExpectedToWrite || 0) || guessSize(tmp);
             ensureRoom(size);
             const fs = wx.getFileSystemManager();
-            fs.saveFile({
-              tempFilePath: tmp,
-              success(sv) {
-                guard(resolve, function () {
-                  const saved = sv && sv.savedFilePath;
-                  if (!saved) {
-                    // saveFile 回了 success 却没给 savedFilePath：原来会先清空
-                    // lastError 再 resolve(undefined)，页面落到失败分支时原因已丢，
-                    // 只剩「缓存失败」四个字。这里必须留下短原因 + 完整对象。
-                    setError('保存路径为空', 'saveFile success 未返回 savedFilePath：' + JSON.stringify(sv || {}));
-                    resolve(null);
-                    return;
+            // 主路径 copyFile 到 USER_DATA_PATH，失败回退老 saveFile（实现见下方）。
+            persistVideo(fs, tmp, key, fp).then(function (saved) {
+              guard(resolve, function () {
+                if (!saved) { resolve(null); return; } // persistVideo 已写好失败原因
+                const arr = readIndex();
+                // 并发下载可能留了旧 fp 的同 key 条目，连同文件一起替掉
+                for (let i = arr.length - 1; i >= 0; i--) {
+                  if (arr[i].key === key && arr[i].fp !== fp) {
+                    try { fs.unlinkSync(arr[i].path); } catch (e) { /* 文件已没 */ }
+                    arr.splice(i, 1);
                   }
-                  const arr = readIndex();
-                  // 并发下载可能留了旧 fp 的同 key 条目，连同文件一起替掉
-                  for (let i = arr.length - 1; i >= 0; i--) {
-                    if (arr[i].key === key && arr[i].fp !== fp) {
-                      try { fs.unlinkSync(arr[i].path); } catch (e) { /* 文件已没 */ }
-                      arr.splice(i, 1);
-                    }
-                  }
-                  if (!arr.some((it) => it.key === key)) {
-                    arr.unshift({ key, path: saved, size, lastUsed: Date.now(), fp });
-                  } else {
-                    // 别的并发已经写好了同版本，删掉这次多存的重复文件
-                    try { fs.unlinkSync(saved); } catch (e) { /* 文件已没 */ }
-                  }
-                  writeIndex(arr);
-                  lastError = '';
-                  resolve(saved);
-                });
-              },
-              fail(e) {
-                setError('保存失败', (e && e.errMsg) || '');
-                resolve(null); // 配额满 / 鸿蒙 saveFile 不支持 → 走网络
-              }
+                }
+                const existing = arr.find((it) => it.key === key);
+                if (!existing) {
+                  arr.unshift({ key, path: saved, size, lastUsed: Date.now(), fp });
+                } else if (existing.path !== saved) {
+                  // 并发的另一条已写好同版本；两条落在同一 dest 时绝不能删，
+                  // 删了会连累别人。只有路径不同才清掉这次多存的文件。
+                  try { fs.unlinkSync(saved); } catch (e) { /* 文件已没 */ }
+                }
+                writeIndex(arr);
+                lastError = '';
+                resolve(saved);
+              });
             });
           });
         },
@@ -280,6 +268,78 @@ function cacheVideo(level, file, url, fp) {
       resolve(null);
     }
   });
+}
+
+// —— 持久落盘（2026-11-25 改成双路径）——
+// ⚠️ 原来只用 FileSystemManager.saveFile，鸿蒙微信 8.0.23 上必报「保存失败」：
+//    wx.saveFile 系列已停止维护，且部分机型对 tempFilePath 有路径校验。
+//    主路径改成 copyFile 到 wx.env.USER_DATA_PATH（本地用户文件，文件名可控），
+//    它不挑源路径；copyFile 也不行时回退老 saveFile，两条都失败才认输。
+//    两类文件共享 200MB 配额，配额真满时两条都会失败 —— 这时把微信原始
+//    errMsg 带进短原因，真机上不用开调试也能看到确切报错。
+function slug(s) {
+  return String(s || '').replace(/[^A-Za-z0-9_-]/g, '_');
+}
+
+function keyHash(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+function persistPath(key, fp) {
+  return wx.env.USER_DATA_PATH + '/jrp_' + keyHash(key) + '_' + slug(fp).slice(0, 24) + '.mp4';
+}
+
+function errText(e) {
+  return (e && (e.errMsg || e.message)) || String(e || '');
+}
+
+function persistVideo(fs, tmp, key, fp) {
+  return new Promise((resolve) => {
+    let dest = '';
+    try {
+      dest = persistPath(key, fp);
+      // 不预先 unlink：同 key 同 fp 的两条并发下载会算出同一个 dest，
+      // 谁先删都可能把对方刚写好的文件抹掉。copyFile 自己覆盖即可。
+      fs.copyFile({
+        srcPath: tmp,
+        destPath: dest,
+        success() { resolve(dest); },
+        fail(e) { fallbackSave(fs, tmp, e, resolve); }
+      });
+    } catch (e) {
+      fallbackSave(fs, tmp, e, resolve);
+    }
+  });
+}
+
+// 备用路径：老 saveFile。两条都失败时短原因带上微信原始 errMsg。
+function fallbackSave(fs, tmp, firstErr, resolve) {
+  try {
+    fs.saveFile({
+      tempFilePath: tmp,
+      success(sv) {
+        const saved = sv && sv.savedFilePath;
+        if (!saved) {
+          setError('保存路径为空', 'saveFile success 未返回 savedFilePath：' + JSON.stringify(sv || {}));
+          resolve('');
+          return;
+        }
+        resolve(saved);
+      },
+      fail(e) {
+        const a = errText(firstErr);
+        const b = errText(e);
+        const short = (b || a).replace(/^[a-zA-Z]+:fail\s*/i, '').slice(0, 30);
+        setError('保存失败 · ' + (short || '未知原因'), 'copyFile: ' + a + ' | saveFile: ' + b);
+        resolve('');
+      }
+    });
+  } catch (e) {
+    setError('保存失败 · ' + errText(e).slice(0, 30), 'copyFile/saveFile 调用异常：' + errText(e));
+    resolve('');
+  }
 }
 
 // 估算已落 tmp 文件大小（downloadFile 有时不返回 totalBytesExpectedToWrite）。
