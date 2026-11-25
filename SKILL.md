@@ -1226,6 +1226,28 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
     持久化缓存对 31MB 视频不成立，别再拿 LRU 清缓存硬撞。
   * ⛔ `getSavedFileList` 是异步、`usedBytes` 是同步 → 只能用模块级快照，
     **绝不持久化当配额闸门**（同 `jrp_listen_limit` 教训）。
+- ⛔ **按 LRU 必须真的能删掉东西**（2026-11-25 老师追问「按LRU总有文件删除吧」）：
+  * 原来 `evictOldest` 只取最旧一条，且 `catch` 吞掉 `unlinkSync` 异常后照样
+    抹索引返回 1 → 「清理 N 项」是假的、磁盘一点没腾。改成删不掉返回 false 后
+    又矫枉过正：第一条失败就 `return 0`，`prepareRoom` 的 while 立刻 break，
+    后面能删的一条都不试 → **LRU 整轮停摆**。
+  * 现在 `evictOldest(fs, skipKey, skipFp)` **遍历**所有候选：删不掉就 `continue`
+    换下一条（条目留索引、不计 `cleaned`），删到一条能删的才返回 1；
+    `ensureRoom` 同样 `i++; continue` 而不是 break。只有全部候选都失败才返回 0，
+    这时才允许如实报「已无可清理」。
+  * ⚠️ `skipKey` 只排除「同 key **且同 fp**」那一条；同 key 的旧 fp 是旧版本可删。
+    原来 `it.key !== skipKey` 把当前视频整个排除，反复测同一个文件时索引里
+    一条候选都不剩 → 按 LRU 却一条都删不了。`prepareRoom` 与 `persistWithRetry`
+    都必须把 `fp` 传下去。
+  * ⚠️ 下载完成后清「同 key 旧 fp 条目」那段也必须用 `removeLocalFile`，删不掉
+    不许抹索引；`existing` 要按 `key && fp` 找 —— 否则会误命中留下的旧条目，
+    把刚落盘的新文件 `unlink` 掉。
+  * `purgeSavedFiles` 顺带抹掉「索引指向缓存文件区、但 `getSavedFileList` 已列不
+    出来」的幽灵条目（文件确实没了，抹索引是真实释放；不清掉 `usedBytes` 永远
+    算它，LRU 再怎么删都判不足）。
+  * ⚠️ **`getSavedFileList` 读失败 ≠ 列表为空**：`refreshSavedFiles` 保留上次快照
+    并回传 `ok=false`，`purgeSavedFiles` 直接 return、绝不碰索引，否则会把仍然
+    存在的有效条目误判成幽灵抹掉。
 - ⚠️ **进度详情可见**（2026-11-25 老师要求「不知道当前什么进度、是不是卡住了」）：
   * `wx.downloadFile` 返回的 **`DownloadTask` 必须接住**（原来直接丢了）：注册
     `onProgressUpdate(res)` 读 `progress` / `totalBytesWritten` / `totalBytesExpectedToWrite`，

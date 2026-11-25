@@ -439,7 +439,7 @@ function cacheVideo(level, file, url, fp, expectedSize, onStage) {
   emit('preparing', { text: '正在检查本地缓存空间…', label: '检查中…' });
   try {
     const fs0 = wx.getFileSystemManager();
-    const room = prepareRoom(fs0, key, Number(expectedSize) || 0, emit);
+    const room = prepareRoom(fs0, key, fp, Number(expectedSize) || 0, emit);
     cleaned += room.cleaned;
     if (!room.ok) {
       setError(room.cleaned
@@ -524,14 +524,18 @@ function cacheVideo(level, file, url, fp, expectedSize, onStage) {
                   return;
                 }
                 const arr = readIndex();
-                // 并发下载可能留了旧 fp 的同 key 条目，连同文件一起替掉
+                // 并发下载可能留了旧 fp 的同 key 条目：删得掉才抹索引。
+                // ⛔ 删不掉的（缓存文件区）留着算真实占用，由 purgeSavedFiles 兜底清，
+                //    不许 unlinkSync 失败也照抹（又一处假清理）。
                 for (let i = arr.length - 1; i >= 0; i--) {
-                  if (arr[i].key === key && arr[i].fp !== fp) {
-                    try { fs.unlinkSync(arr[i].path); } catch (e) { /* 文件已没 */ }
+                  if (arr[i].key === key && arr[i].fp !== fp &&
+                      removeLocalFile(fs, arr[i].path)) {
                     arr.splice(i, 1);
                   }
                 }
-                const existing = arr.find((it) => it.key === key);
+                // ⚠️ 只认同 fp：上面若有删不掉的旧 fp 条目留在索引里，
+                //    这里按 key 找会误命中它，然后把刚落盘的新文件 unlink 掉。
+                const existing = arr.find((it) => it.key === key && it.fp === fp);
                 if (!existing) {
                   arr.unshift({ key, path: saved, size, lastUsed: Date.now(), fp });
                 } else if (existing.path !== saved) {
@@ -608,18 +612,33 @@ function refreshSavedFiles(done) {
     wx.getFileSystemManager().getSavedFileList({
       success(res) {
         savedFiles = Array.isArray(res.fileList) ? res.fileList : [];
-        done(savedFiles);
+        done(savedFiles, true);
       },
-      fail() { savedFiles = []; done(savedFiles); }
+      // ⚠️ 拿不到列表 ≠ 列表为空：保留上一次快照，别把真实占用误清零
+      fail() { done(savedFiles, false); }
     });
-  } catch (e) { savedFiles = []; done(savedFiles); }
+  } catch (e) { done(savedFiles, false); }
 }
 // 每次下载前清一次缓存文件区里「不在索引」的历史残留，并刷新占用快照。
 // 这是异步的、幂等的；源头修好后不会再产生新的缓存文件，残留只会越清越少。
 function purgeSavedFiles() {
-  refreshSavedFiles(function (list) {
+  refreshSavedFiles(function (list, ok) {
+    // ⛔ getSavedFileList 失败时绝不碰索引：把「读不到」当成「文件都没了」
+    //    会把仍然存在的有效条目抹掉，又变成假清理。
+    if (!ok) return;
+    const idx = readIndex();
     const keep = {};
-    readIndex().forEach(function (it) { keep[String(it.path || '')] = 1; });
+    idx.forEach(function (it) { keep[String(it.path || '')] = 1; });
+    const present = {};
+    list.forEach(function (f) { present[String(f.filePath || '')] = 1; });
+    // ① 索引里指向缓存文件区、但微信 getSavedFileList 已列不出来的条目：
+    //    文件确实被删掉了，抹索引是**真实**释放，不是假清理。不清掉的话
+    //    usedBytes 会永远按 it.size 把幽灵算进占用，LRU 再怎么删都判不足。
+    const alive = idx.filter(function (it) {
+      const p = String(it.path || '');
+      return !p || isUserPath(p) || present[p];
+    });
+    if (alive.length !== idx.length) writeIndex(alive);
     let fs = null;
     try { fs = wx.getFileSystemManager(); } catch (e) {}
     const rest = [];
@@ -634,14 +653,21 @@ function purgeSavedFiles() {
   });
 }
 // 删一个本地文件：用户目录用 unlinkSync，缓存文件区必须 removeSavedFile。
-// 返回是否「发起了删除」；⛔ 调用方拿到 false 时不许抹索引、不许报「已清理」。
+// 返回 true = **同步确认空间已释放**，调用方才可以抹索引、才计入「已清理 N 项」。
+// 返回 false = 不能确认（缓存文件区删除是异步 / 权限拒绝）：⛔ 不许抹索引、
+//   不许报「已清理」，但 LRU 要继续试下一条，别整轮停摆。
 function removeLocalFile(fs, p) {
   p = String(p || '');
   if (!p) return false;
   if (isUserPath(p)) {
+    // 用户目录读权限没问题：accessSync 抛 = 文件真没了，空间已释放，抹索引安全
+    try { fs.accessSync(p); } catch (e) { return true; }
     try { fs.unlinkSync(p); return true; } catch (e) { return false; }
   }
-  try { fs.removeSavedFile({ filePath: p }); return true; } catch (e) { return false; }
+  // 缓存文件区：removeSavedFile 是异步，成败交给 purgeSavedFiles + 快照复核。
+  // 这里发起删除但返回 false，索引留着（文件还在就继续算占用，删掉了由 purge 抹）。
+  try { fs.removeSavedFile({ filePath: p }); } catch (e) { return false; }
+  return false;
 }
 // 给详情弹窗看的真实占用（只在 develop / trial 显示）。
 function getStorageDiag() {
@@ -695,20 +721,29 @@ function usedBytes(fs) {
   return total;
 }
 
-// 按 LRU 删最旧的一条（跳过当前正在下的 key），返回删掉几条。
-function evictOldest(fs, skipKey) {
+// 按 LRU 删最旧的一条（只跳过「本次正在落盘」那一条），返回删掉几条。
+function evictOldest(fs, skipKey, skipFp) {
   const arr = readIndex();
-  const victims = arr.filter(function (it) { return it.key !== skipKey; })
-    .sort(function (a, b) { return (a.lastUsed || 0) - (b.lastUsed || 0); });
-  if (!victims.length) return 0;
-  const v = victims[0];
-  // ⛔ 删不掉就返回 0：绝不报「已清理 N 项」、也绝不抹索引（假清理老坑）。
-  //    缓存文件区用 removeSavedFile 异步删，成败由下次 refreshSavedFiles 复核。
-  if (!removeLocalFile(fs, v.path)) return 0;
-  const idx = arr.findIndex(function (it) { return it.key === v.key; });
-  if (idx >= 0) arr.splice(idx, 1);
-  writeIndex(arr);
-  return 1;
+  // ⚠️ 只排除同 key 且同 fp 的那一条：同 key 但 fp 不同 = 旧版本，可以删。
+  //    原来 `it.key !== skipKey` 把当前视频整个排除，反复测同一个文件时索引里
+  //    可能一条候选都不剩 → 按 LRU 却一条都删不了。
+  const victims = arr.filter(function (it) {
+    return !(it.key === skipKey && it.fp === skipFp);
+  }).sort(function (a, b) { return (a.lastUsed || 0) - (b.lastUsed || 0); });
+  // ⚠️ 必须遍历：最旧那条删不掉（缓存文件区权限 / 异步删除不许同步确认），
+  //    绝不能就此 return 0 —— 后面能删的条目继续删，否则 LRU 整轮停摆。
+  // ⛔ 删不掉的留在索引里，不许抹、不许计入「已清理 N 项」（假清理老坑）。
+  for (let i = 0; i < victims.length; i++) {
+    const v = victims[i];
+    if (!removeLocalFile(fs, v.path)) continue;
+    const idx = arr.findIndex(function (it) {
+      return it.key === v.key && it.path === v.path;
+    });
+    if (idx >= 0) arr.splice(idx, 1);
+    writeIndex(arr);
+    return 1;
+  }
+  return 0;
 }
 
 // 索引外的孤儿文件（历次失败 / 升级残留）也清掉，否则 usedBytes 一直偏高。
@@ -735,7 +770,7 @@ function evictOrphans(fs) {
 // ⚠️ cap 只用我们自己的软上限 180MB。**绝不能**拿「上次失败时的 used+need」当
 //    平台上限：那是一次失败的观测值，不是配额；一旦持久化就会把空盘也判成不够。
 //    微信真实上限由落盘时自己说话，落盘报空间错再走 persistWithRetry 的 LRU 重试。
-function prepareRoom(fs, key, need, emit) {
+function prepareRoom(fs, key, fp, need, emit) {
   emit = typeof emit === 'function' ? emit : function () {};
   need = Number(need) || 0;
   const cap = MAX_VIDEO_BYTES;
@@ -747,7 +782,7 @@ function prepareRoom(fs, key, need, emit) {
   let cleaned = evictOrphans(fs);
   let rounds = 0;
   while (usedBytes(fs) + need > cap && rounds++ < 50) {
-    const n = evictOldest(fs, key);
+    const n = evictOldest(fs, key, fp);
     if (!n) { cleaned += evictOrphans(fs); break; }
     cleaned += n;
   }
@@ -801,7 +836,7 @@ function persistWithRetry(fs, tmp, key, fp, emit, need) {
           resolve({ saved: '', cleaned: cleaned });
           return;
         }
-        const n = evictOldest(fs, key) || evictOrphans(fs);
+        const n = evictOldest(fs, key, fp) || evictOrphans(fs);
         if (!n) {
           // ⚠️ 带真实数字，别再只说「无可清理」：used 接近 0 还报 1300202
           //    就是平台单文件上限，清缓存这条路根本不适用，得换方向。
@@ -903,8 +938,8 @@ function ensureRoom(need) {
     let i = 0;
     while (i < arr.length && total + need > MAX_VIDEO_BYTES) {
       const victim = arr[i];
-      // ⛔ 删不掉就停：不许抹索引制造隐形残留（假清理老坑）
-      if (!removeLocalFile(fs, victim.path)) break;
+      // ⛔ 删不掉就换下一条：不许抹索引制造隐形残留，但也不许整轮停摆
+      if (!removeLocalFile(fs, victim.path)) { i++; continue; }
       total -= (victim.size || 0);
       arr.splice(i, 1);
       changed = true;
