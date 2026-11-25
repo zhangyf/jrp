@@ -24,6 +24,16 @@
   text-align: center;
 }
 
+/* 底部十六进制构建码：浅色小字，不抢内容；任何登录态都在 */
+.buildcode {
+  margin-top: 8rpx;
+  padding: 10rpx 0 20rpx;
+  text-align: center;
+  font-size: 20rpx;
+  color: #c9c9c0;
+  letter-spacing: 2rpx;
+}
+
 /* 自定义导航栏：浅底，logo 与标题同一行 */
 .nav {
   background: #f7f7f5;

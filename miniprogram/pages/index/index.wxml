@@ -3,7 +3,7 @@
   <view class="nav" style="padding-top:{{statusBarH}}px">
     <view class="nav-row" style="height:{{navH}}px">
       <image class="nav-logo" src="/images/logo.png" mode="aspectFit" />
-      <!-- 版本号：utils/version.js 里的构建常量，一眼确认跑的是哪版 -->
+      <!-- 版本号：仅正式版有值，体验版/开发版留空 -->
       <text class="nav-title">{{appVersion}}</text>
     </view>
   </view>
@@ -92,4 +92,7 @@
 
   <view class="foot-link" bindtap="onExit">退出登录</view>
   </block>
+
+  <!-- 内置构建码：两种登录态都显示，浅色小字，用来判断当前跑的是哪份代码 -->
+  <view class="buildcode">{{codeVersion}}</view>
 </view>
