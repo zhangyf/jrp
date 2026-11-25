@@ -122,6 +122,7 @@ Page({
         const srtFp = res.srt_fp || '';
         self.curVideoFp = videoFp;
         self.curVideoUrl = res.video_url || '';
+        self.curVideoSize = res.size || 0; // 服务端给的 COS 大小，下载前算空间用
 
         // 字幕：指纹一致才用缓存；不一致（COS 上 SRT 被精校覆盖）就用服务端
         // 的新字幕并覆盖写缓存。没指纹时 getCues/setCues 自动不启用。
@@ -155,7 +156,7 @@ Page({
             self.setData({ videoUrl: local });
           } else {
             self.setCacheState('downloading');
-            cache.cacheVideo(level, file, res.video_url, videoFp).then((p) => {
+            cache.cacheVideo(level, file, res.video_url, videoFp, res.size).then((p) => {
               if (self.curFile !== file) return; // 已经切了别的视频，别污染当前页
               if (p && self.data.videoUrl === res.video_url) {
                 self.setData({ videoUrl: p });
@@ -301,7 +302,7 @@ Page({
     const url = this.curVideoUrl || this.data.videoUrl;
     if (!url) return;
     this.setCacheState('downloading');
-    cache.cacheVideo(level, file, url, fp).then((p) => {
+    cache.cacheVideo(level, file, url, fp, this.curVideoSize || 0).then((p) => {
       if (self.curFile !== file) return; // 已经切了别的视频
       if (p) {
         self.setCacheState(cache.getVideoState(level, file, fp));
