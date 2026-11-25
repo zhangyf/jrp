@@ -4,6 +4,7 @@
 // 这里不自己发请求拿数据，各页面自己拉 —— 首页只负责跳。
 
 const app = getApp();
+const version = require('../../utils/version.js');
 
 Page({
   data: {
@@ -17,12 +18,12 @@ Page({
     // 自定义导航栏（原生导航栏放不了图片，logo 画在自己画的导航里）
     statusBarH: 20,
     navH: 44,
-    // Logo 右侧的版本号，格式 vxx.xx.xx；onLoad 里读当前包真实版本
-    appVersion: 'v0.0.0'
+    // Logo 右侧的版本号，格式 vxx.xx.xx；取 utils/version.js 里的构建常量
+    appVersion: version.APP_VERSION
   },
 
   onLoad() {
-    this.setData({ appVersion: readAppVersion() });
+    this.setData({ appVersion: version.APP_VERSION });
     // 状态栏高度 + 胶囊按钮位置 → 自定义导航行的真实高度
     try {
       const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -132,22 +133,6 @@ Page({
   }
 });
 
-// Logo 右侧的版本号：直接读微信给的「当前包版本」，也就是开发者工具上传时填的那个。
-// 这样不用每次发版手改代码，也不会出现「代码里写着 A、实际跑的是 B」。
-//
-// ⚠️ 开发版（envVersion=develop）没有 version，体验版/正式版才有；
-//    拿不到或老基础库没这个 API 时显示 v0.0.0，表示「没读到版本」，别假装是个正式号。
-// ⚠️ 上传时版本号建议填三段式（如 1.0.36），这里统一规范成 vxx.xx.xx；
-//    不足三段补 0，多余段截掉，非数字字符去掉。
-function readAppVersion() {
-  let v = '';
-  try {
-    const info = wx.getAccountInfoSync();
-    v = (info && info.miniProgram && info.miniProgram.version) || '';
-  } catch (e) { v = ''; }
-  if (!v) return 'v0.0.0';
-  const parts = String(v).replace(/^v/i, '').split('.');
-  while (parts.length < 3) parts.push('0');
-  const nums = parts.slice(0, 3).map((p) => (String(p).replace(/\D/g, '') || '0'));
-  return 'v' + nums.join('.');
-}
+// 版本号来自 utils/version.js 的构建常量。原先这里读 wx.getAccountInfoSync()
+// 的 miniProgram.version，但微信只在「正式版」给这个值，开发版/体验版一律空串，
+// 老师在体验版上只能看到 v0.0.0（2026-11-25 改正）。
