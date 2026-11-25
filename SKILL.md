@@ -1178,6 +1178,13 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
   老服务端 / 字幕缺失时宁可每次走网络，绝不播旧内容。
 - **三态按钮**在播放器标题栏（缓存 / 下载中… / 已缓存），清理藏在「已缓存」点击里，
   不做单独的清缓存按钮。删除本地文件后把 `videoUrl` 换回远程地址，别让播放器指着不存在的文件。
+- ⚠️ **缓存失败要能自证**（2026-11-25 首次真机踩坑）：原来 `downloadFile` fail / 非 200 /
+  `saveFile` fail 全把 `errMsg` 吞了，屏幕上只有「缓存失败」四个字，分不清是域名未加白名单、
+  超时还是保存配额满。`listen-cache.js` 记 `lastError`：短分类给标题栏 toast，完整 `errMsg`
+  打 console（真机调试可见）；`res.statusCode` 按 **2xx** 判成功（微信对大文件可能带 Range
+  回 206）；`app.json` 设 `networkTimeout.downloadFile=120000`（默认 60s，32MB 视频容易超）。
+  ⚠️ `project.config.json` 的 `urlCheck:false` 只在开发者工具生效，**真机严格校验**，
+  `https://listening.110105.xyz` 必须在 mp 后台「downloadFile 合法域名」里。
 - ⚠️ **两端都要发**：服务端字段要重编 `/usr/local/bin/jrp` 才生效；小程序要
   「上传 + mp 后台选为体验版」。只发一端时小程序拿不到指纹 → 缓存自动停用（不会播旧内容）。
 - **测试**：`api_listening_test.go` 指纹稳定性 / 改字幕只换 srt_fp / 重传视频换 fp+URL /

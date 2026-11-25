@@ -309,7 +309,8 @@ Page({
         wx.showToast({ title: '已缓存', icon: 'none' });
       } else {
         self.setCacheState('none');
-        wx.showToast({ title: '缓存失败', icon: 'none' });
+        // 短原因给 toast，完整 errMsg 在 console（真机调试可见）。
+        wx.showToast({ title: cache.getLastError() || '缓存失败', icon: 'none', duration: 2500 });
       }
     });
   },

@@ -40,6 +40,9 @@
     ]
   },
   "style": "v2",
+  "networkTimeout": {
+    "downloadFile": 120000
+  },
   "lazyCodeLoading": "requiredComponents",
   "sitemapLocation": "sitemap.json"
 }
