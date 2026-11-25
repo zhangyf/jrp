@@ -1193,8 +1193,15 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
 - ⚠️ **空间不足按老师定的流程走**（2026-11-25）：下载前用 `usedBytes()` 真实占用 +
   服务端 `size` 判断；不够 → 按钮锁成「清理中…」→ 清孤儿 + 按 LRU 删旧 → 够了自动下载，
   仍不够就不下载并给明确终态（「已清理 N 项仍不够」/「文件超过微信缓存上限」）。落盘报
-  `maximum size` 时把「已用 + 本次大小」记成观测上限 `jrp_listen_limit`，下次下载前按更小的
-  cap 判断，避免反复白下 32MB。⛔ utils 不弹过程 toast，阶段一律走 `onStage` 交给按钮态；
+  `maximum size` 时**只**按 LRU 清 + 重试，删无可删才如实说「文件超过微信缓存上限」。
+  ⛔⛔ **绝不许把一次失败反推成「平台上限」再持久化**（2026-11-25 翻车）：曾经把
+  `used + need` 写进 `jrp_listen_limit`、只减不增永不复位，结果空盘 `used=0` 时
+  `cap === need`，`>=` 恒成立 → **连 downloadFile 都不调就报「文件超过微信缓存上限，
+  清理0项后仍不足」**，缓存永久自锁（老师实测 `need=32795534,used=0`）。微信不公开
+  真实配额，一次观测推不出上限。`prepareRoom` 的 `cap` **恒等于 `MAX_VIDEO_BYTES`
+  (180MB)**，只用 `used + need <= cap` 判；脏 key 在 `cacheVideo` 首次调用时
+  `removeStorageSync('jrp_listen_limit')` 抹掉。⛔ utils 不弹过程 toast，阶段一律走
+  `onStage` 交给按钮态；「别重复白下 32MB」由页面 `blocked` 终态负责；
   清理数按调用经 `onStage('done', n)` 回传，⛔ 不落模块级单例（并发会串数）。
 - ⚠️ **进度详情可见**（2026-11-25 老师要求「不知道当前什么进度、是不是卡住了」）：
   * `wx.downloadFile` 返回的 **`DownloadTask` 必须接住**（原来直接丢了）：注册

@@ -58,7 +58,11 @@ let lastDetail = '';
 // 正在落盘的目标路径：清孤儿文件时要跳过，别把并发中刚写好的文件删掉。
 const pendingDests = {};
 const MAX_EVICT_RETRY = 3;
-const LIMIT_KEY = 'jrp_listen_limit';
+// ⛔ 不要再搞「观测上限」：曾经把一次落盘失败的 used+need 写进
+//    `jrp_listen_limit`，只减不增、永不复位。结果是空盘 used=0 时 cap 恰好等于
+//    need，`>=` 恒成立 → 连下载都不试就报「文件超过微信缓存上限」，缓存永久自锁
+//    （2026-11-25 老师实测 `need=32795534,used=0,清理0项`）。微信不公开真实配额，
+//    靠一次失败反推上限根本不可靠；老设备残留的这个 key 现在不读、不写，无害。
 const STALL_SECONDS = 15;      // 多少秒没有任何进展就标「可能卡住」
 const PROGRESS_MIN_MS = 200;   // 进度回调节流：微信约每 100ms 一次，别刷 setData
 
@@ -66,6 +70,13 @@ const PROGRESS_MIN_MS = 200;   // 进度回调节流：微信约每 100ms 一次
 // cancelCache() 用来 abort，让「卡住了」有个出口，而不是干等 120s 超时。
 const activeTasks = {};
 let callSeq = 0;
+// 老版本写进本地存储的废弃 key：升级后第一次缓存时抹掉，避免以后有人误读又自锁。
+let legacyLimitCleared = false;
+function clearLegacyLimit() {
+  if (legacyLimitCleared) return;
+  legacyLimitCleared = true;
+  try { wx.removeStorageSync('jrp_listen_limit'); } catch (e) {}
+}
 
 function registerTask(key, handle) {
   if (!activeTasks[key]) activeTasks[key] = [];
@@ -99,20 +110,6 @@ function setError(short, detail) {
 function getLastError() { return lastError; }
 function getLastFailure() { return lastFailure; }
 function getLastDetail() { return lastDetail; }
-
-// ⚠️ 微信不公开真实配额，180MB 只是我们自己的软上限，跟平台上限对不上：
-//    以前每次都判断「够」→ 白下 32MB → 落盘才报 maximum size。
-//    现在把「落盘报空间错时的 已用+本次大小」记成上限的上界（持久化），
-//    下次下载前就按它判断，提前清理或提前拒绝，不再反复白下。
-function observedLimit() {
-  try { return Number(wx.getStorageSync(LIMIT_KEY)) || 0; } catch (e) { return 0; }
-}
-function noteLimit(v) {
-  try {
-    const old = observedLimit();
-    if (!old || v < old) wx.setStorageSync(LIMIT_KEY, v);
-  } catch (e) {}
-}
 
 function isSpaceError(msg) {
   return /maximum size|storage limit|exceeded|quota|space|not enough/i.test(String(msg || ''));
@@ -280,6 +277,7 @@ function getVideo(level, file, fp) {
 // 只做观测，不改缓存判定：指纹、LRU、落盘逻辑一条没动。
 function cacheVideo(level, file, url, fp, expectedSize, onStage) {
   onStage = typeof onStage === 'function' ? onStage : function () {};
+  clearLegacyLimit();
   let cleaned = 0;
   const startedAt = Date.now();
   const total = Number(expectedSize) || 0;
@@ -387,8 +385,9 @@ function cacheVideo(level, file, url, fp, expectedSize, onStage) {
     if (!room.ok) {
       setError(room.cleaned
         ? '空间不足，已清理 ' + room.cleaned + ' 项仍不够'
-        : '文件超过微信缓存上限，无法缓存',
-        '清理 ' + room.cleaned + ' 项后仍不足：need=' + expectedSize + ', used=' + usedBytes(fs0));
+        : '文件超过缓存软上限，无法缓存',
+        '清理 ' + room.cleaned + ' 项后仍不足：need=' + expectedSize +
+        ', used=' + usedBytes(fs0) + ', cap=' + MAX_VIDEO_BYTES);
       end(null, null);
       return Promise.resolve(null);
     }
@@ -457,7 +456,7 @@ function cacheVideo(level, file, url, fp, expectedSize, onStage) {
             });
             // 主路径 copyFile 到 USER_DATA_PATH，失败回退老 saveFile（实现见下方）；
             // 落盘报空间类错误时按 LRU 清理后自动重试。
-            persistWithRetry(fs, tmp, key, fp, Number(expectedSize) || size, emit).then(function (r) {
+            persistWithRetry(fs, tmp, key, fp, emit).then(function (r) {
               guard(done, function () {
                 cleaned += (r && r.cleaned) || 0;
                 const saved = r && r.saved;
@@ -594,26 +593,26 @@ function evictOrphans(fs) {
 }
 
 // 下载前的空间检查：不够就通知页面锁按钮 + 按 LRU 清，返回 {ok, cleaned}。
-// ⚠️ 上限取「软上限 180MB」与「上次落盘报错观测到的上界」里更小的那个。
+// ⚠️ cap 只用我们自己的软上限 180MB。**绝不能**拿「上次失败时的 used+need」当
+//    平台上限：那是一次失败的观测值，不是配额；一旦持久化就会把空盘也判成不够。
+//    微信真实上限由落盘时自己说话，落盘报空间错再走 persistWithRetry 的 LRU 重试。
 function prepareRoom(fs, key, need, emit) {
   emit = typeof emit === 'function' ? emit : function () {};
   need = Number(need) || 0;
-  // ⚠️ observedLimit 是「上次装不下时的总量」，真实上限必然小于它，所以用 < 判断，
-  //    等于也要当成不够，否则第一次记录后第二次仍会误判「够」而白下一遍。
-  const cap = Math.min(MAX_VIDEO_BYTES, observedLimit() || MAX_VIDEO_BYTES);
-  if (!need || usedBytes(fs) + need < cap) return { ok: true, cleaned: 0 };
+  const cap = MAX_VIDEO_BYTES;
+  if (!need || usedBytes(fs) + need <= cap) return { ok: true, cleaned: 0 };
   emit('cleaning', {
     text: '空间不足，正在按 LRU 清理旧缓存…',
     label: '清理中…'
   });
   let cleaned = evictOrphans(fs);
   let rounds = 0;
-  while (usedBytes(fs) + need >= cap && rounds++ < 50) {
+  while (usedBytes(fs) + need > cap && rounds++ < 50) {
     const n = evictOldest(fs, key);
     if (!n) { cleaned += evictOrphans(fs); break; }
     cleaned += n;
   }
-  return { ok: usedBytes(fs) + need < cap, cleaned: cleaned };
+  return { ok: usedBytes(fs) + need <= cap, cleaned: cleaned };
 }
 
 function persistVideo(fs, tmp, key, fp) {
@@ -640,10 +639,12 @@ function persistVideo(fs, tmp, key, fp) {
   });
 }
 
-// 落盘报空间类错误时：记下观测上限 → 通知页面锁按钮 → LRU 删一条 → 重试。
-// 删无可删说明不是占用问题，是这个文件本身超过平台上限 —— 明确说出来，
-// 别让用户反复点、反复白下 32MB。过程提示一律交给按钮状态，utils 不弹 toast。
-function persistWithRetry(fs, tmp, key, fp, need, emit) {
+// 落盘报空间类错误时：通知页面锁按钮 → LRU 删一条 → 重试。
+// 删无可删说明不是占用问题，是这个文件本身超过平台上限 —— 明确说出来。
+// ⛔ 这里**不记任何「观测上限」**：一次失败推不出配额，写进 storage 只会自锁。
+//    「别反复白下 32MB」由页面 blocked 终态负责（再点只提示原因、不重下）。
+//    过程提示一律交给按钮状态，utils 不弹 toast。
+function persistWithRetry(fs, tmp, key, fp, emit) {
   emit = typeof emit === 'function' ? emit : function () {};
   return new Promise((resolve) => {
     let tries = 0;
@@ -652,7 +653,6 @@ function persistWithRetry(fs, tmp, key, fp, need, emit) {
       persistVideo(fs, tmp, key, fp).then(function (saved) {
         if (saved) { resolve({ saved: saved, cleaned: cleaned }); return; }
         if (!isSpaceError(lastDetail)) { resolve({ saved: '', cleaned: cleaned }); return; }
-        noteLimit(usedBytes(fs) + (Number(need) || 0));
         if (tries >= MAX_EVICT_RETRY) {
           setError('空间不足，已清理 ' + cleaned + ' 项仍不够',
             '按 LRU 清理 ' + tries + ' 轮仍不足：' + lastDetail);
