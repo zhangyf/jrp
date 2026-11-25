@@ -6,7 +6,7 @@
   <block wx:if="{{playing}}">
     <view class="vtitle">
       <text class="vtitle-name">{{title}}</text>
-      <view class="cachebtn cache-{{cacheState}}" bindtap="onCacheTap">{{cacheLabel}}</view>
+      <view wx:if="{{cacheEnabled}}" class="cachebtn cache-{{cacheState}}" bindtap="onCacheTap">{{cacheLabel}}</view>
     </view>
     <video id="player" class="player" src="{{videoUrl}}"
            initial-time="{{initialTime}}"

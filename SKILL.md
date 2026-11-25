@@ -1159,6 +1159,30 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
   round-trip、时间码边界）；`api_listening_refine_test.go`（path token 提取、桶名精确相等、
   key 前缀越界、前缀相似桶名不误判）。
 
+### 小程序听力缓存与指纹（2026-11-25 起）
+
+老师问「COS 上视频/字幕文件变了，小程序已经缓存老版本怎么办」→ 定为**缓存 +
+指纹比对**，不做 TTL、不做手动刷新。
+
+- **服务端** `api_listening.go` 详情接口额外下发 `video_fp` / `srt_fp`：
+  `video_fp = ETag(去引号)+Size+LastModified`（视频几十 MB，不能拉内容算 hash）；
+  `srt_fp = SRT 内容 sha256 前 8 字节`（字幕已在内存里，精校覆盖后必变）。
+  ⚠️ `video_url` 同时挂 `?v=<video_fp>`：同名覆盖后只换 query 才会被 EO 当成新资源
+  回源，否则「删了本地缓存重下」拿到的还是 EO 边缘的旧视频，又被存成新版本。
+  字幕缺失时 `srt_fp` 为空串。
+- **小程序** `miniprogram/utils/listen-cache.js`：字幕/视频缓存记录都带 `fp`，
+  读时对不上就**就地删旧记录 + unlink 旧视频文件**，用服务端新 `cues` 覆盖、重新下载；
+  老版本（升级前没有 fp）的缓存条目第一次打开自动失效。字幕仍走 `setStorageSync`
+  （120 条上限），视频走 `saveFile` + 180MB LRU。
+- ⛔ **没指纹一律不启用缓存**：不读、不写、标题栏缓存按钮 `wx:if` 隐藏。
+  老服务端 / 字幕缺失时宁可每次走网络，绝不播旧内容。
+- **三态按钮**在播放器标题栏（缓存 / 下载中… / 已缓存），清理藏在「已缓存」点击里，
+  不做单独的清缓存按钮。删除本地文件后把 `videoUrl` 换回远程地址，别让播放器指着不存在的文件。
+- ⚠️ **两端都要发**：服务端字段要重编 `/usr/local/bin/jrp` 才生效；小程序要
+  「上传 + mp 后台选为体验版」。只发一端时小程序拿不到指纹 → 缓存自动停用（不会播旧内容）。
+- **测试**：`api_listening_test.go` 指纹稳定性 / 改字幕只换 srt_fp / 重传视频换 fp+URL /
+  无字幕空 fp / ETag 去引号；另有 Node 冒烟覆盖 6 组失效行为（临时脚本，跑完即删）。
+
 ## Critical Rules
 
 1. **Never manually edit archive markdown** — always use the Go CLI for archive operations

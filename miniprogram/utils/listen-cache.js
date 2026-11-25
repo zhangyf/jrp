@@ -1,6 +1,19 @@
 // 听力缓存：字幕进本地存储（setStorageSync），视频文件进用户目录（saveFile）。
 //
 // 2026-11-24 老师要求同时缓存字幕和视频文件，地铁/反复精听不用每次都走网络。
+// 2026-11-25 追加「指纹比对」：COS 上同名文件被覆盖（重传视频 / 字幕精校回写）
+// 后，本地缓存必须自动失效，绝不能一直播老版本。
+//
+// 服务端 /api/listening 下发两个指纹：
+//   - video_fp = ETag + Size + LastModified（视频几十 MB，不能拉内容算 hash）；
+//   - srt_fp   = SRT 内容 sha256 前 16 位（字幕已在服务端内存里，算内容最准）。
+// 缓存记录里存 fp，读的时候对不上就删掉当没缓存，由调用方重新拉新的。
+//
+// ⛔ 三条硬规矩：
+//   ① 服务端没下发指纹（老版本服务端 / 字幕缺失）→ 一律不启用缓存：
+//      不读、不写、按钮隐藏。宁可每次走网络，也绝不播旧内容。
+//   ② 升级前存的缓存条目没有 fp 字段 → 对不上，第一次打开自动失效重下。
+//   ③ 播放 URL 带 ?v=<video_fp>，指纹变了 URL 也变，绕开 EO 边缘的旧对象。
 //
 // 两类存储，配额和淘汰策略不一样，别混：
 //   1. 字幕（几十 KB 一条）→ setStorageSync。微信单 key 上限 1MB、总量 10MB，
@@ -11,7 +24,7 @@
 //   2. 视频文件（几 MB~几十 MB）→ wx.downloadFile 落 tmp，再 FileSystemManager
 //      .saveFile 存到持久用户目录。微信给本地文件的配额默认 200MB，满了
 //      saveFile 直接报错，微信不帮你删。这里实现一个薄 LRU：
-//        - 一张索引表 setStorageSync 存 {file, path, size, lastUsed} 数组；
+//        - 一张索引表 setStorageSync 存 {key, path, size, lastUsed, fp} 数组；
 //        - 每次播放命中就刷新 lastUsed（move to front）；
 //        - 缓存新视频前，若 总size + 新文件 > MAX_VIDEO_BYTES，按 lastUsed
 //          从旧到新 unlink + 删索引，腾够了再存。
@@ -29,29 +42,47 @@ const MAX_VIDEO_BYTES = 180 * 1024 * 1024; // 视频总配额，留 20MB 余量�
 const CUE_PREFIX = 'jrp_listen_cue|';
 const VID_INDEX_KEY = 'jrp_listen_videos';
 
-// —— 字幕缓存 ——
+// 空指纹 = 不启用缓存。绝不能拿 undefined 去跟缓存里的字符串比。
+function fpOf(fp) {
+  return typeof fp === 'string' && fp ? fp : '';
+}
 
 function cueKey(level, file) {
   return CUE_PREFIX + encodeURIComponent(level || '') + '|' + encodeURIComponent(file || '');
 }
 
-// 读字幕缓存；没有或过期返回 null。
-function getCues(level, file) {
+function videoKey(level, file) {
+  return encodeURIComponent(level || '') + '/' + encodeURIComponent(file || '');
+}
+
+// —— 字幕缓存 ——
+
+// 读字幕缓存；没有、版本对不上或记录坏了都返回 null（并删掉旧记录）。
+// fp 为空一律返回 null —— 老服务端没指纹时不能赌缓存是新的。
+function getCues(level, file, fp) {
+  fp = fpOf(fp);
+  if (!fp) return null;
+  const key = cueKey(level, file);
   try {
-    const raw = wx.getStorageSync(cueKey(level, file));
+    const raw = wx.getStorageSync(key);
     if (!raw) return null;
     const rec = JSON.parse(raw);
-    if (Array.isArray(rec.cues) && typeof rec.stored === 'number') {
-      return { cues: rec.cues, note: rec.note || '' };
+    if (rec.fp !== fp || !Array.isArray(rec.cues) || typeof rec.stored !== 'number') {
+      wx.removeStorageSync(key);
+      return null;
     }
-    return null;
+    return { cues: rec.cues, note: rec.note || '' };
   } catch (e) { return null; }
 }
 
 // 写字幕缓存，超出上限删最旧。失败静默（下次走网络拉，不影响播放）。
-function setCues(level, file, cues, note) {
+function setCues(level, file, cues, note, fp) {
+  fp = fpOf(fp);
+  if (!fp) return;
   try {
-    const rec = JSON.stringify({ cues: cues || [], note: note || '', stored: Date.now() });
+    const rec = JSON.stringify({
+      cues: cues || [], note: note || '', stored: Date.now(), fp: fp
+    });
     wx.setStorageSync(cueKey(level, file), rec);
     trimCues();
   } catch (e) { /* 写失败不吵用户 */ }
@@ -91,20 +122,32 @@ function writeIndex(arr) {
   try { wx.setStorageSync(VID_INDEX_KEY, arr); } catch (e) { /* 写失败不阻塞播放 */ }
 }
 
+// 删索引里的某条，连同本地文件。文件可能已被系统清掉，失败不抛。
+function dropEntry(arr, idx) {
+  try { wx.getFileSystemManager().unlinkSync(arr[idx].path); } catch (e) { /* 文件已没 */ }
+  arr.splice(idx, 1);
+}
+
 // 命中返回本地路径，未命中返回 null。命中同时刷新 lastUsed（move to front）。
-function getVideo(level, file) {
-  const key = encodeURIComponent(level || '') + '/' + encodeURIComponent(file || '');
+// fp 对不上（含升级前没有 fp 的老条目）→ 删文件 + 删索引，当没缓存。
+function getVideo(level, file, fp) {
+  fp = fpOf(fp);
+  if (!fp) return null;
+  const key = videoKey(level, file);
   const arr = readIndex();
   const idx = arr.findIndex((it) => it.key === key);
   if (idx < 0) return null;
   const hit = arr[idx];
+  if (hit.fp !== fp) {
+    dropEntry(arr, idx);
+    writeIndex(arr);
+    return null;
+  }
   // 文件可能被系统清掉（用户清理、重启路径失效），存在性校验一下
   try {
-    const st = wx.getFileSystemManager().accessSync(hit.path); // 有则不抛
-    void st;
+    wx.getFileSystemManager().accessSync(hit.path); // 有则不抛
   } catch (e) {
-    // 路径失效 → 删索引条目，当没缓存
-    arr.splice(idx, 1);
+    dropEntry(arr, idx);
     writeIndex(arr);
     return null;
   }
@@ -117,11 +160,13 @@ function getVideo(level, file) {
 }
 
 // 把远程视频下载并落到持久目录，返回 savedFilePath；失败返回 null（走网络）。
-// 下载前先按 LRU 腾空间。
-function cacheVideo(level, file, url) {
-  const key = encodeURIComponent(level || '') + '/' + encodeURIComponent(file || '');
-  // 已有缓存直接返回，不重复下
-  const hit = getVideo(level, file);
+// 下载前先按 LRU 腾空间；落盘时把该 key 下的旧 fp 条目一并清掉。
+function cacheVideo(level, file, url, fp) {
+  fp = fpOf(fp);
+  if (!fp) return Promise.resolve(null);
+  const key = videoKey(level, file);
+  // 已有同版本缓存直接返回，不重复下
+  const hit = getVideo(level, file, fp);
   if (hit) return Promise.resolve(hit);
 
   return new Promise((resolve) => {
@@ -137,11 +182,20 @@ function cacheVideo(level, file, url) {
           tempFilePath: tmp,
           success(sv) {
             const arr = readIndex();
-            // 防并发重复写：先查一遍再 push
-            if (!arr.some((it) => it.key === key)) {
-              arr.unshift({ key, path: sv.savedFilePath, size, lastUsed: Date.now() });
-              writeIndex(arr);
+            // 并发下载可能留了旧 fp 的同 key 条目，连同文件一起替掉
+            for (let i = arr.length - 1; i >= 0; i--) {
+              if (arr[i].key === key && arr[i].fp !== fp) {
+                try { fs.unlinkSync(arr[i].path); } catch (e) { /* 文件已没 */ }
+                arr.splice(i, 1);
+              }
             }
+            if (!arr.some((it) => it.key === key)) {
+              arr.unshift({ key, path: sv.savedFilePath, size, lastUsed: Date.now(), fp });
+            } else {
+              // 别的并发已经写好了同版本，删掉这次多存的重复文件
+              try { fs.unlinkSync(sv.savedFilePath); } catch (e) { /* 文件已没 */ }
+            }
+            writeIndex(arr);
             resolve(sv.savedFilePath);
           },
           fail() { resolve(null); } // saveFile 失败（配额满等）→ 走网络
@@ -184,17 +238,25 @@ function ensureRoom(need) {
 
 // 查单个视频的缓存状态：'none'（没缓存）/ 'cached'（已缓存）。
 // 下载中态由页面自己记（downloadFile 是异步 Promise，这里不管）。
-function getVideoState(level, file) {
-  const key = encodeURIComponent(level || '') + '/' + encodeURIComponent(file || '');
+function getVideoState(level, file, fp) {
+  fp = fpOf(fp);
+  if (!fp) return 'none'; // 没指纹不启用缓存，但不动用户已存的旧文件
+  const key = videoKey(level, file);
   const arr = readIndex();
-  const hit = arr.find((it) => it.key === key);
-  if (!hit) return 'none';
+  const idx = arr.findIndex((it) => it.key === key);
+  if (idx < 0) return 'none';
+  const hit = arr[idx];
+  if (hit.fp !== fp) {
+    dropEntry(arr, idx);
+    writeIndex(arr);
+    return 'none';
+  }
   // 文件可能被系统清了，校验一下；没了就当没缓存
   try {
     wx.getFileSystemManager().accessSync(hit.path);
     return 'cached';
   } catch (e) {
-    arr.splice(arr.indexOf(hit), 1);
+    dropEntry(arr, idx);
     writeIndex(arr);
     return 'none';
   }
@@ -202,7 +264,7 @@ function getVideoState(level, file) {
 
 // 删单个视频的本地缓存文件 + 索引条目。返回是否真的删了（文件/索引可能已没）。
 function deleteVideo(level, file) {
-  const key = encodeURIComponent(level || '') + '/' + encodeURIComponent(file || '');
+  const key = videoKey(level, file);
   const arr = readIndex();
   const idx = arr.findIndex((it) => it.key === key);
   let removed = false;
