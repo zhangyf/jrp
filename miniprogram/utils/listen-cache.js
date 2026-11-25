@@ -48,14 +48,17 @@ const VID_INDEX_KEY = 'jrp_listen_videos';
 let lastError = '';
 // 最近一次失败原因，成功路径不清。⚠️ 自动后台缓存（openVideo）和手动缓存
 // （onCacheTap）会并发跑在两条 Promise 上，而 lastError 是模块级单例：
-// 后完成的成功会 lastError='' 把先失败的原因冲掉，页面读到的就是空串，
-// 只剩「缓存失败」四个字。页面 toast 优先读这份不会被成功覆盖的快照。
+// 后完成的成功会 lastError='' 把先失败的原因冲掉，页面读到的就是空串。
 let lastFailure = '';
 // 完整报错原文（errMsg），用来判断是不是空间类错误、决定要不要 LRU 重试。
 let lastDetail = '';
+// ⛔ 清理数不放模块级单例：openVideo 的后台缓存和手动缓存会并发，后启动的那次
+//    会把单例重置，页面终态 toast 就会丢数或串到另一条的数字（同 lastError 老坑）。
+//    改成 cacheVideo 内部按调用累计，通过 onStage('done', n) 回传给本次点击。
 // 正在落盘的目标路径：清孤儿文件时要跳过，别把并发中刚写好的文件删掉。
 const pendingDests = {};
 const MAX_EVICT_RETRY = 3;
+const LIMIT_KEY = 'jrp_listen_limit';
 
 function setError(short, detail) {
   lastError = short;
@@ -67,8 +70,18 @@ function setError(short, detail) {
 function getLastError() { return lastError; }
 function getLastFailure() { return lastFailure; }
 
-function notify(msg) {
-  try { wx.showToast({ title: msg, icon: 'none', duration: 2000 }); } catch (e) {}
+// ⚠️ 微信不公开真实配额，180MB 只是我们自己的软上限，跟平台上限对不上：
+//    以前每次都判断「够」→ 白下 32MB → 落盘才报 maximum size。
+//    现在把「落盘报空间错时的 已用+本次大小」记成上限的上界（持久化），
+//    下次下载前就按它判断，提前清理或提前拒绝，不再反复白下。
+function observedLimit() {
+  try { return Number(wx.getStorageSync(LIMIT_KEY)) || 0; } catch (e) { return 0; }
+}
+function noteLimit(v) {
+  try {
+    const old = observedLimit();
+    if (!old || v < old) wx.setStorageSync(LIMIT_KEY, v);
+  } catch (e) {}
 }
 
 function isSpaceError(msg) {
@@ -211,10 +224,15 @@ function getVideo(level, file, fp) {
 
 // 把远程视频下载并落到持久目录，返回 savedFilePath；失败返回 null（走网络）。
 // 下载前先按 LRU 腾空间；落盘时把该 key 下的旧 fp 条目一并清掉。
-function cacheVideo(level, file, url, fp, expectedSize) {
+function cacheVideo(level, file, url, fp, expectedSize, onStage) {
+  onStage = typeof onStage === 'function' ? onStage : function () {};
+  // 本次调用清掉几项旧缓存；'done' 阶段把它带回页面，页面据此给终态提示。
+  let cleaned = 0;
+  const finish = function () { try { onStage('done', cleaned); } catch (e) {} };
   fp = fpOf(fp);
   if (!fp) {
     setError('服务端未下发指纹', '');
+    finish();
     return Promise.resolve(null);
   }
   const key = videoKey(level, file);
@@ -222,20 +240,28 @@ function cacheVideo(level, file, url, fp, expectedSize) {
   const hit = getVideo(level, file, fp);
   if (hit) {
     lastError = '';
+    finish();
     return Promise.resolve(hit);
   }
 
-  // ⚠️ 下载前先看真实占用 + 服务端给的 size：不够就提示并按 LRU 清，
-  //    清完够了才自动下；仍不够直接不下载，省掉 32MB 白下（老师 2026-11-25）。
+  // ⚠️ 下载前先看真实占用 + 服务端给的 size：不够就按 LRU 清（同时通知页面把
+  //    按钮锁成「清理中…」），清完够了才自动下；仍不够直接不下载 + 明确终态，
+  //    绝不让人反复点、反复白下 32MB（老师 2026-11-25 反馈）。
   try {
     const fs0 = wx.getFileSystemManager();
-    if (!prepareRoom(fs0, key, Number(expectedSize) || 0)) {
-      setError('空间不足，无法缓存',
-        '清理旧缓存后仍不足：need=' + expectedSize + ', used=' + usedBytes(fs0));
+    const room = prepareRoom(fs0, key, Number(expectedSize) || 0, onStage);
+    cleaned += room.cleaned;
+    if (!room.ok) {
+      setError(room.cleaned
+        ? '空间不足，已清理 ' + room.cleaned + ' 项仍不够'
+        : '文件超过微信缓存上限，无法缓存',
+        '清理 ' + room.cleaned + ' 项后仍不足：need=' + expectedSize + ', used=' + usedBytes(fs0));
+      finish();
       return Promise.resolve(null);
     }
   } catch (e) { /* 拿不到 fs 就照常下载，落盘阶段还有 LRU 重试兜底 */ }
 
+  onStage('downloading');
   return new Promise((resolve) => {
     // ⚠️ 每条 resolve(null) 的路径都必须先 setError，否则页面只会显示
     //    「缓存失败」四个字，等于把唯一有用的线索吞了。
@@ -249,18 +275,25 @@ function cacheVideo(level, file, url, fp, expectedSize) {
             const code = Number(res.statusCode || 0);
             if (code && (code < 200 || code >= 300)) {
               setError('HTTP ' + code, res);
+              finish();
               resolve(null);
               return;
             }
             const tmp = res.tempFilePath;
             const size = (res.totalBytesExpectedToWrite || 0) || guessSize(tmp);
-            ensureRoom(size);
+            cleaned += ensureRoom(size); // 老 LRU 兜底清掉的也计入终态提示
             const fs = wx.getFileSystemManager();
             // 主路径 copyFile 到 USER_DATA_PATH，失败回退老 saveFile（实现见下方）；
             // 落盘报空间类错误时按 LRU 清理后自动重试。
-            persistWithRetry(fs, tmp, key, fp).then(function (saved) {
+            persistWithRetry(fs, tmp, key, fp, Number(expectedSize) || size, onStage).then(function (r) {
               guard(resolve, function () {
-                if (!saved) { resolve(null); return; } // persistVideo 已写好失败原因
+                cleaned += (r && r.cleaned) || 0;
+                const saved = r && r.saved;
+                if (!saved) {
+                  finish();
+                  resolve(null);
+                  return;
+                }
                 const arr = readIndex();
                 // 并发下载可能留了旧 fp 的同 key 条目，连同文件一起替掉
                 for (let i = arr.length - 1; i >= 0; i--) {
@@ -279,6 +312,7 @@ function cacheVideo(level, file, url, fp, expectedSize) {
                 }
                 writeIndex(arr);
                 lastError = '';
+                finish();
                 resolve(saved);
               });
             });
@@ -286,11 +320,13 @@ function cacheVideo(level, file, url, fp, expectedSize) {
         },
         fail(e) {
           setError(shortDownloadError(e), (e && e.errMsg) || '');
+          finish();
           resolve(null);
         }
       });
     } catch (e) {
       setError('下载调用失败', (e && (e.errMsg || e.message)) || String(e));
+      finish();
       resolve(null);
     }
   });
@@ -351,26 +387,26 @@ function usedBytes(fs) {
   return total;
 }
 
-// 按 LRU 删最旧的一条（跳过当前正在下的 key），返回是否真的删到东西。
+// 按 LRU 删最旧的一条（跳过当前正在下的 key），返回删掉几条。
 function evictOldest(fs, skipKey) {
   const arr = readIndex();
   const victims = arr.filter(function (it) { return it.key !== skipKey; })
     .sort(function (a, b) { return (a.lastUsed || 0) - (b.lastUsed || 0); });
-  if (!victims.length) return false;
+  if (!victims.length) return 0;
   const v = victims[0];
   try { fs.unlinkSync(v.path); } catch (e) { /* 文件已没，索引照删 */ }
   const idx = arr.findIndex(function (it) { return it.key === v.key; });
   if (idx >= 0) arr.splice(idx, 1);
   writeIndex(arr);
-  return true;
+  return 1;
 }
 
 // 索引外的孤儿文件（历次失败 / 升级残留）也清掉，否则 usedBytes 一直偏高。
 function evictOrphans(fs) {
   let dir = '';
   try { dir = wx.env.USER_DATA_PATH || ''; } catch (e) {}
-  if (!dir) return false;
-  let removed = false;
+  if (!dir) return 0;
+  let removed = 0;
   try {
     const keep = {};
     readIndex().forEach(function (it) { keep[String(it.path || '')] = 1; });
@@ -379,23 +415,29 @@ function evictOrphans(fs) {
       if (n.indexOf('jrp_') !== 0) return;
       const p = dir + '/' + n;
       if (keep[p] || pendingDests[p]) return; // 别删并发中正在落盘的文件
-      try { fs.unlinkSync(p); removed = true; } catch (e) {}
+      try { fs.unlinkSync(p); removed++; } catch (e) {}
     });
   } catch (e) {}
   return removed;
 }
 
-// 下载前的空间检查：够了 true；不够先清，清完仍不够 false（不下载、直接提示）。
-function prepareRoom(fs, key, need) {
+// 下载前的空间检查：不够就通知页面锁按钮 + 按 LRU 清，返回 {ok, cleaned}。
+// ⚠️ 上限取「软上限 180MB」与「上次落盘报错观测到的上界」里更小的那个。
+function prepareRoom(fs, key, need, onStage) {
   need = Number(need) || 0;
-  if (!need || usedBytes(fs) + need <= MAX_VIDEO_BYTES) return true;
-  notify('空间不足，正在清理旧缓存');
-  evictOrphans(fs);
+  // ⚠️ observedLimit 是「上次装不下时的总量」，真实上限必然小于它，所以用 < 判断，
+  //    等于也要当成不够，否则第一次记录后第二次仍会误判「够」而白下一遍。
+  const cap = Math.min(MAX_VIDEO_BYTES, observedLimit() || MAX_VIDEO_BYTES);
+  if (!need || usedBytes(fs) + need < cap) return { ok: true, cleaned: 0 };
+  onStage('cleaning');
+  let cleaned = evictOrphans(fs);
   let rounds = 0;
-  while (usedBytes(fs) + need > MAX_VIDEO_BYTES && rounds++ < 50) {
-    if (!evictOldest(fs, key)) { evictOrphans(fs); break; }
+  while (usedBytes(fs) + need >= cap && rounds++ < 50) {
+    const n = evictOldest(fs, key);
+    if (!n) { cleaned += evictOrphans(fs); break; }
+    cleaned += n;
   }
-  return usedBytes(fs) + need <= MAX_VIDEO_BYTES;
+  return { ok: usedBytes(fs) + need < cap, cleaned: cleaned };
 }
 
 function persistVideo(fs, tmp, key, fp) {
@@ -422,26 +464,33 @@ function persistVideo(fs, tmp, key, fp) {
   });
 }
 
-// 落盘报空间类错误时：按 LRU 删一条 → 重试，直到成功、轮次用尽或没得删。
-function persistWithRetry(fs, tmp, key, fp) {
+// 落盘报空间类错误时：记下观测上限 → 通知页面锁按钮 → LRU 删一条 → 重试。
+// 删无可删说明不是占用问题，是这个文件本身超过平台上限 —— 明确说出来，
+// 别让用户反复点、反复白下 32MB。过程提示一律交给按钮状态，utils 不弹 toast。
+function persistWithRetry(fs, tmp, key, fp, need, onStage) {
   return new Promise((resolve) => {
     let tries = 0;
+    let cleaned = 0;
     function attempt() {
       persistVideo(fs, tmp, key, fp).then(function (saved) {
-        if (saved) { resolve(saved); return; }
-        if (!isSpaceError(lastDetail)) { resolve(''); return; }
+        if (saved) { resolve({ saved: saved, cleaned: cleaned }); return; }
+        if (!isSpaceError(lastDetail)) { resolve({ saved: '', cleaned: cleaned }); return; }
+        noteLimit(usedBytes(fs) + (Number(need) || 0));
         if (tries >= MAX_EVICT_RETRY) {
-          setError('空间不足，无法缓存', '按 LRU 清理 ' + tries + ' 轮仍不足：' + lastDetail);
-          resolve('');
+          setError('空间不足，已清理 ' + cleaned + ' 项仍不够',
+            '按 LRU 清理 ' + tries + ' 轮仍不足：' + lastDetail);
+          resolve({ saved: '', cleaned: cleaned });
           return;
         }
-        if (!(evictOldest(fs, key) || evictOrphans(fs))) {
-          setError('空间不足，无法缓存', '已无可清理的旧缓存：' + lastDetail);
-          resolve('');
+        const n = evictOldest(fs, key) || evictOrphans(fs);
+        if (!n) {
+          setError('文件超过微信缓存上限，无法缓存', '已无可清理的旧缓存：' + lastDetail);
+          resolve({ saved: '', cleaned: cleaned });
           return;
         }
+        cleaned += n;
         tries++;
-        notify('空间不足，正在清理旧缓存');
+        onStage('cleaning');
         attempt();
       });
     }
@@ -485,8 +534,10 @@ function guessSize(tmp) {
   } catch (e) { return 0; }
 }
 
-// LRU 逐出：保证 saveFile 前 总size + need <= MAX_VIDEO_BYTES。
+// LRU 逐出：保证 saveFile 前 总size + need <= MAX_VIDEO_BYTES。返回删了几项，
+// 让本次调用的终态提示把这一步的清理也报出来（别让老师以为没清）。
 function ensureRoom(need) {
+  let removed = 0;
   try {
     let arr = readIndex();
     let total = arr.reduce((s, it) => s + (it.size || 0), 0);
@@ -501,10 +552,12 @@ function ensureRoom(need) {
       total -= (victim.size || 0);
       arr.splice(i, 1);
       changed = true;
+      removed++;
       // 删的是头，不 i++，继续删下一个
     }
     if (changed) writeIndex(arr);
   } catch (e) { /* 逐出失败：saveFile 自己会兜底 fail */ }
+  return removed;
 }
 
 // 查单个视频的缓存状态：'none'（没缓存）/ 'cached'（已缓存）。

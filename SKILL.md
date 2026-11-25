@@ -1173,20 +1173,32 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
 - **小程序** `miniprogram/utils/listen-cache.js`：字幕/视频缓存记录都带 `fp`，
   读时对不上就**就地删旧记录 + unlink 旧视频文件**，用服务端新 `cues` 覆盖、重新下载；
   老版本（升级前没有 fp）的缓存条目第一次打开自动失效。字幕仍走 `setStorageSync`
-  （120 条上限），视频走 `saveFile` + 180MB LRU。
+  （120 条上限），视频落盘主路径 `fs.copyFile` 到 `USER_DATA_PATH`、`saveFile` 兜底，
+  按真实占用 + LRU 管空间。
 - ⛔ **没指纹一律不启用缓存**：不读、不写、标题栏缓存按钮 `wx:if` 隐藏。
   老服务端 / 字幕缺失时宁可每次走网络，绝不播旧内容。
-- **三态按钮**在播放器标题栏（缓存 / 下载中… / 已缓存），清理藏在「已缓存」点击里，
-  不做单独的清缓存按钮。删除本地文件后把 `videoUrl` 换回远程地址，别让播放器指着不存在的文件。
+- **缓存按钮**在播放器标题栏，状态 `none / downloading / cleaning / cached / blocked`
+  （缓存 / 下载中… / 清理中… / 已缓存 / 空间不足）。`downloading` / `cleaning` 期间锁定，
+  `blocked` 再点只提示原因、不重复下载；清理藏在「已缓存」点击里，不做单独的清缓存按钮。
+  删除本地文件后把 `videoUrl` 换回远程地址，别让播放器指着不存在的文件。
 - ⚠️ **缓存失败要能自证**（2026-11-25 首次真机踩坑）：原来 `downloadFile` fail / 非 200 /
   `saveFile` fail 全把 `errMsg` 吞了，屏幕上只有「缓存失败」四个字，分不清是域名未加白名单、
-  超时还是保存配额满。`listen-cache.js` 记 `lastError`：短分类给标题栏 toast，完整 `errMsg`
-  打 console（真机调试可见）；`res.statusCode` 按 **2xx** 判成功（微信对大文件可能带 Range
-  回 206）；`app.json` 设 `networkTimeout.downloadFile=120000`（默认 60s，32MB 视频容易超）。
+  超时还是保存配额满。`listen-cache.js` 记 `lastError` / `lastFailure`（失败快照，不会被并发的
+  成功路径清空）：短分类给标题栏 toast，完整 `errMsg` 打 console（真机调试可见）；
+  `res.statusCode` 按 **2xx** 判成功（微信对大文件可能带 Range 回 206）；
+  `app.json` 设 `networkTimeout.downloadFile=120000`（默认 60s，32MB 视频容易超）。
+  ⚠️ 诊断 toast 只在 `develop` / `trial` 弹，`release` 静默（console 日志始终保留）。
   ⚠️ `project.config.json` 的 `urlCheck:false` 只在开发者工具生效，**真机严格校验**，
   `https://listening.110105.xyz` 必须在 mp 后台「downloadFile 合法域名」里。
-- ⚠️ **两端都要发**：服务端字段要重编 `/usr/local/bin/jrp` 才生效；小程序要
-  「上传 + mp 后台选为体验版」。只发一端时小程序拿不到指纹 → 缓存自动停用（不会播旧内容）。
+- ⚠️ **空间不足按老师定的流程走**（2026-11-25）：下载前用 `usedBytes()` 真实占用 +
+  服务端 `size` 判断；不够 → 按钮锁成「清理中…」→ 清孤儿 + 按 LRU 删旧 → 够了自动下载，
+  仍不够就不下载并给明确终态（「已清理 N 项仍不够」/「文件超过微信缓存上限」）。落盘报
+  `maximum size` 时把「已用 + 本次大小」记成观测上限 `jrp_listen_limit`，下次下载前按更小的
+  cap 判断，避免反复白下 32MB。⛔ utils 不弹过程 toast，阶段一律走 `onStage` 交给按钮态；
+  清理数按调用经 `onStage('done', n)` 回传，⛔ 不落模块级单例（并发会串数）。
+- ⚠️ **两端都要发**：服务端字段要重编 `/usr/local/bin/jrp` 才生效；小程序由老师自己上传，
+  **上传后的版本直接可体验，不需要在 mp 后台再操作什么**（2026-11-25 老师纠正，
+  ⛔ 别再提「选为体验版」）。只发一端时小程序拿不到指纹 → 缓存自动停用（不会播旧内容）。
 - **测试**：`api_listening_test.go` 指纹稳定性 / 改字幕只换 srt_fp / 重传视频换 fp+URL /
   无字幕空 fp / ETag 去引号；另有 Node 冒烟覆盖 6 组失效行为（临时脚本，跑完即删）。
 

@@ -161,7 +161,12 @@ Page({
               if (p && self.data.videoUrl === res.video_url) {
                 self.setData({ videoUrl: p });
               }
-              self.setCacheState(cache.getVideoState(level, file, videoFp));
+              // ⚠️ 自动缓存结束别把手动缓存锁定的 cleaning/downloading/blocked 冲掉，
+              //    否则清理还没完按钮就又变成可点（老师 2026-11-25 反馈）。
+              const st = self.data.cacheState;
+              if (st !== 'cleaning' && st !== 'downloading' && st !== 'blocked') {
+                self.setCacheState(cache.getVideoState(level, file, videoFp));
+              }
             });
           }
         }
@@ -262,12 +267,16 @@ Page({
 
   // 把缓存状态映射成标题栏按钮的文案，一次 setData 搞定。
   setCacheState(state) {
-    const label = state === 'cached' ? '已缓存' : (state === 'downloading' ? '下载中…' : '缓存');
-    this.setData({ cacheState: state, cacheLabel: label });
+    const labels = {
+      cached: '已缓存', downloading: '下载中…', cleaning: '清理中…',
+      blocked: '空间不足', none: '缓存'
+    };
+    this.setData({ cacheState: state, cacheLabel: labels[state] || '缓存' });
   },
 
-  // 标题栏缓存按钮三态：
-  //   none → 手动下载；downloading → 点了没用（防重复）；cached → 弹确认删本地缓存。
+  // 标题栏缓存按钮：
+  //   none → 手动下载；downloading / cleaning → 锁定；cached → 弹确认删本地缓存；
+  //   blocked → 空间类失败后的终态，再点只提示原因、不再重复下载。
   onCacheTap() {
     const level = this.data.curLevel;
     const file = this.curFile || '';
@@ -280,7 +289,11 @@ Page({
       return;
     }
     const st = this.data.cacheState;
-    if (st === 'downloading') return;
+    if (st === 'downloading' || st === 'cleaning') return;
+    if (st === 'blocked') {
+      wx.showToast({ title: this.cacheBlockedReason || '空间不足，无法缓存', icon: 'none', duration: 3000 });
+      return;
+    }
     if (st === 'cached') {
       wx.showModal({
         title: '删除本地缓存',
@@ -302,23 +315,39 @@ Page({
     const url = this.curVideoUrl || this.data.videoUrl;
     if (!url) return;
     this.setCacheState('downloading');
-    cache.cacheVideo(level, file, url, fp, this.curVideoSize || 0).then((p) => {
+    self.curCleaned = 0;
+    // 阶段回调：清理 / 下载期间按钮保持锁定，处置完才给终态，
+    // 不再出现「提示还在说正在清理、按钮却已经能点」的错位（老师 2026-11-25 反馈）。
+    // ⚠️ 'done' 只把「本次调用清了几项」带回来，不改按钮态；清理数按调用走，
+    //    别读模块级单例 —— openVideo 的并发后台缓存会把它冲掉（同 lastError 老坑）。
+    const onStage = (stage, payload) => {
+      if (self.curFile !== file) return;
+      if (stage === 'done') { self.curCleaned = Number(payload) || 0; return; }
+      self.setCacheState(stage === 'cleaning' ? 'cleaning' : 'downloading');
+    };
+    cache.cacheVideo(level, file, url, fp, this.curVideoSize || 0, onStage).then((p) => {
       if (self.curFile !== file) return; // 已经切了别的视频
+      const cleaned = self.curCleaned || 0;
       if (p) {
         self.setCacheState(cache.getVideoState(level, file, fp));
         // 正在用远程地址播的话，切到本地路径（缓存完就该用本地）。
         if (self.data.videoUrl !== p) self.setData({ videoUrl: p });
-        wx.showToast({ title: '已缓存', icon: 'none' });
-      } else {
-        self.setCacheState('none');
-        // ⚠️ 自动后台缓存与本次手动缓存并发时，模块级 lastError 可能被后完成的
-        //    成功清空，只剩「缓存失败」四个字。优先读不会被成功覆盖的失败快照；
-        //    连快照都空说明 setError 一次都没走到，把构建码带上自证包版本。
-        const why = cache.getLastFailure() || cache.getLastError();
         wx.showToast({
-          title: why || ('缓存失败(无原因/' + version.CODE_VERSION + ')'),
+          title: cleaned ? '已缓存（清理 ' + cleaned + ' 项旧缓存）' : '已缓存',
           icon: 'none', duration: 2500
         });
+      } else {
+        const why = cache.getLastFailure() || cache.getLastError() ||
+          ('缓存失败(无原因/' + version.CODE_VERSION + ')');
+        // 空间类失败把按钮锁成终态：再点只提示原因，不再白下 32MB。
+        // 重进本视频（openVideo）会重新取状态，那时可以再试。
+        if (/上限|仍不够|空间不足/.test(why)) {
+          self.cacheBlockedReason = why;
+          self.setCacheState('blocked');
+        } else {
+          self.setCacheState('none');
+        }
+        wx.showToast({ title: why, icon: 'none', duration: 3000 });
       }
     });
   },
