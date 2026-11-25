@@ -1203,6 +1203,29 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
   `removeStorageSync('jrp_listen_limit')` 抹掉。⛔ utils 不弹过程 toast，阶段一律走
   `onStage` 交给按钮态；「别重复白下 32MB」由页面 `blocked` 终态负责；
   清理数按调用经 `onStage('done', n)` 回传，⛔ 不落模块级单例（并发会串数）。
+- ⛔⛔ **微信「本地缓存文件」区隐形残留事故**（2026-11-25 老师实测
+  「已无可清理的旧缓存，copyFile fail the maximum size of file」）：
+  * 官方错误码 **1300202** = `the maximum size of the file storage limit is exceeded`，
+    释义「存储空间不足，**或文件大小超出上限（上限 100M）**」，`copyFile`/`saveFile`
+    共用。三类文件：临时文件（4GB，不计持久化配额）、**本地缓存文件**
+    （`fs.saveFile` 不传 `filePath` 时产生，`wxfile://store_*`，官方权限表**写=无**）、
+    本地用户文件（`USER_DATA_PATH`，可自由读写）；后两者共享 200MB 配额。
+  * 三个实锤 bug：① 兜底 `fs.saveFile({tempFilePath})` **没传 `filePath`** → 文件进
+    缓存文件区，`unlink` 删不掉、`readdirSync` 看不见；② `evictOldest`/`dropEntry`
+    一律 `unlinkSync`，`catch` 吞异常后**仍抹索引并返回 1（假清理）** → 文件还占
+    配额，索引却没了；③ `usedBytes` 从不调 `getSavedFileList` → 这块占用恒为 0。
+    反复测试后隐形残留把配额吃满，索引却空 → 「已无可清理的旧缓存」。
+  * 修法：兜底 `saveFile` **必须传 `filePath` 落到 `USER_DATA_PATH`**（用户文件，
+    可 unlink、可统计、`.bak` 仍带 `jrp_` 前缀）；`removeLocalFile()` 按路径分流
+    （用户目录 `unlinkSync` / 缓存文件区 `removeSavedFile`），**删失败不许抹索引、
+    不许报「已清理」**；`refreshSavedFiles()` + `purgeSavedFiles()` 在 `cacheVideo`
+    开头刷新真实占用快照并清索引外残留；`usedBytes` 把快照里的孤儿算进去。
+  * 诊断：`getStorageDiag()` 给真实占用 / `savedFiles` / 索引数，详情弹窗仅在
+    `develop`/`trial` 显示；失败 detail 带 `used= / savedFiles= / indexed= / need=`。
+    ⚠️ 若修完 `used≈0, savedFiles=0` 仍报 1300202，才是平台**单文件上限**，
+    持久化缓存对 31MB 视频不成立，别再拿 LRU 清缓存硬撞。
+  * ⛔ `getSavedFileList` 是异步、`usedBytes` 是同步 → 只能用模块级快照，
+    **绝不持久化当配额闸门**（同 `jrp_listen_limit` 教训）。
 - ⚠️ **进度详情可见**（2026-11-25 老师要求「不知道当前什么进度、是不是卡住了」）：
   * `wx.downloadFile` 返回的 **`DownloadTask` 必须接住**（原来直接丢了）：注册
     `onProgressUpdate(res)` 读 `progress` / `totalBytesWritten` / `totalBytesExpectedToWrite`，

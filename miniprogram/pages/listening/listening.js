@@ -344,9 +344,15 @@ Page({
     }
     if (typeof d.round === 'number') lines.push('重试：' + d.round + '/' + d.maxRounds);
     if (d.stalled) lines.push('注意：已 ' + d.stallSeconds + ' 秒无进展');
-    // 原始 errMsg 是技术黑话，正式版不在弹窗里显示；进度/阶段/耗时照常给。
-    if (detail && cache.diagEnabled()) lines.push('最近错误：' + String(detail).slice(0, 80));
-    lines.push('构建码：' + version.CODE_VERSION);
+    // 原始 errMsg 与技术诊断是黑话，正式版不在弹窗里显示；进度/阶段/耗时照常给。
+    if (cache.diagEnabled()) {
+      const sd = cache.getStorageDiag();
+      lines.push('真实占用：' + (sd.used / 1048576).toFixed(1) + ' / ' +
+        (sd.cap / 1048576).toFixed(0) + ' MB');
+      lines.push('索引 ' + sd.indexed + ' 项 · 微信缓存文件区 ' + sd.savedFiles + ' 项');
+      if (detail) lines.push('最近错误：' + String(detail).slice(0, 80));
+      lines.push('构建码：' + version.CODE_VERSION);
+    }
     const self = this;
     wx.showModal({
       title: '缓存进度',
