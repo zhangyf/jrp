@@ -1185,6 +1185,11 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
   回 206）；`app.json` 设 `networkTimeout.downloadFile=120000`（默认 60s，32MB 视频容易超）。
   ⚠️ `project.config.json` 的 `urlCheck:false` 只在开发者工具生效，**真机严格校验**，
   `https://listening.110105.xyz` 必须在 mp 后台「downloadFile 合法域名」里。
+- ⚠️ **诊断 toast 只在开发版 / 体验版弹**（老师 2026-11-25 要求「正式发布别弹额外提示」）：
+  `listen-cache.js` 的 `diagEnabled()` 读 `wx.getAccountInfoSync().miniProgram.envVersion`，
+  只放行 `develop` / `trial`；`release` 和取不到 envVersion（老基础库）一律静默。
+  成功「已缓存」/ 删除「已删除」这些常规反馈保留，`console.error` 始终打（真机调试可见）。
+  正式版缓存失败时按钮从「下载中…」回到「缓存」，就是给用户的反馈。
 - ⚠️ **两端都要发**：服务端字段要重编 `/usr/local/bin/jrp` 才生效；小程序要
   「上传 + mp 后台选为体验版」。只发一端时小程序拿不到指纹 → 缓存自动停用（不会播旧内容）。
 - **测试**：`api_listening_test.go` 指纹稳定性 / 改字幕只换 srt_fp / 重传视频换 fp+URL /

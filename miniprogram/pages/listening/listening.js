@@ -309,8 +309,11 @@ Page({
         wx.showToast({ title: '已缓存', icon: 'none' });
       } else {
         self.setCacheState('none');
-        // 短原因给 toast，完整 errMsg 在 console（真机调试可见）。
-        wx.showToast({ title: cache.getLastError() || '缓存失败', icon: 'none', duration: 2500 });
+        // 正式版不弹诊断 toast（按钮回到「缓存」就是反馈）；开发版/体验版才给短原因。
+        // 完整 errMsg 始终打 console，真机调试里能一眼定位。
+        if (cache.diagEnabled()) {
+          wx.showToast({ title: cache.getLastError() || '缓存失败', icon: 'none', duration: 2500 });
+        }
       }
     });
   },
