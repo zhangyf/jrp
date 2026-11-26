@@ -1190,6 +1190,13 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
   ⚠️ 诊断 toast 只在 `develop` / `trial` 弹，`release` 静默（console 日志始终保留）。
   ⚠️ `project.config.json` 的 `urlCheck:false` 只在开发者工具生效，**真机严格校验**，
   `https://listening.110105.xyz` 必须在 mp 后台「downloadFile 合法域名」里。
+- ⚠️ **诊断 toast 只在开发版 / 体验版弹**（老师 2026-11-25 要求「正式发布别弹额外提示」，
+  `origin/main` PR #36 口径；解 PR #37 冲突时从 main 补回）：`listen-cache.js` 的
+  `diagEnabled()` 读 `wx.getAccountInfoSync().miniProgram.envVersion`，只放行
+  `develop` / `trial`；`release` 和取不到 envVersion（老基础库）一律静默。
+  成功「已缓存」/ 删除「已删除」这些常规反馈保留，`console.error` 始终打（真机调试可见）。
+  正式版缓存失败时按钮从「下载中…」回到「缓存」就是反馈；后续进度/阶段详情行、
+  详情弹窗的调试信息分级见下面「进度详情可见」章节。
 - ⚠️ **空间不足按老师定的流程走**（2026-11-25）：下载前用 `usedBytes()` 真实占用 +
   服务端 `size` 判断；不够 → 按钮锁成「清理中…」→ 清孤儿 + 按 LRU 删旧 → 够了自动下载，
   仍不够就不下载并给明确终态（「已清理 N 项仍不够」/「文件超过微信缓存上限」）。落盘报
