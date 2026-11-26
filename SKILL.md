@@ -1173,25 +1173,128 @@ PAT 上犯过两次）。**要配就由老师直接写进服务器 `/etc/jrp/jrp
 - **小程序** `miniprogram/utils/listen-cache.js`：字幕/视频缓存记录都带 `fp`，
   读时对不上就**就地删旧记录 + unlink 旧视频文件**，用服务端新 `cues` 覆盖、重新下载；
   老版本（升级前没有 fp）的缓存条目第一次打开自动失效。字幕仍走 `setStorageSync`
-  （120 条上限），视频走 `saveFile` + 180MB LRU。
+  （120 条上限），视频落盘主路径 `fs.copyFile` 到 `USER_DATA_PATH`、`saveFile` 兜底，
+  按真实占用 + LRU 管空间。
 - ⛔ **没指纹一律不启用缓存**：不读、不写、标题栏缓存按钮 `wx:if` 隐藏。
   老服务端 / 字幕缺失时宁可每次走网络，绝不播旧内容。
-- **三态按钮**在播放器标题栏（缓存 / 下载中… / 已缓存），清理藏在「已缓存」点击里，
-  不做单独的清缓存按钮。删除本地文件后把 `videoUrl` 换回远程地址，别让播放器指着不存在的文件。
+- **缓存按钮**在播放器标题栏，状态 `none / downloading / cleaning / cached / blocked`
+  （缓存 / 下载中… / 清理中… / 已缓存 / 空间不足）。`downloading` / `cleaning` 期间锁定，
+  `blocked` 再点只提示原因、不重复下载；清理藏在「已缓存」点击里，不做单独的清缓存按钮。
+  删除本地文件后把 `videoUrl` 换回远程地址，别让播放器指着不存在的文件。
 - ⚠️ **缓存失败要能自证**（2026-11-25 首次真机踩坑）：原来 `downloadFile` fail / 非 200 /
   `saveFile` fail 全把 `errMsg` 吞了，屏幕上只有「缓存失败」四个字，分不清是域名未加白名单、
-  超时还是保存配额满。`listen-cache.js` 记 `lastError`：短分类给标题栏 toast，完整 `errMsg`
-  打 console（真机调试可见）；`res.statusCode` 按 **2xx** 判成功（微信对大文件可能带 Range
-  回 206）；`app.json` 设 `networkTimeout.downloadFile=120000`（默认 60s，32MB 视频容易超）。
+  超时还是保存配额满。`listen-cache.js` 记 `lastError` / `lastFailure`（失败快照，不会被并发的
+  成功路径清空）：短分类给标题栏 toast，完整 `errMsg` 打 console（真机调试可见）；
+  `res.statusCode` 按 **2xx** 判成功（微信对大文件可能带 Range 回 206）；
+  `app.json` 设 `networkTimeout.downloadFile=120000`（默认 60s，32MB 视频容易超）。
+  ⚠️ 诊断 toast 只在 `develop` / `trial` 弹，`release` 静默（console 日志始终保留）。
   ⚠️ `project.config.json` 的 `urlCheck:false` 只在开发者工具生效，**真机严格校验**，
   `https://listening.110105.xyz` 必须在 mp 后台「downloadFile 合法域名」里。
-- ⚠️ **诊断 toast 只在开发版 / 体验版弹**（老师 2026-11-25 要求「正式发布别弹额外提示」）：
-  `listen-cache.js` 的 `diagEnabled()` 读 `wx.getAccountInfoSync().miniProgram.envVersion`，
-  只放行 `develop` / `trial`；`release` 和取不到 envVersion（老基础库）一律静默。
+- ⚠️ **诊断 toast 只在开发版 / 体验版弹**（老师 2026-11-25 要求「正式发布别弹额外提示」，
+  `origin/main` PR #36 口径；解 PR #37 冲突时从 main 补回）：`listen-cache.js` 的
+  `diagEnabled()` 读 `wx.getAccountInfoSync().miniProgram.envVersion`，只放行
+  `develop` / `trial`；`release` 和取不到 envVersion（老基础库）一律静默。
   成功「已缓存」/ 删除「已删除」这些常规反馈保留，`console.error` 始终打（真机调试可见）。
-  正式版缓存失败时按钮从「下载中…」回到「缓存」，就是给用户的反馈。
-- ⚠️ **两端都要发**：服务端字段要重编 `/usr/local/bin/jrp` 才生效；小程序要
-  「上传 + mp 后台选为体验版」。只发一端时小程序拿不到指纹 → 缓存自动停用（不会播旧内容）。
+  正式版缓存失败时按钮从「下载中…」回到「缓存」就是反馈；后续进度/阶段详情行、
+  详情弹窗的调试信息分级见下面「进度详情可见」章节。
+- ⚠️ **空间不足按老师定的流程走**（2026-11-25）：下载前用 `usedBytes()` 真实占用 +
+  服务端 `size` 判断；不够 → 按钮锁成「清理中…」→ 清孤儿 + 按 LRU 删旧 → 够了自动下载，
+  仍不够就不下载并给明确终态（「已清理 N 项仍不够」/「文件超过微信缓存上限」）。落盘报
+  `maximum size` 时**只**按 LRU 清 + 重试，删无可删才如实说「文件超过微信缓存上限」。
+  ⛔⛔ **绝不许把一次失败反推成「平台上限」再持久化**（2026-11-25 翻车）：曾经把
+  `used + need` 写进 `jrp_listen_limit`、只减不增永不复位，结果空盘 `used=0` 时
+  `cap === need`，`>=` 恒成立 → **连 downloadFile 都不调就报「文件超过微信缓存上限，
+  清理0项后仍不足」**，缓存永久自锁（老师实测 `need=32795534,used=0`）。微信不公开
+  真实配额，一次观测推不出上限。`prepareRoom` 的 `cap` **恒等于 `MAX_VIDEO_BYTES`
+  (180MB)**，只用 `used + need <= cap` 判；脏 key 在 `cacheVideo` 首次调用时
+  `removeStorageSync('jrp_listen_limit')` 抹掉。⛔ utils 不弹过程 toast，阶段一律走
+  `onStage` 交给按钮态；「别重复白下 32MB」由页面 `blocked` 终态负责；
+  清理数按调用经 `onStage('done', n)` 回传，⛔ 不落模块级单例（并发会串数）。
+- ⛔⛔ **微信「本地缓存文件」区隐形残留事故**（2026-11-25 老师实测
+  「已无可清理的旧缓存，copyFile fail the maximum size of file」）：
+  * 官方错误码 **1300202** = `the maximum size of the file storage limit is exceeded`，
+    释义「存储空间不足，**或文件大小超出上限（上限 100M）**」，`copyFile`/`saveFile`
+    共用。三类文件：临时文件（4GB，不计持久化配额）、**本地缓存文件**
+    （`fs.saveFile` 不传 `filePath` 时产生，`wxfile://store_*`，官方权限表**写=无**）、
+    本地用户文件（`USER_DATA_PATH`，可自由读写）；后两者共享 200MB 配额。
+  * 三个实锤 bug：① 兜底 `fs.saveFile({tempFilePath})` **没传 `filePath`** → 文件进
+    缓存文件区，`unlink` 删不掉、`readdirSync` 看不见；② `evictOldest`/`dropEntry`
+    一律 `unlinkSync`，`catch` 吞异常后**仍抹索引并返回 1（假清理）** → 文件还占
+    配额，索引却没了；③ `usedBytes` 从不调 `getSavedFileList` → 这块占用恒为 0。
+    反复测试后隐形残留把配额吃满，索引却空 → 「已无可清理的旧缓存」。
+  * 修法：兜底 `saveFile` **必须传 `filePath` 落到 `USER_DATA_PATH`**（用户文件，
+    可 unlink、可统计、`.bak` 仍带 `jrp_` 前缀）；`removeLocalFile()` 按路径分流
+    （用户目录 `unlinkSync` / 缓存文件区 `removeSavedFile`），**删失败不许抹索引、
+    不许报「已清理」**；`refreshSavedFiles()` + `purgeSavedFiles()` 在 `cacheVideo`
+    开头刷新真实占用快照并清索引外残留；`usedBytes` 把快照里的孤儿算进去。
+  * 诊断：`getStorageDiag()` 给真实占用 / `savedFiles` / 索引数，详情弹窗仅在
+    `develop`/`trial` 显示；失败 detail 带 `used= / savedFiles= / indexed= / need=`。
+    ⚠️ 若修完 `used≈0, savedFiles=0` 仍报 1300202，才是平台**单文件上限**，
+    持久化缓存对 31MB 视频不成立，别再拿 LRU 清缓存硬撞。
+  * ⛔ `getSavedFileList` 是异步、`usedBytes` 是同步 → 只能用模块级快照，
+    **绝不持久化当配额闸门**（同 `jrp_listen_limit` 教训）。
+- ⛔ **按 LRU 必须真的能删掉东西**（2026-11-25 老师追问「按LRU总有文件删除吧」）：
+  * 原来 `evictOldest` 只取最旧一条，且 `catch` 吞掉 `unlinkSync` 异常后照样
+    抹索引返回 1 → 「清理 N 项」是假的、磁盘一点没腾。改成删不掉返回 false 后
+    又矫枉过正：第一条失败就 `return 0`，`prepareRoom` 的 while 立刻 break，
+    后面能删的一条都不试 → **LRU 整轮停摆**。
+  * 现在 `evictOldest(fs, skipKey, skipFp)` **遍历**所有候选：删不掉就 `continue`
+    换下一条（条目留索引、不计 `cleaned`），删到一条能删的才返回 1；
+    `ensureRoom` 同样 `i++; continue` 而不是 break。只有全部候选都失败才返回 0，
+    这时才允许如实报「已无可清理」。
+  * ⚠️ `skipKey` 只排除「同 key **且同 fp**」那一条；同 key 的旧 fp 是旧版本可删。
+    原来 `it.key !== skipKey` 把当前视频整个排除，反复测同一个文件时索引里
+    一条候选都不剩 → 按 LRU 却一条都删不了。`prepareRoom` 与 `persistWithRetry`
+    都必须把 `fp` 传下去。
+  * ⚠️ 下载完成后清「同 key 旧 fp 条目」那段也必须用 `removeLocalFile`，删不掉
+    不许抹索引；`existing` 要按 `key && fp` 找 —— 否则会误命中留下的旧条目，
+    把刚落盘的新文件 `unlink` 掉。
+  * `purgeSavedFiles` 顺带抹掉「索引指向缓存文件区、但 `getSavedFileList` 已列不
+    出来」的幽灵条目（文件确实没了，抹索引是真实释放；不清掉 `usedBytes` 永远
+    算它，LRU 再怎么删都判不足）。
+  * ⚠️ **`getSavedFileList` 读失败 ≠ 列表为空**：`refreshSavedFiles` 保留上次快照
+    并回传 `ok=false`，`purgeSavedFiles` 直接 return、绝不碰索引，否则会把仍然
+    存在的有效条目误判成幽灵抹掉。
+- ⚠️ **进度详情可见**（2026-11-25 老师要求「不知道当前什么进度、是不是卡住了」）：
+  * `wx.downloadFile` 返回的 **`DownloadTask` 必须接住**（原来直接丢了）：注册
+    `onProgressUpdate(res)` 读 `progress` / `totalBytesWritten` / `totalBytesExpectedToWrite`，
+    节流 **200ms + 进度至少跳 1%**，别每帧 `setData`；`abort()` 供取消。
+  * `onStage(stage, info)` 事件流：`preparing / cleaning / downloading / writing / retry /
+    stalled / cancelled / done`，`info` 带 `{text, label, percent, written, total, elapsed,
+    cleaned, at, stalled, ...}`。⛔ **`done` 第二参数仍是数字**（清理数），保持老约定。
+    按钮文案随阶段变（下载 42% / 写入中… / 重试 2/3），标题栏下加进度条 + 一行浅色详情。
+  * ⛔ **「下载中」不等于在下载**：32MB 下完还有 `copyFile` 写盘 + LRU 重试，这两段必须
+    有独立文案，否则用户看着像卡死。15 秒无任何进展 → `stalled` 事件，详情行变色并写明
+    「停在「写入本地文件」」；定时器在 `end()` 里 `clearInterval`，别泄漏。
+    ⚠️ **只有百分比真的涨了才算进展**（`emit(..., real)` 第三参数）：同百分比的
+    「已用 N 秒」刷新一律 `real=false`，不许给卡住计时续命；`tick()` 恢复进展时把
+    `nextStallAt` 复位到 15 秒，否则第二次卡住要等 30/45 秒才报。
+  * 进行中点按钮 **不许再 `return` 装死** → `showModal` 给完整诊断（阶段/字节/耗时/清理数/
+    重试轮次/构建码）+「取消本次缓存」→ `cancelCache(level, file)` 按 key abort 所有并发任务。
+    ⚠️ `abort()` 不保证回调 `fail`，`done(null)` 直接收口，否则 Promise 永远悬着。
+  * ⚠️ **自动后台缓存（`openVideo`）也必须传 `onStage`**，老师看到的「下载中」多半是它。
+    手动 / 自动两条链路共用 `cacheSeq` 隔离阶段事件，共用 `settleCache(p, seq, file, silent)`
+    收终态（后台那条 silent）。⛔ 原来自动缓存结束后按钮永远停在「下载中…」—— 终态判断
+    把自动缓存自己设的 `downloading` 当成「手动锁定态」挡掉了，这个 bug 已修。
+  * ⚠️ **进度/阶段是正常反馈，正式版照常显示**；失败原因、原始 `errMsg`、构建码属于调试信息，
+    只在 `develop` / `trial` 给（`diagEnabled()`，与 `origin/main` PR #36 逐字一致）。
+    正式版失败详情行只留「缓存未完成，点按钮可重试」，不弹诊断 toast。
+- ⚠️ **在途下载跨页面去重**（2026-11-25 老师问「退出页面再进去会不会重下 / 换个页面能不能接着下」）：
+  `back()` / `onHide()` / `onUnload()` **都不 abort**，同一小程序进程里下载本来就继续跑，
+  落盘 + `writeIndex` 在回调里做，跟页面生命周期无关。真正的 bug 是重进时 `getVideo()`
+  还查不到（索引没写）→ 又起一条 32MB 下载，两条任务抢同一个 dest。
+  * `listen-cache.js` 加 `inflight[key|fp]` = `{promise, listeners, last}`。同 key+fp
+    已有在途任务 → **复用同一个 Promise**、回放 `last` 阶段快照（文案前缀「续接上次下载」、
+    进度条接着走）、把新页面 `onStage` 追加进 `listeners`；`emit()` 广播给所有订阅者，
+    `end()` 删在途记录。按 **key+fp** 登记：COS 中途重传（fp 变了）两条互不复用。
+  * `joined` 从登记那一刻就有值，避免 `rec.promise` 空窗；`end(v, resolve)` 同时收口
+    本次调用的 `p` 和 `joined`，页面走了也照常落盘。失败 / 取消后在途记录清掉，重进可正常重下。
+  * ⛔ **跨进程做不到**：小程序被系统杀掉 / 冷启动后内存表就没了，`wx.downloadFile`
+    没有官方断点续传，要「接着下」得另做 Range 分片 + 持久化，是另一个量级的改动，
+    别拿内存表去赌。长时间后台被微信挂起网络任务也是平台行为，代码管不了。
+- ⚠️ **两端都要发**：服务端字段要重编 `/usr/local/bin/jrp` 才生效；小程序由老师自己上传，
+  **上传后的版本直接可体验，不需要在 mp 后台再操作什么**（2026-11-25 老师纠正，
+  ⛔ 别再提「选为体验版」）。只发一端时小程序拿不到指纹 → 缓存自动停用（不会播旧内容）。
 - **测试**：`api_listening_test.go` 指纹稳定性 / 改字幕只换 srt_fp / 重传视频换 fp+URL /
   无字幕空 fp / ETag 去引号；另有 Node 冒烟覆盖 6 组失效行为（临时脚本，跑完即删）。
 

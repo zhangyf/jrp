@@ -24,6 +24,16 @@
   text-align: center;
 }
 
+/* 底部十六进制构建码：浅色小字，不抢内容；任何登录态都在 */
+.buildcode {
+  margin-top: 8rpx;
+  padding: 10rpx 0 20rpx;
+  text-align: center;
+  font-size: 20rpx;
+  color: #c9c9c0;
+  letter-spacing: 2rpx;
+}
+
 /* 自定义导航栏：浅底，logo 与标题同一行 */
 .nav {
   background: #f7f7f5;
@@ -31,7 +41,7 @@
 
 .nav-row {
   display: flex;
-  align-items: center;
+  align-items: flex-end; /* logo 与版本号下沿对齐（老师 2026-11-25） */
   gap: 14rpx;
   padding: 0 24rpx;
 }
@@ -42,9 +52,14 @@
   height: 84rpx;
 }
 
+/* 版本号是次要信息：比原来的标题小一号，浅一点，不抢 logo。
+   line-height 收到 1，别让默认行距把小字从 logo 下沿顶起来。 */
 .nav-title {
-  font-size: 34rpx;
-  font-weight: 600;
+  font-size: 22rpx;
+  line-height: 1;
+  font-weight: 500;
+  color: #8a8a80;
+  letter-spacing: 1rpx;
 }
 
 /* 双列色块入口：width:49% + space-between（calc() 在部分机型 WebView 会退化成单列）。

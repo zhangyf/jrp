@@ -4,6 +4,7 @@
 // 这里不自己发请求拿数据，各页面自己拉 —— 首页只负责跳。
 
 const app = getApp();
+const version = require('../../utils/version.js');
 
 Page({
   data: {
@@ -16,10 +17,15 @@ Page({
     busy: false, // 正在登录，防止连点
     // 自定义导航栏（原生导航栏放不了图片，logo 画在自己画的导航里）
     statusBarH: 20,
-    navH: 44
+    navH: 44,
+    // Logo 右侧版本号：动态读微信线上号，取不到就留白（不内置、不伪造）
+    appVersion: '',
+    // 底部浅色十六进制构建码：内置常量，任何环境都在
+    codeVersion: version.CODE_VERSION
   },
 
   onLoad() {
+    this.setData({ appVersion: readAppVersion() });
     // 状态栏高度 + 胶囊按钮位置 → 自定义导航行的真实高度
     try {
       const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -128,3 +134,16 @@ Page({
     }
   }
 });
+
+// Logo 右侧的 vxx.xx.xx 只能**动态获取**微信运行时给的线上版本号：
+// miniProgram.version 仅正式版有值；体验版/开发版/老基础库一律留白，
+// 不内置、不显示占位号（老师 2026-11-25：「版本号不要内置，要动态获取」）。
+// 体验版正是靠页面底部内置的十六进制构建码判断当前跑的是哪份代码。
+function readAppVersion() {
+  try {
+    const info = wx.getAccountInfoSync();
+    const v = (info && info.miniProgram && info.miniProgram.version) || '';
+    if (v) return 'v' + String(v).replace(/^v/i, '');
+  } catch (e) { /* 老基础库没这个 API */ }
+  return '';
+}

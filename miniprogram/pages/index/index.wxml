@@ -3,7 +3,8 @@
   <view class="nav" style="padding-top:{{statusBarH}}px">
     <view class="nav-row" style="height:{{navH}}px">
       <image class="nav-logo" src="/images/logo.png" mode="aspectFit" />
-      <text class="nav-title">每日练习</text>
+      <!-- 版本号：动态读微信线上号（仅正式版有）；体验版/开发版留白，靠底部构建码判断代码版本 -->
+      <text class="nav-title">{{appVersion}}</text>
     </view>
   </view>
   <view class="err" wx:if="{{message}}">{{message}}</view>
@@ -91,4 +92,7 @@
 
   <view class="foot-link" bindtap="onExit">退出登录</view>
   </block>
+
+  <!-- 内置构建码：两种登录态都显示，浅色小字，用来判断当前跑的是哪份代码 -->
+  <view class="buildcode">{{codeVersion}}</view>
 </view>

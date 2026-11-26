@@ -46,13 +46,82 @@ const VID_INDEX_KEY = 'jrp_listen_videos';
 // 分不清是合法域名没配、下载超时、还是 saveFile 配额满。这里记一句短原因给
 // 标题栏 toast，完整 errMsg 打 console（真机调试一眼能定位）。
 let lastError = '';
+// 最近一次失败原因，成功路径不清。⚠️ 自动后台缓存（openVideo）和手动缓存
+// （onCacheTap）会并发跑在两条 Promise 上，而 lastError 是模块级单例：
+// 后完成的成功会 lastError='' 把先失败的原因冲掉，页面读到的就是空串。
+let lastFailure = '';
+// 完整报错原文（errMsg），用来判断是不是空间类错误、决定要不要 LRU 重试。
+let lastDetail = '';
+// ⛔ 清理数不放模块级单例：openVideo 的后台缓存和手动缓存会并发，后启动的那次
+//    会把单例重置，页面终态 toast 就会丢数或串到另一条的数字（同 lastError 老坑）。
+//    改成 cacheVideo 内部按调用累计，通过 onStage('done', n) 回传给本次点击。
+// 正在落盘的目标路径：清孤儿文件时要跳过，别把并发中刚写好的文件删掉。
+const pendingDests = {};
+const MAX_EVICT_RETRY = 3;
+// ⛔ 不要再搞「观测上限」：曾经把一次落盘失败的 used+need 写进
+//    `jrp_listen_limit`，只减不增、永不复位。结果是空盘 used=0 时 cap 恰好等于
+//    need，`>=` 恒成立 → 连下载都不试就报「文件超过微信缓存上限」，缓存永久自锁
+//    （2026-11-25 老师实测 `need=32795534,used=0,清理0项`）。微信不公开真实配额，
+//    靠一次失败反推上限根本不可靠；老设备残留的这个 key 现在不读、不写，无害。
+const STALL_SECONDS = 15;      // 多少秒没有任何进展就标「可能卡住」
+const PROGRESS_MIN_MS = 200;   // 进度回调节流：微信约每 100ms 一次，别刷 setData
+
+// 正在下载的 DownloadTask（按 key 存数组：自动后台缓存和手动缓存可能并发）。
+// cancelCache() 用来 abort，让「卡住了」有个出口，而不是干等 120s 超时。
+const activeTasks = {};
+// 在途下载注册表（跨页面共享，同一小程序进程内有效）。
+// ⚠️ 只活在内存里：小程序被系统杀掉 / 冷启动后就没了，wx.downloadFile 也没有
+//    官方断点续传，跨进程「接着下」做不到。这里解决的是「退出页面再进去又起一条
+//    32MB 下载」—— 复用同一个 Promise，新页面接着看进度、等同一个结果。
+// ⚠️ 按 key+fp 登记：COS 中途重传（fp 变了）时两条互不复用，避免用旧版本结果
+//    去顶新版本。
+const inflight = {};
+function inflightKey(key, fp) { return key + '|' + fp; }
+let callSeq = 0;
+// 老版本写进本地存储的废弃 key：升级后第一次缓存时抹掉，避免以后有人误读又自锁。
+let legacyLimitCleared = false;
+function clearLegacyLimit() {
+  if (legacyLimitCleared) return;
+  legacyLimitCleared = true;
+  try { wx.removeStorageSync('jrp_listen_limit'); } catch (e) {}
+}
+
+function registerTask(key, handle) {
+  if (!activeTasks[key]) activeTasks[key] = [];
+  activeTasks[key].push(handle);
+}
+function unregisterTask(key, handle) {
+  const arr = activeTasks[key] || [];
+  const i = arr.indexOf(handle);
+  if (i >= 0) arr.splice(i, 1);
+  if (!arr.length) delete activeTasks[key];
+}
+// 取消某个视频正在进行的所有下载（含并发的自动缓存那一支）。返回取消了几条。
+function cancelCache(level, file) {
+  const key = videoKey(level, file);
+  const arr = (activeTasks[key] || []).slice();
+  arr.forEach(function (h) { try { h.cancel(); } catch (e) {} });
+  return arr.length;
+}
+
+function mbText(n) {
+  return (Number(n || 0) / (1024 * 1024)).toFixed(1);
+}
 
 function setError(short, detail) {
   lastError = short;
+  lastFailure = short;
+  lastDetail = String(detail || short || '');
   try { console.error('[listen-cache] ' + short, detail || ''); } catch (e) {}
 }
 
 function getLastError() { return lastError; }
+function getLastFailure() { return lastFailure; }
+function getLastDetail() { return lastDetail; }
+
+function isSpaceError(msg) {
+  return /maximum size|storage limit|exceeded|quota|space|not enough/i.test(String(msg || ''));
+}
 
 // 诊断 toast（域名未加白名单 / 下载超时 / 保存失败）只给开发版、体验版看。
 // 正式发布（release）保持安静：按钮从「下载中…」回到「缓存」就是反馈，
@@ -72,6 +141,22 @@ function shortDownloadError(e) {
   if (/timeout/i.test(m)) return '下载超时';
   return '下载失败';
 }
+
+// 包住异步回调里的同步逻辑：抛异常也要留下原因并结束 Promise。
+// 不这么做的话 Promise 永远悬着（按钮一直「下载中…」），或 lastError 还是空的，
+// 页面只剩「缓存失败」四个字，真机上完全分不清是哪一步坏了。
+// resolve 传的是 cacheVideo 里的 done（会顺手停掉卡住检测定时器、注销取消句柄）。
+function guard(resolve, fn) {
+  try { fn(); } catch (e) {
+    setError('本地处理异常', (e && (e.errMsg || e.message)) || String(e));
+    resolve(null);
+  }
+}
+
+const STAGE_LABELS = {
+  preparing: '检查缓存空间', cleaning: '清理旧缓存', downloading: '下载',
+  writing: '写入本地文件', retry: '清理重试'
+};
 
 // 空指纹 = 不启用缓存。绝不能拿 undefined 去跟缓存里的字符串比。
 function fpOf(fp) {
@@ -153,10 +238,15 @@ function writeIndex(arr) {
   try { wx.setStorageSync(VID_INDEX_KEY, arr); } catch (e) { /* 写失败不阻塞播放 */ }
 }
 
-// 删索引里的某条，连同本地文件。文件可能已被系统清掉，失败不抛。
+// 删索引里的某条，连同本地文件。
+// ⛔ 删不掉就别抹索引：抹了之后 usedBytes 再也统计不到它、清理也找不到它，
+//    文件却还占着微信配额 —— 这就是「假清理」把 200MB 吃满的老坑。
 function dropEntry(arr, idx) {
-  try { wx.getFileSystemManager().unlinkSync(arr[idx].path); } catch (e) { /* 文件已没 */ }
+  let fs = null;
+  try { fs = wx.getFileSystemManager(); } catch (e) { return false; }
+  if (!removeLocalFile(fs, arr[idx].path)) return false;
   arr.splice(idx, 1);
+  return true;
 }
 
 // 命中返回本地路径，未命中返回 null。命中同时刷新 lastUsed（move to front）。
@@ -192,68 +282,638 @@ function getVideo(level, file, fp) {
 
 // 把远程视频下载并落到持久目录，返回 savedFilePath；失败返回 null（走网络）。
 // 下载前先按 LRU 腾空间；落盘时把该 key 下的旧 fp 条目一并清掉。
-function cacheVideo(level, file, url, fp) {
+//
+// onStage(stage, info) 是「详情」事件流（2026-11-25 老师要求能看到在干嘛）：
+//   stage: preparing / cleaning / downloading / writing / retry / stalled / cancelled / done
+//   info : { text, label, percent, written, total, elapsed, cleaned, at, stalled, ... }
+//   done 的第二个参数仍是数字（本次清了几项），保持老约定。
+// 只做观测，不改缓存判定：指纹、LRU、落盘逻辑一条没动。
+//
+// ⚠️ 跨页面（2026-11-25 老师问「换个页面能不能接着下」）：
+//   back() / onHide() / onUnload() 都**不 abort**，同一小程序进程里下载本来就继续跑，
+//   落盘和 writeIndex 在回调里做，跟页面生命周期无关。以前的问题是重进页面时
+//   getVideo() 还查不到（索引没写），于是又起一条 32MB 下载。现在按 key+fp
+//   登记在途任务：重进时复用同一个 Promise、回放最新阶段快照、订阅后续进度。
+//   ⛔ 进程被系统杀掉 / 冷启动：内存里的在途表没了，wx.downloadFile 也没有官方
+//      断点续传，跨进程接着下做不到，别拿这个表去赌。
+function cacheVideo(level, file, url, fp, expectedSize, onStage) {
+  onStage = typeof onStage === 'function' ? onStage : function () {};
+  clearLegacyLimit();
+  // 每次下载前清一次微信「本地缓存文件」区的历史残留并刷新真实占用快照。
+  // 老版本兜底 saveFile 不传 filePath 留下的隐形文件就在这里被清掉。
+  purgeSavedFiles();
+  let cleaned = 0;
+  const startedAt = Date.now();
+  const total = Number(expectedSize) || 0;
+  let currentStage = 'preparing';
+  let lastTickAt = startedAt;
+  let lastEmitAt = 0;
+  let lastPercent = -1;
+  let settled = false;
+  let cancelled = false;
+  let stallTimer = null;
+  let nextStallAt = STALL_SECONDS * 1000;
+  let task = null;
+  let key = '';
+  let ikey = '';
+  let rec = null;                 // 本条下载在 inflight 里的记录
+  const listeners = [onStage];   // 重进页面的 onStage 追加进来，进度一起播
+  let resolveP = null;           // 本次调用的 Promise resolver
+  let resolveJoin = null;
+  // dedup 复用这条 Promise：从「登记在途」那一刻起就有值，不会有空窗。
+  const joined = new Promise((r) => { resolveJoin = r; });
+
+  const elapsed = () => Math.floor((Date.now() - startedAt) / 1000);
+  const at = () => STAGE_LABELS[currentStage] || currentStage;
+
+  // real=false 表示「只是刷新耗时文案，没有实质进展」，不刷新卡住计时。
+  function emit(stage, extra, real) {
+    if (stage !== 'stalled' && STAGE_LABELS[stage]) currentStage = stage;
+    const info = {
+      text: '', label: '', percent: -1, written: 0, total: total,
+      elapsed: elapsed(), cleaned: cleaned, at: at(),
+      stalled: false, stallSeconds: 0
+    };
+    if (extra) Object.keys(extra).forEach(function (k) { info[k] = extra[k]; });
+    // 记下最新阶段：退出页面再进来时，新页面立刻看到真实进度，不用从 0% 重来。
+    if (rec) rec.last = { stage: stage, info: info };
+    // 广播给所有订阅者：原页面 + 后来重进的页面（同一条任务，不另起下载）。
+    listeners.forEach(function (fn) { try { fn(stage, info); } catch (e) {} });
+    // ⚠️ 只有实质动作（阶段切换 / 百分比真的涨了）才刷新卡住计时。
+    //    若进度一直卡在 42% 还照常 tick，stalled 就永远不会触发。
+    if (real !== false && stage !== 'stalled') tick();
+  }
+
+  // 有实质动作（阶段切换 / 收到进度）就刷新「最后活动时间」，并把下一次
+  // 卡住告警的阈值复位到 15 秒 —— 否则恢复过一次后，第二次卡住要等 30/45 秒才报。
+  function tick() { lastTickAt = Date.now(); nextStallAt = STALL_SECONDS * 1000; }
+
+  function stopStall() {
+    if (stallTimer) { try { clearInterval(stallTimer); } catch (e) {} stallTimer = null; }
+  }
+  function startStall() {
+    if (stallTimer) return;
+    try {
+      stallTimer = setInterval(function () {
+        if (settled || cancelled) return;
+        const quiet = Date.now() - lastTickAt;
+        if (quiet < nextStallAt) return;
+        const secs = Math.floor(quiet / 1000);
+        nextStallAt += STALL_SECONDS * 1000;
+        emit('stalled', {
+          text: '已 ' + secs + ' 秒无进展，当前停在「' + at() + '」',
+          stalled: true, stallSeconds: secs
+        });
+      }, 2000);
+    } catch (e) {}
+  }
+
+  function finish() {
+    listeners.forEach(function (fn) { try { fn('done', cleaned); } catch (e) {} });
+  }
+  // 提前返回（fp 为空 / 命中 / 空间不够）和下载回调都走这里，保证定时器、
+  // 取消句柄、在途记录、'done' 事件都只收一次。
+  // ⚠️ 页面走了也不影响这里：落盘和 writeIndex 都在回调里做，跟页面生命周期无关。
+  function end(v, resolve) {
+    if (settled) return;
+    settled = true;
+    stopStall();
+    unregisterTask(key, handle);
+    if (rec && inflight[ikey] === rec) delete inflight[ikey];
+    finish();
+    if (resolve) resolve(v);
+    // 重进页面等的是 joined，跟本调用的 p 一起收口，值完全一致。
+    if (resolveJoin) resolveJoin(v);
+  }
+  function done(v) { end(v, resolveP); }
+
+  const handle = {
+    cancel: function () {
+      if (cancelled) return;
+      cancelled = true;
+      setError('已取消缓存', '');
+      emit('cancelled', { text: '已取消本次缓存', label: '已取消' });
+      try { if (task && typeof task.abort === 'function') task.abort(); } catch (e) {}
+      // ⚠️ 不依赖微信 abort 后一定回调 fail：这里直接收口，否则 Promise 永远悬着。
+      done(null);
+    }
+  };
+
   fp = fpOf(fp);
   if (!fp) {
     setError('服务端未下发指纹', '');
+    end(null, null);
     return Promise.resolve(null);
   }
-  const key = videoKey(level, file);
+  key = videoKey(level, file);
+  ikey = inflightKey(key, fp);
+  // 退出页面再进来 / 切换页面：同一 key+fp 已有一条下载在跑，绝不再起第二条。
+  // 32MB 白下一遍是小事，两条任务抢同一个 dest 才要命。复用同一个 Promise，
+  // 把最新阶段快照回放给新页面，进度条接着走，终态也等同一个结果。
+  const running = inflight[ikey];
+  if (running) {
+    if (running.last) {
+      const s = running.last;
+      const snap = {};
+      Object.keys(s.info).forEach(function (k) { snap[k] = s.info[k]; });
+      snap.text = '续接上次下载 · ' + (s.info.text || '');
+      try { onStage(s.stage, snap); } catch (e) {}
+    }
+    running.listeners.push(onStage);
+    return running.promise;
+  }
   // 已有同版本缓存直接返回，不重复下
   const hit = getVideo(level, file, fp);
   if (hit) {
     lastError = '';
+    end(hit, null);
     return Promise.resolve(hit);
   }
+  // 从这一刻起登记在途：后续所有 emit 都会记快照、广播给所有订阅页面。
+  rec = { fp: fp, promise: joined, listeners: listeners, last: null };
+  inflight[ikey] = rec;
 
-  return new Promise((resolve) => {
-    wx.downloadFile({
-      url: url,
+  // ⚠️ 下载前先看真实占用 + 服务端给的 size：不够就按 LRU 清（同时通知页面把
+  //    按钮锁成「清理中…」），清完够了才自动下；仍不够直接不下载 + 明确终态，
+  //    绝不让人反复点、反复白下 32MB（老师 2026-11-25 反馈）。
+  emit('preparing', { text: '正在检查本地缓存空间…', label: '检查中…' });
+  try {
+    const fs0 = wx.getFileSystemManager();
+    const room = prepareRoom(fs0, key, fp, Number(expectedSize) || 0, emit);
+    cleaned += room.cleaned;
+    if (!room.ok) {
+      setError(room.cleaned
+        ? '空间不足，已清理 ' + room.cleaned + ' 项仍不够'
+        : '文件超过缓存软上限，无法缓存',
+        '清理 ' + room.cleaned + ' 项后仍不足：need=' + expectedSize +
+        ', used=' + usedBytes(fs0) + ', cap=' + MAX_VIDEO_BYTES +
+        ', 缓存文件区=' + savedFiles.length + ' 项, 索引=' + readIndex().length + ' 项');
+      end(null, null);
+      return Promise.resolve(null);
+    }
+  } catch (e) { /* 拿不到 fs 就照常下载，落盘阶段还有 LRU 重试兜底 */ }
+
+  registerTask(key, handle);
+  startStall();
+  emit('downloading', {
+    text: '准备下载 · ' + mbText(total) + ' MB',
+    label: '下载 0%', percent: 0
+  });
+
+  const p = new Promise((resolve) => {
+    resolveP = resolve;
+
+    // 微信 DownloadTask.onProgressUpdate：progress(0~100) / totalBytesWritten /
+    // totalBytesExpectedToWrite。⛔ 别每个回调都 setData，节流到 200ms 且进度
+    // 至少跳 1%；进度没动时每 ~1 秒刷一次「已用 N 秒」，让时间看起来在走。
+    function reportProgress(res) {
+      if (settled || cancelled) return;
+      const written = Number(res && res.totalBytesWritten) || 0;
+      const expect = Number(res && res.totalBytesExpectedToWrite) || total || 0;
+      let pct = Number(res && res.progress);
+      if (!isFinite(pct) || pct < 0) pct = expect > 0 ? Math.floor(written / expect * 100) : 0;
+      pct = Math.max(0, Math.min(100, Math.round(pct)));
+      const now = Date.now();
+      const changed = pct !== lastPercent;
+      if (changed && now - lastEmitAt < PROGRESS_MIN_MS) return;
+      if (!changed && now - lastEmitAt < 1000) return;
+      lastPercent = pct;
+      lastEmitAt = now;
+      // ⚠️ 只有百分比真的涨了才算进展；同百分比的「已用 N 秒」刷新不能续命，
+      //    否则下载卡在 42% 时 15 秒卡住检测永远不触发。
+      emit('downloading', {
+        text: '正在下载 · ' + mbText(written) + ' / ' + mbText(expect) +
+          ' MB · ' + pct + '% · 已用 ' + elapsed() + ' 秒',
+        label: '下载 ' + pct + '%', percent: pct, written: written, total: expect
+      }, changed);
+    }
+
+    // ⚠️ 每条 resolve(null) 的路径都必须先 setError，否则页面只会显示
+    //    「缓存失败」四个字，等于把唯一有用的线索吞了。
+    try {
+      task = wx.downloadFile({
+        url: url,
+        success(res) {
+          guard(done, function () {
+            // ⚠️ 不能只认 200：微信对大文件可能带 Range，COS/EO 回 206 也是成功。
+            //    statusCode 缺失（部分机型不给）时信任 success，别误判成 HTTP 0。
+            const code = Number(res.statusCode || 0);
+            if (code && (code < 200 || code >= 300)) {
+              setError('HTTP ' + code, res);
+              done(null);
+              return;
+            }
+            const tmp = res.tempFilePath;
+            const size = (res.totalBytesExpectedToWrite || 0) || guessSize(tmp);
+            cleaned += ensureRoom(size); // 老 LRU 兜底清掉的也计入终态提示
+            const fs = wx.getFileSystemManager();
+            // 下载完成 ≠ 缓存完成：32MB 写入本地也要几秒，明确告诉用户这一步。
+            tick();
+            emit('writing', {
+              text: '下载完成 ' + mbText(size) + ' MB，正在写入本地文件…',
+              label: '写入中…', percent: 100, written: size
+            });
+            // 主路径 copyFile 到 USER_DATA_PATH，失败回退老 saveFile（实现见下方）；
+            // 落盘报空间类错误时按 LRU 清理后自动重试。
+            persistWithRetry(fs, tmp, key, fp, emit, size).then(function (r) {
+              guard(done, function () {
+                cleaned += (r && r.cleaned) || 0;
+                const saved = r && r.saved;
+                if (!saved) {
+                  done(null);
+                  return;
+                }
+                const arr = readIndex();
+                // 并发下载可能留了旧 fp 的同 key 条目：删得掉才抹索引。
+                // ⛔ 删不掉的（缓存文件区）留着算真实占用，由 purgeSavedFiles 兜底清，
+                //    不许 unlinkSync 失败也照抹（又一处假清理）。
+                for (let i = arr.length - 1; i >= 0; i--) {
+                  if (arr[i].key === key && arr[i].fp !== fp &&
+                      removeLocalFile(fs, arr[i].path)) {
+                    arr.splice(i, 1);
+                  }
+                }
+                // ⚠️ 只认同 fp：上面若有删不掉的旧 fp 条目留在索引里，
+                //    这里按 key 找会误命中它，然后把刚落盘的新文件 unlink 掉。
+                const existing = arr.find((it) => it.key === key && it.fp === fp);
+                if (!existing) {
+                  arr.unshift({ key, path: saved, size, lastUsed: Date.now(), fp });
+                } else if (existing.path !== saved) {
+                  // 并发的另一条已写好同版本；两条落在同一 dest 时绝不能删，
+                  // 删了会连累别人。只有路径不同才清掉这次多存的文件。
+                  try { fs.unlinkSync(saved); } catch (e) { /* 文件已没 */ }
+                }
+                writeIndex(arr);
+                lastError = '';
+                done(saved);
+              });
+            });
+          });
+        },
+        fail(e) {
+          if (cancelled) { done(null); return; } // cancel() 已写过原因并收口
+          setError(shortDownloadError(e), (e && e.errMsg) || '');
+          done(null);
+        }
+      });
+      if (task && typeof task.onProgressUpdate === 'function') {
+        task.onProgressUpdate(reportProgress);
+      }
+    } catch (e) {
+      setError('下载调用失败', (e && (e.errMsg || e.message)) || String(e));
+      done(null);
+    }
+  });
+  return p;
+}
+
+// —— 持久落盘（2026-11-25 改成双路径）——
+// ⚠️ 原来只用 FileSystemManager.saveFile，鸿蒙微信 8.0.23 上必报「保存失败」：
+//    wx.saveFile 系列已停止维护，且部分机型对 tempFilePath 有路径校验。
+//    主路径改成 copyFile 到 wx.env.USER_DATA_PATH（本地用户文件，文件名可控），
+//    它不挑源路径；copyFile 也不行时回退老 saveFile，两条都失败才认输。
+//    两类文件共享 200MB 配额，配额真满时两条都会失败 —— 这时把微信原始
+//    errMsg 带进短原因，真机上不用开调试也能看到确切报错。
+function slug(s) {
+  return String(s || '').replace(/[^A-Za-z0-9_-]/g, '_');
+}
+
+function keyHash(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+function persistPath(key, fp) {
+  return wx.env.USER_DATA_PATH + '/jrp_' + keyHash(key) + '_' + slug(fp).slice(0, 24) + '.mp4';
+}
+
+function errText(e) {
+  return (e && (e.errMsg || e.message)) || String(e || '');
+}
+
+// ⚠️ 微信「本地缓存文件」区（fs.saveFile 不传 filePath 时产生，wxfile://store_*）：
+//    readdirSync 看不见它，unlink 删不掉它（官方读写权限表：写=无），只有
+//    getSavedFileList / removeSavedFile 能碰。老版本兜底在这里留过 31MB 的隐形
+//    残留，把 200MB 配额吃满，而 usedBytes 一直报 0 —— 就是老师 2026-11-25
+//    实测「已无可清理的旧缓存，copyFile fail the maximum size of file」的根因。
+// getSavedFileList 是异步 API，usedBytes 是同步函数 → 拉一次存模块级快照，
+// 每次 cacheVideo 开头刷新。快照只用于「看真实占用」和「清历史残留」，
+// ⛔ 绝不参与缓存命中判定，也绝不持久化当配额闸门。
+let savedFiles = [];
+function isUserPath(p) {
+  let dir = '';
+  try { dir = wx.env.USER_DATA_PATH || ''; } catch (e) {}
+  return !!dir && String(p || '').indexOf(dir) === 0;
+}
+function refreshSavedFiles(done) {
+  done = typeof done === 'function' ? done : function () {};
+  try {
+    wx.getFileSystemManager().getSavedFileList({
       success(res) {
-        // ⚠️ 不能只认 200：微信对大文件可能带 Range，COS/EO 回 206 也是成功。
-        const code = Number(res.statusCode || 0);
-        if (code < 200 || code >= 300) {
-          setError('HTTP ' + code, res);
-          resolve(null);
+        savedFiles = Array.isArray(res.fileList) ? res.fileList : [];
+        done(savedFiles, true);
+      },
+      // ⚠️ 拿不到列表 ≠ 列表为空：保留上一次快照，别把真实占用误清零
+      fail() { done(savedFiles, false); }
+    });
+  } catch (e) { done(savedFiles, false); }
+}
+// 每次下载前清一次缓存文件区里「不在索引」的历史残留，并刷新占用快照。
+// 这是异步的、幂等的；源头修好后不会再产生新的缓存文件，残留只会越清越少。
+function purgeSavedFiles() {
+  refreshSavedFiles(function (list, ok) {
+    // ⛔ getSavedFileList 失败时绝不碰索引：把「读不到」当成「文件都没了」
+    //    会把仍然存在的有效条目抹掉，又变成假清理。
+    if (!ok) return;
+    const idx = readIndex();
+    const keep = {};
+    idx.forEach(function (it) { keep[String(it.path || '')] = 1; });
+    const present = {};
+    list.forEach(function (f) { present[String(f.filePath || '')] = 1; });
+    // ① 索引里指向缓存文件区、但微信 getSavedFileList 已列不出来的条目：
+    //    文件确实被删掉了，抹索引是**真实**释放，不是假清理。不清掉的话
+    //    usedBytes 会永远按 it.size 把幽灵算进占用，LRU 再怎么删都判不足。
+    const alive = idx.filter(function (it) {
+      const p = String(it.path || '');
+      return !p || isUserPath(p) || present[p];
+    });
+    if (alive.length !== idx.length) writeIndex(alive);
+    let fs = null;
+    try { fs = wx.getFileSystemManager(); } catch (e) {}
+    const rest = [];
+    list.forEach(function (f) {
+      const p = String(f.filePath || '');
+      if (!p || keep[p]) { rest.push(f); return; }
+      if (fs) {
+        try { fs.removeSavedFile({ filePath: p }); } catch (e) { rest.push(f); }
+      } else { rest.push(f); }
+    });
+    savedFiles = rest; // 乐观摘除；下次 refresh 以微信真实列表为准
+  });
+}
+// 删一个本地文件：用户目录用 unlinkSync，缓存文件区必须 removeSavedFile。
+// 返回 true = **同步确认空间已释放**，调用方才可以抹索引、才计入「已清理 N 项」。
+// 返回 false = 不能确认（缓存文件区删除是异步 / 权限拒绝）：⛔ 不许抹索引、
+//   不许报「已清理」，但 LRU 要继续试下一条，别整轮停摆。
+function removeLocalFile(fs, p) {
+  p = String(p || '');
+  if (!p) return false;
+  if (isUserPath(p)) {
+    // 用户目录读权限没问题：accessSync 抛 = 文件真没了，空间已释放，抹索引安全
+    try { fs.accessSync(p); } catch (e) { return true; }
+    try { fs.unlinkSync(p); return true; } catch (e) { return false; }
+  }
+  // 缓存文件区：removeSavedFile 是异步，成败交给 purgeSavedFiles + 快照复核。
+  // 这里发起删除但返回 false，索引留着（文件还在就继续算占用，删掉了由 purge 抹）。
+  try { fs.removeSavedFile({ filePath: p }); } catch (e) { return false; }
+  return false;
+}
+// 给详情弹窗看的真实占用（只在 develop / trial 显示）。
+function getStorageDiag() {
+  let fs = null;
+  try { fs = wx.getFileSystemManager(); } catch (e) {}
+  return {
+    used: fs ? usedBytes(fs) : 0,
+    cap: MAX_VIDEO_BYTES,
+    savedFiles: savedFiles.length,
+    indexed: readIndex().length
+  };
+}
+
+// —— 空间管理（2026-11-25 老师定） ——
+// 微信没有「查剩余配额」的 API，只能自己算已用；平台上限也不公开（文档 200MB，
+// 老 saveFile 还有 10MB 遗留限制），所以两层兜底：
+//   ① 下载前：真实占用 + 服务端给的文件大小 > 软上限 → 提示并按 LRU 清，
+//      清完够了才下，不够直接不下载（别等 32MB 下完才在落盘时炸）；
+//   ② 落盘报空间类错误：继续 LRU 清 + 重试，删到没得删才提示「空间不足，无法缓存」。
+function usedBytes(fs) {
+  let total = 0;
+  let dir = '';
+  try { dir = wx.env.USER_DATA_PATH || ''; } catch (e) {}
+  try {
+    if (dir) {
+      const names = fs.readdirSync(dir) || [];
+      names.forEach(function (n) {
+        if (n.indexOf('jrp_') !== 0) return; // 只算本模块写的，含索引外孤儿
+        try {
+          const st = fs.statSync(dir + '/' + n);
+          total += (st && st.size) || 0;
+        } catch (e) { /* 文件已没 */ }
+      });
+    }
+  } catch (e) { /* 老基础库 / 目录读不到 */ }
+  // 索引里不在用户目录下的条目（老版本兜底留下的缓存文件）按记录大小补上
+  const indexed = {};
+  readIndex().forEach(function (it) {
+    const p = String(it.path || '');
+    if (p) indexed[p] = 1;
+    if (!dir || p.indexOf(dir) !== 0) total += it.size || 0;
+  });
+  // ⚠️ 缓存文件区的「索引外孤儿」：readdirSync 看不见，只有 getSavedFileList 快照能算。
+  //    老版本假清理把索引抹了、文件还在，正是它们把配额吃满而 usedBytes 报 0。
+  savedFiles.forEach(function (f) {
+    const p = String(f.filePath || '');
+    if (!p || indexed[p]) return;                 // 索引里的上面已算过，别双算
+    if (dir && p.indexOf(dir) === 0) return;      // 用户目录的 readdirSync 已算过
+    total += Number(f.size) || 0;
+  });
+  return total;
+}
+
+// 按 LRU 删最旧的一条（只跳过「本次正在落盘」那一条），返回删掉几条。
+function evictOldest(fs, skipKey, skipFp) {
+  const arr = readIndex();
+  // ⚠️ 只排除同 key 且同 fp 的那一条：同 key 但 fp 不同 = 旧版本，可以删。
+  //    原来 `it.key !== skipKey` 把当前视频整个排除，反复测同一个文件时索引里
+  //    可能一条候选都不剩 → 按 LRU 却一条都删不了。
+  const victims = arr.filter(function (it) {
+    return !(it.key === skipKey && it.fp === skipFp);
+  }).sort(function (a, b) { return (a.lastUsed || 0) - (b.lastUsed || 0); });
+  // ⚠️ 必须遍历：最旧那条删不掉（缓存文件区权限 / 异步删除不许同步确认），
+  //    绝不能就此 return 0 —— 后面能删的条目继续删，否则 LRU 整轮停摆。
+  // ⛔ 删不掉的留在索引里，不许抹、不许计入「已清理 N 项」（假清理老坑）。
+  for (let i = 0; i < victims.length; i++) {
+    const v = victims[i];
+    if (!removeLocalFile(fs, v.path)) continue;
+    const idx = arr.findIndex(function (it) {
+      return it.key === v.key && it.path === v.path;
+    });
+    if (idx >= 0) arr.splice(idx, 1);
+    writeIndex(arr);
+    return 1;
+  }
+  return 0;
+}
+
+// 索引外的孤儿文件（历次失败 / 升级残留）也清掉，否则 usedBytes 一直偏高。
+function evictOrphans(fs) {
+  let dir = '';
+  try { dir = wx.env.USER_DATA_PATH || ''; } catch (e) {}
+  if (!dir) return 0;
+  let removed = 0;
+  try {
+    const keep = {};
+    readIndex().forEach(function (it) { keep[String(it.path || '')] = 1; });
+    const names = fs.readdirSync(dir) || [];
+    names.forEach(function (n) {
+      if (n.indexOf('jrp_') !== 0) return;
+      const p = dir + '/' + n;
+      if (keep[p] || pendingDests[p]) return; // 别删并发中正在落盘的文件
+      if (removeLocalFile(fs, p)) removed++;
+    });
+  } catch (e) {}
+  return removed;
+}
+
+// 下载前的空间检查：不够就通知页面锁按钮 + 按 LRU 清，返回 {ok, cleaned}。
+// ⚠️ cap 只用我们自己的软上限 180MB。**绝不能**拿「上次失败时的 used+need」当
+//    平台上限：那是一次失败的观测值，不是配额；一旦持久化就会把空盘也判成不够。
+//    微信真实上限由落盘时自己说话，落盘报空间错再走 persistWithRetry 的 LRU 重试。
+function prepareRoom(fs, key, fp, need, emit) {
+  emit = typeof emit === 'function' ? emit : function () {};
+  need = Number(need) || 0;
+  const cap = MAX_VIDEO_BYTES;
+  if (!need || usedBytes(fs) + need <= cap) return { ok: true, cleaned: 0 };
+  emit('cleaning', {
+    text: '空间不足，正在按 LRU 清理旧缓存…',
+    label: '清理中…'
+  });
+  let cleaned = evictOrphans(fs);
+  let rounds = 0;
+  while (usedBytes(fs) + need > cap && rounds++ < 50) {
+    const n = evictOldest(fs, key, fp);
+    if (!n) { cleaned += evictOrphans(fs); break; }
+    cleaned += n;
+  }
+  return { ok: usedBytes(fs) + need <= cap, cleaned: cleaned };
+}
+
+function persistVideo(fs, tmp, key, fp) {
+  return new Promise((resolve) => {
+    let dest = '';
+    function done(v) {
+      if (dest) delete pendingDests[dest];
+      resolve(v);
+    }
+    try {
+      dest = persistPath(key, fp);
+      pendingDests[dest] = true;
+      // 不预先 unlink：同 key 同 fp 的两条并发下载会算出同一个 dest，
+      // 谁先删都可能把对方刚写好的文件抹掉。copyFile 自己覆盖即可。
+      fs.copyFile({
+        srcPath: tmp,
+        destPath: dest,
+        success() { done(dest); },
+        fail(e) { fallbackSave(fs, tmp, key, fp, e, done); }
+      });
+    } catch (e) {
+      fallbackSave(fs, tmp, key, fp, e, done);
+    }
+  });
+}
+
+// 落盘报空间类错误时：通知页面锁按钮 → LRU 删一条 → 重试。
+// 删无可删说明不是占用问题，是这个文件本身超过平台上限 —— 明确说出来。
+// ⛔ 这里**不记任何「观测上限」**：一次失败推不出配额，写进 storage 只会自锁。
+//    「别反复白下 32MB」由页面 blocked 终态负责（再点只提示原因、不重下）。
+//    过程提示一律交给按钮状态，utils 不弹 toast。
+function persistWithRetry(fs, tmp, key, fp, emit, need) {
+  emit = typeof emit === 'function' ? emit : function () {};
+  need = Number(need) || guessSize(tmp); // 诊断里要带上文件本身多大，好判断是不是单文件上限
+  return new Promise((resolve) => {
+    let tries = 0;
+    let cleaned = 0;
+    function attempt() {
+      persistVideo(fs, tmp, key, fp).then(function (saved) {
+        if (saved) { resolve({ saved: saved, cleaned: cleaned }); return; }
+        if (!isSpaceError(lastDetail)) { resolve({ saved: '', cleaned: cleaned }); return; }
+        if (tries >= MAX_EVICT_RETRY) {
+          setError('空间不足，已清理 ' + cleaned + ' 项仍不够',
+            '按 LRU 清理 ' + tries + ' 轮仍不足：used=' + usedBytes(fs) +
+            ', 缓存文件区=' + savedFiles.length + ' 项, 索引=' + readIndex().length +
+            ' 项 | ' + lastDetail);
+          resolve({ saved: '', cleaned: cleaned });
           return;
         }
-        const tmp = res.tempFilePath;
-        const size = (res.totalBytesExpectedToWrite || 0) || guessSize(tmp);
-        ensureRoom(size);
-        const fs = wx.getFileSystemManager();
-        fs.saveFile({
-          tempFilePath: tmp,
-          success(sv) {
-            const arr = readIndex();
-            // 并发下载可能留了旧 fp 的同 key 条目，连同文件一起替掉
-            for (let i = arr.length - 1; i >= 0; i--) {
-              if (arr[i].key === key && arr[i].fp !== fp) {
-                try { fs.unlinkSync(arr[i].path); } catch (e) { /* 文件已没 */ }
-                arr.splice(i, 1);
-              }
-            }
-            if (!arr.some((it) => it.key === key)) {
-              arr.unshift({ key, path: sv.savedFilePath, size, lastUsed: Date.now(), fp });
-            } else {
-              // 别的并发已经写好了同版本，删掉这次多存的重复文件
-              try { fs.unlinkSync(sv.savedFilePath); } catch (e) { /* 文件已没 */ }
-            }
-            writeIndex(arr);
-            lastError = '';
-            resolve(sv.savedFilePath);
-          },
-          fail(e) {
-            setError('保存失败', (e && e.errMsg) || '');
-            resolve(null); // 配额满 / 鸿蒙 saveFile 不支持 → 走网络
-          }
+        const n = evictOldest(fs, key, fp) || evictOrphans(fs);
+        if (!n) {
+          // ⚠️ 带真实数字，别再只说「无可清理」：used 接近 0 还报 1300202
+          //    就是平台单文件上限，清缓存这条路根本不适用，得换方向。
+          setError('文件超过微信缓存上限，无法缓存',
+            '已无可清理的旧缓存：used=' + usedBytes(fs) +
+            ', savedFiles=' + savedFiles.length + ', indexed=' + readIndex().length +
+            ', need=' + need + ' | ' + lastDetail);
+          resolve({ saved: '', cleaned: cleaned });
+          return;
+        }
+        cleaned += n;
+        tries++;
+        emit('retry', {
+          text: '写入报空间不足，已清 ' + cleaned + ' 项，第 ' + tries + '/' + MAX_EVICT_RETRY + ' 次重试…',
+          label: '重试 ' + tries + '/' + MAX_EVICT_RETRY,
+          round: tries, maxRounds: MAX_EVICT_RETRY
         });
+        attempt();
+      });
+    }
+    attempt();
+  });
+}
+
+// 备用路径：老 saveFile。
+// ⚠️⛔ 必须传 filePath 落到 USER_DATA_PATH（本地用户文件，unlink 能删、readdirSync
+//    能统计）。原来不传 filePath，文件进了「本地缓存文件」区：unlink 删不掉、
+//    索引一抹就成永久隐形残留，把 200MB 配额吃满 —— 2026-11-25 老师实测的祸首。
+function fallbackSave(fs, tmp, key, fp, firstErr, resolve) {
+  let dest = '';
+  try {
+    dest = persistPath(key, fp) + '.bak';
+    try { fs.unlinkSync(dest); } catch (e) {} // 目标已存在会报 1301005
+    pendingDests[dest] = true;
+  } catch (e) {
+    setError('保存失败 · 无用户目录', '拿不到 USER_DATA_PATH：' + errText(e));
+    resolve('');
+    return;
+  }
+  function cleanup() { if (dest) delete pendingDests[dest]; }
+  try {
+    fs.saveFile({
+      tempFilePath: tmp,
+      filePath: dest,
+      success(sv) {
+        cleanup();
+        // ⚠️ 传了 filePath 就以 dest 为准：savedFilePath 在 iOS/Android 是 wxfile://、
+        //    开发者工具是 http://，还有机型给相对路径，拿它做 isUserPath 判断会误杀
+        //    本来成功落盘的文件。先校验 dest 真的写出来了，再退回收到的路径。
+        let saved = dest;
+        try { fs.accessSync(saved); } catch (e) { saved = ''; }
+        if (!saved) {
+          const alt = (sv && sv.savedFilePath) || '';
+          if (alt && isUserPath(alt)) saved = alt;
+        }
+        if (!saved) {
+          setError('保存路径为空', 'saveFile 未落到指定 filePath：' + JSON.stringify(sv || {}));
+          resolve('');
+          return;
+        }
+        resolve(saved);
       },
       fail(e) {
-        setError(shortDownloadError(e), (e && e.errMsg) || '');
-        resolve(null);
+        cleanup();
+        const a = errText(firstErr);
+        const b = errText(e);
+        const short = (b || a).replace(/^[a-zA-Z]+:fail\s*/i, '').slice(0, 30);
+        setError('保存失败 · ' + (short || '未知原因'),
+          'copyFile: ' + a + ' | saveFile(filePath=' + dest + '): ' + b);
+        resolve('');
       }
     });
-  });
+  } catch (e) {
+    cleanup();
+    setError('保存失败 · ' + errText(e).slice(0, 30), 'copyFile/saveFile 调用异常：' + errText(e));
+    resolve('');
+  }
 }
 
 // 估算已落 tmp 文件大小（downloadFile 有时不返回 totalBytesExpectedToWrite）。
@@ -264,8 +924,10 @@ function guessSize(tmp) {
   } catch (e) { return 0; }
 }
 
-// LRU 逐出：保证 saveFile 前 总size + need <= MAX_VIDEO_BYTES。
+// LRU 逐出：保证 saveFile 前 总size + need <= MAX_VIDEO_BYTES。返回删了几项，
+// 让本次调用的终态提示把这一步的清理也报出来（别让老师以为没清）。
 function ensureRoom(need) {
+  let removed = 0;
   try {
     let arr = readIndex();
     let total = arr.reduce((s, it) => s + (it.size || 0), 0);
@@ -276,14 +938,17 @@ function ensureRoom(need) {
     let i = 0;
     while (i < arr.length && total + need > MAX_VIDEO_BYTES) {
       const victim = arr[i];
-      try { fs.unlinkSync(victim.path); } catch (e) { /* 文件已没，索引照删 */ }
+      // ⛔ 删不掉就换下一条：不许抹索引制造隐形残留，但也不许整轮停摆
+      if (!removeLocalFile(fs, victim.path)) { i++; continue; }
       total -= (victim.size || 0);
       arr.splice(i, 1);
       changed = true;
+      removed++;
       // 删的是头，不 i++，继续删下一个
     }
     if (changed) writeIndex(arr);
   } catch (e) { /* 逐出失败：saveFile 自己会兜底 fail */ }
+  return removed;
 }
 
 // 查单个视频的缓存状态：'none'（没缓存）/ 'cached'（已缓存）。
@@ -319,25 +984,26 @@ function deleteVideo(level, file) {
   const idx = arr.findIndex((it) => it.key === key);
   let removed = false;
   if (idx >= 0) {
-    try { wx.getFileSystemManager().unlinkSync(arr[idx].path); removed = true; } catch (e) { /* 文件已没 */ }
-    arr.splice(idx, 1);
+    removed = dropEntry(arr, idx);
     writeIndex(arr);
   }
   return removed;
 }
 
-// 手动清空所有视频缓存（预留，暂未挂 UI）。
+// 手动清空所有视频缓存（预留，暂未挂 UI）。删不掉的条目留在索引里，别抹掉。
 function clearVideos() {
   try {
     const arr = readIndex();
     const fs = wx.getFileSystemManager();
-    arr.forEach((it) => { try { fs.unlinkSync(it.path); } catch (e) {} });
-    wx.removeStorageSync(VID_INDEX_KEY);
+    const kept = arr.filter((it) => !removeLocalFile(fs, it.path));
+    if (kept.length) writeIndex(kept);
+    else wx.removeStorageSync(VID_INDEX_KEY);
   } catch (e) {}
 }
 
 module.exports = {
   getCues, setCues,
   getVideo, cacheVideo, deleteVideo, getVideoState, clearVideos,
-  getLastError, diagEnabled
+  cancelCache, getLastError, getLastFailure, getLastDetail, diagEnabled,
+  getStorageDiag
 };

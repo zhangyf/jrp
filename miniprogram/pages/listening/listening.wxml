@@ -8,6 +8,13 @@
       <text class="vtitle-name">{{title}}</text>
       <view wx:if="{{cacheEnabled}}" class="cachebtn cache-{{cacheState}}" bindtap="onCacheTap">{{cacheLabel}}</view>
     </view>
+    <!-- 缓存过程详情：阶段 + 字节 + 百分比 + 耗时；进行中点右上角按钮可看全文/取消 -->
+    <block wx:if="{{cacheShowDetail}}">
+      <view class="cachebar" wx:if="{{cachePercent >= 0}}">
+        <view class="cachebar-fill" style="width:{{cachePercent}}%"></view>
+      </view>
+      <view class="cachedetail {{cacheStalled ? 'is-stalled' : ''}}">{{cacheDetail}}</view>
+    </block>
     <video id="player" class="player" src="{{videoUrl}}"
            initial-time="{{initialTime}}"
            controls show-center-play-btn
